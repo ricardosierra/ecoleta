@@ -5,6 +5,8 @@ import Button from "@/components/Button";
 import Reveal from "@/components/Reveal";
 import PageHero from "@/components/PageHero";
 import DonutChart from "@/components/DonutChart";
+import LeafDecor from "@/components/LeafDecor";
+import TiltCard from "@/components/TiltCard";
 import {
   ArrowRightIcon,
   LeafIcon,
@@ -104,24 +106,26 @@ export default function EsgPage() {
         <ul className="grid gap-6 md:grid-cols-3">
           {pilares.map(({ icon: Icon, label, items }, i) => (
             <Reveal key={label} as="li" delay={i * 100}>
-              <Card tone="white" className="h-full">
-                <div className="flex items-center gap-3 mb-5">
-                  <span className="size-12 rounded-full bg-(--color-accent-soft) text-(--color-secondary) flex items-center justify-center">
-                    <Icon width={22} height={22} />
-                  </span>
-                  <h3 className="card-title">{label}</h3>
-                </div>
-                <ul className="space-y-3">
-                  {items.map((it) => (
-                    <li key={it} className="flex items-start gap-3 text-sm">
-                      <span className="mt-1.5 size-1.5 rounded-full bg-(--color-accent) shrink-0" />
-                      <span className="text-(--color-text-muted) leading-relaxed">
-                        {it}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </Card>
+              <TiltCard intensity={4}>
+                <Card tone="white" className="h-full">
+                  <div className="flex items-center gap-3 mb-5">
+                    <span className="size-12 rounded-full bg-(--color-accent-soft) text-(--color-secondary) flex items-center justify-center">
+                      <Icon width={22} height={22} />
+                    </span>
+                    <h3 className="card-title">{label}</h3>
+                  </div>
+                  <ul className="space-y-3">
+                    {items.map((it) => (
+                      <li key={it} className="flex items-start gap-3 text-sm">
+                        <span className="mt-1.5 size-1.5 rounded-full bg-(--color-accent) shrink-0" />
+                        <span className="text-(--color-text-muted) leading-relaxed">
+                          {it}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              </TiltCard>
             </Reveal>
           ))}
         </ul>
@@ -129,6 +133,8 @@ export default function EsgPage() {
 
       {/* Carbono */}
       <Section tone="dark" id="carbono">
+        <LeafDecor position="top-right" size={280} rotate={-30} opacity={0.07} />
+        <LeafDecor position="bottom-left" size={200} rotate={120} opacity={0.05} />
         <div className="grid gap-12 lg:grid-cols-[1.2fr_1fr] items-center">
           <Reveal>
             <Eyebrow>Compensação de carbono</Eyebrow>

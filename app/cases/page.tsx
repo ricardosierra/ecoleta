@@ -4,7 +4,7 @@ import Card from "@/components/Card";
 import Button from "@/components/Button";
 import Reveal from "@/components/Reveal";
 import PageHero from "@/components/PageHero";
-import DynamicWord from "@/components/DynamicWord";
+import Typewriter from "@/components/Typewriter";
 import LogoCarousel from "@/components/LogoCarousel";
 import Gallery from "@/components/Gallery";
 import {
@@ -79,7 +79,11 @@ export default function CasesPage() {
         title={
           <>
             Na prática, o que a Ecoleta entrega para{" "}
-            <DynamicWord words={dynamicWords} />
+            <Typewriter
+              words={dynamicWords}
+              className="text-(--color-accent)"
+              cursorClassName="bg-(--color-accent)"
+            />
           </>
         }
         subtitle="Operações mais organizadas, redução de custo, segurança jurídica e comprovação ambiental — para empresas, indústrias e eventos."
