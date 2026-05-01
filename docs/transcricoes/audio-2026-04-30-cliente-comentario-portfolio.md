@@ -1,0 +1,3 @@
+# Transcrição — WhatsApp Audio 2026-04-30 at 20.10.24
+
+Essa parte aqui hoje é muito legal também, acho que eu não cheguei a botar no escopo que é onde mostram os clientes feitos e ficam indo para o lado sozinho. Eu gosto dessas coisas mais modernas, a palavra ali que fica mudando tudo que eles atendem sozinhos. Tipo, a gente atende empresas, indústrias, eventos, aí a palavra vai mudando, também achei legal. Aí eu mandei o portfólio aí, porque aí nesse portfólio tem todas as empresas que a gente já atendeu, né? Aí para você pegar logo qualquer coisa. Enfim, a gente vai vendo muita coisa, muita informação.
