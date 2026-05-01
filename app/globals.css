@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg-dark: #0d1f0f;
+  --color-bg-light: #ecf5fb;
+  --color-accent: #7ed957;
+  --color-accent-soft: rgba(126, 217, 87, 0.12);
+  --color-secondary: #2d5934;
+  --color-text: #242424;
+  --color-text-muted: #5a5a5a;
+  --color-text-on-dark: #d8e6da;
+  --color-white: #ffffff;
+  --color-border-dark: rgba(255, 255, 255, 0.08);
+  --color-border-light: rgba(13, 31, 15, 0.08);
+
+  --font-sans: var(--font-montserrat), system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --radius-button: 50px;
+  --radius-card: 10px;
+  --radius-input: 5px;
+
+  --shadow-sm: 0 0 10px rgba(0, 0, 0, 0.18);
+  --shadow-md: 0 0 10px rgba(0, 0, 0, 0.22);
+  --shadow-lg: 0 10px 12px -5px rgba(0, 0, 0, 0.3);
+
+  --container-max: 1140px;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 88px;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--color-text);
+  background: var(--color-white);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-bg-dark);
+}
+
+@utility container-page {
+  width: 100%;
+  max-width: var(--container-max);
+  margin-inline: auto;
+  padding-inline: 1.25rem;
+
+  @media (min-width: 768px) {
+    padding-inline: 2rem;
+  }
+}
+
+@utility section-py {
+  padding-block: 3rem;
+
+  @media (min-width: 768px) {
+    padding-block: 5rem;
+  }
+}
+
+@utility eyebrow {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+@utility hero-title {
+  font-weight: 700;
+  font-size: clamp(2.5rem, 5vw + 1rem, 4.25rem);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+
+@utility section-title {
+  font-weight: 700;
+  font-size: clamp(2rem, 3vw + 1rem, 2.625rem);
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+}
+
+@utility card-title {
+  font-weight: 600;
+  font-size: 1.375rem;
+  line-height: 1.25;
+}
+
+@utility btn-base {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 15px 35px;
+  border-radius: var(--radius-button);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  transition: transform 0.2s ease, background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+
+@utility reveal {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+@utility reveal-in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Subtle global focus ring */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
