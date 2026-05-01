@@ -5,6 +5,7 @@ import Button from "@/components/Button";
 import Reveal from "@/components/Reveal";
 import PageHero from "@/components/PageHero";
 import ProcessSteps from "@/components/ProcessSteps";
+import TiltCard from "@/components/TiltCard";
 import {
   ArrowRightIcon,
   ClipboardIcon,
@@ -118,26 +119,28 @@ export default function SolucoesPage() {
         <ul className="grid gap-6 md:grid-cols-3">
           {pilares.map(({ icon: Icon, title, desc, items }, i) => (
             <Reveal key={title} as="li" delay={i * 100}>
-              <Card tone="white" className="h-full border-l-4 border-(--color-accent)">
-                <div className="size-12 rounded-full bg-(--color-accent-soft) text-(--color-secondary) flex items-center justify-center mb-5">
-                  <Icon width={22} height={22} />
-                </div>
-                <h3 className="card-title mb-3">{title}</h3>
-                <p className="text-sm text-(--color-text-muted) leading-relaxed mb-4">
-                  {desc}
-                </p>
-                <ul className="space-y-2">
-                  {items.map((it) => (
-                    <li
-                      key={it}
-                      className="flex items-start gap-2 text-sm text-(--color-secondary)"
-                    >
-                      <span className="mt-1.5 size-1.5 rounded-full bg-(--color-accent) shrink-0" />
-                      {it}
-                    </li>
-                  ))}
-                </ul>
-              </Card>
+              <TiltCard intensity={4}>
+                <Card tone="white" className="h-full border-l-4 border-(--color-accent)">
+                  <div className="size-12 rounded-full bg-(--color-accent-soft) text-(--color-secondary) flex items-center justify-center mb-5">
+                    <Icon width={22} height={22} />
+                  </div>
+                  <h3 className="card-title mb-3">{title}</h3>
+                  <p className="text-sm text-(--color-text-muted) leading-relaxed mb-4">
+                    {desc}
+                  </p>
+                  <ul className="space-y-2">
+                    {items.map((it) => (
+                      <li
+                        key={it}
+                        className="flex items-start gap-2 text-sm text-(--color-secondary)"
+                      >
+                        <span className="mt-1.5 size-1.5 rounded-full bg-(--color-accent) shrink-0" />
+                        {it}
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              </TiltCard>
             </Reveal>
           ))}
         </ul>

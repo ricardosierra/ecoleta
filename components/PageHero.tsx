@@ -1,5 +1,6 @@
 import { cn } from "@/lib/cn";
 import type { ReactNode } from "react";
+import LeafDecor from "@/components/LeafDecor";
 
 type Props = {
   eyebrow?: string;
@@ -31,6 +32,8 @@ export default function PageHero({
             "radial-gradient(circle at 15% 0%, rgba(126,217,87,0.6) 0%, transparent 45%), radial-gradient(circle at 85% 100%, rgba(126,217,87,0.4) 0%, transparent 55%)",
         }}
       />
+      <LeafDecor position="top-right" size={300} rotate={-20} opacity={0.08} />
+      <LeafDecor position="bottom-left" size={220} rotate={160} opacity={0.05} />
       <div className="container-page relative pt-12 pb-16 md:pt-20 md:pb-24">
         <div className="max-w-3xl">
           {eyebrow && (

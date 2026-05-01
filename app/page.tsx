@@ -4,6 +4,9 @@ import Button from "@/components/Button";
 import Reveal from "@/components/Reveal";
 import DonutChart from "@/components/DonutChart";
 import MetricCard from "@/components/MetricCard";
+import Typewriter from "@/components/Typewriter";
+import LeafDecor from "@/components/LeafDecor";
+import TiltCard from "@/components/TiltCard";
 import {
   AlertTriangleIcon,
   ArrowRightIcon,
@@ -73,6 +76,8 @@ export default function HomePage() {
               "radial-gradient(circle at 20% 0%, rgba(126,217,87,0.6) 0%, transparent 40%), radial-gradient(circle at 80% 100%, rgba(126,217,87,0.4) 0%, transparent 50%)",
           }}
         />
+        <LeafDecor position="top-right" size={320} rotate={-25} opacity={0.08} />
+        <LeafDecor position="bottom-left" size={260} rotate={150} opacity={0.06} />
         <div className="container-page relative pt-12 pb-20 md:pt-20 md:pb-28">
           <div className="grid gap-12 lg:grid-cols-[1.2fr_1fr] items-center">
             <Reveal>
@@ -82,8 +87,18 @@ export default function HomePage() {
               </span>
               <h1 className="hero-title mt-6 text-balance">
                 Gestão de resíduos com{" "}
-                <span className="text-(--color-accent)">rastreabilidade</span>,
-                conformidade e impacto ESG real
+                <Typewriter
+                  className="text-(--color-accent)"
+                  cursorClassName="bg-(--color-accent)"
+                  words={[
+                    "rastreabilidade",
+                    "conformidade",
+                    "controle real",
+                    "impacto ESG",
+                  ]}
+                />
+                <br className="hidden sm:inline" />
+                e operação sob controle
               </h1>
               <p className="mt-6 text-base md:text-lg text-white/80 max-w-2xl leading-relaxed">
                 Redução máxima do envio ao aterro, organização da operação e
@@ -222,22 +237,26 @@ export default function HomePage() {
         <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {diferenciais.map(({ icon: Icon, title, desc }, i) => (
             <Reveal key={title} as="li" delay={i * 70}>
-              <Card tone="white" className="h-full">
-                <div className="size-12 rounded-full bg-(--color-accent-soft) text-(--color-secondary) flex items-center justify-center mb-5">
-                  <Icon width={22} height={22} />
-                </div>
-                <h3 className="card-title mb-2">{title}</h3>
-                <p className="text-sm text-(--color-text-muted) leading-relaxed">
-                  {desc}
-                </p>
-              </Card>
+              <TiltCard intensity={5}>
+                <Card tone="white" className="h-full">
+                  <div className="size-12 rounded-full bg-(--color-accent-soft) text-(--color-secondary) flex items-center justify-center mb-5">
+                    <Icon width={22} height={22} />
+                  </div>
+                  <h3 className="card-title mb-2">{title}</h3>
+                  <p className="text-sm text-(--color-text-muted) leading-relaxed">
+                    {desc}
+                  </p>
+                </Card>
+              </TiltCard>
             </Reveal>
           ))}
         </ul>
       </Section>
 
       {/* CARBONO */}
-      <Section tone="dark" id="carbono">
+      <Section tone="dark" id="carbono" className="overflow-hidden">
+        <LeafDecor position="top-left" size={280} rotate={45} opacity={0.07} />
+        <LeafDecor position="bottom-right" size={200} rotate={210} opacity={0.05} />
         <div className="grid gap-12 lg:grid-cols-[1.2fr_1fr] items-center">
           <Reveal>
             <Eyebrow>Impacto de Carbono</Eyebrow>
