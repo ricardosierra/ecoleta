@@ -24,7 +24,7 @@ export const siteConfig = {
 
   social: {
     instagram:
-      process.env.NEXT_PUBLIC_INSTAGRAM_URL || "https://instagram.com/XXXXXXXX",
+      process.env.NEXT_PUBLIC_INSTAGRAM_URL || "https://instagram.com/ecoleta.eco",
     linkedin:
       process.env.NEXT_PUBLIC_LINKEDIN_URL ||
       "https://linkedin.com/company/XXXXXXXX",
