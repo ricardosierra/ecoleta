@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { createPageMetadata } from "@/lib/seo";
 import Section, { SectionHeader } from "@/components/Section";
 import Card from "@/components/Card";
 import Button from "@/components/Button";
@@ -14,9 +15,13 @@ import {
 } from "@/components/icons";
 
 export const metadata: Metadata = {
-  title: "Soluções",
-  description:
-    "Gestão completa de resíduos, do planejamento à comprovação. Diagnóstico, PGRS, supervisão técnica, MTR, CDF e Relatório ESG.",
+  ...createPageMetadata({
+    title: "Soluções em Gestão de Resíduos",
+    description:
+      "Gestão completa de resíduos, do planejamento à comprovação. Diagnóstico, PGRS, supervisão técnica, MTR, CDF e relatório ESG para empresas.",
+    path: "/solucoes",
+    keywords: ["gestão de resíduos para empresas", "PGRS", "destinação de resíduos", "supervisão técnica ambiental"],
+  }),
 };
 
 const steps = [
@@ -245,4 +250,3 @@ function StatCard({ value, label }: { value: string; label: string }) {
     </div>
   );
 }
-

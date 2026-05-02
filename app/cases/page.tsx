@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { createPageMetadata } from "@/lib/seo";
 import Section, { SectionHeader } from "@/components/Section";
 import Card from "@/components/Card";
 import Button from "@/components/Button";
@@ -15,9 +16,13 @@ import {
 } from "@/components/icons";
 
 export const metadata: Metadata = {
-  title: "Cases & Provas",
-  description:
-    "Na prática, o que a Ecoleta entrega: operações organizadas, redução de custo, segurança jurídica e comprovação ambiental.",
+  ...createPageMetadata({
+    title: "Cases e Provas Ambientais",
+    description:
+      "Cases e provas da Ecoleta: operações organizadas, redução de custo, segurança jurídica, MTR, CDF e comprovação ambiental para empresas e eventos.",
+    path: "/cases",
+    keywords: ["cases gestão de resíduos", "clientes Ecoleta", "provas ambientais", "comprovação ambiental"],
+  }),
 };
 
 const dynamicWords = [

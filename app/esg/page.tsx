@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { createPageMetadata } from "@/lib/seo";
 import Section, { SectionHeader, Eyebrow } from "@/components/Section";
 import Card from "@/components/Card";
 import Button from "@/components/Button";
@@ -17,9 +18,13 @@ import {
 } from "@/components/icons";
 
 export const metadata: Metadata = {
-  title: "ESG e Impacto",
-  description:
-    "ESG aplicado na prática: critérios ambientais, sociais e de governança na gestão de resíduos. Compensação de carbono baseada em metodologia GHG Protocol.",
+  ...createPageMetadata({
+    title: "ESG e Impacto Ambiental",
+    description:
+      "ESG aplicado na prática: indicadores ambientais, sociais e de governança na gestão de resíduos, com rastreabilidade e relatórios para auditoria.",
+    path: "/esg",
+    keywords: ["ESG ambiental", "relatório ESG", "indicadores ambientais", "compensação de carbono"],
+  }),
 };
 
 const pilares = [

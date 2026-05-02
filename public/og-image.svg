@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Ecoleta</title>
+  <desc id="desc">Ecoleta - gestao de residuos com rastreabilidade e impacto ESG.</desc>
+  <rect width="1200" height="630" fill="#0d1f0f"/>
+  <circle cx="980" cy="120" r="260" fill="#7ed957" opacity=".12"/>
+  <circle cx="145" cy="540" r="220" fill="#ecf5fb" opacity=".08"/>
+  <g transform="translate(96 112)">
+    <rect width="132" height="132" rx="30" fill="#ecf5fb"/>
+    <g transform="translate(18 18) scale(.1875)">
+      <rect width="512" height="512" rx="112" fill="#0d1f0f"/>
+      <circle cx="256" cy="256" r="174" fill="#2d5934"/>
+      <path d="M256 82a174 174 0 0 1 145 78l-137 43-25-118c6-2 11-3 17-3Z" fill="#7ed957"/>
+      <path d="M401 160a174 174 0 0 1 14 163l-103-89 79-86c4 4 7 8 10 12Z" fill="#ecf5fb"/>
+      <path d="M415 323a174 174 0 0 1-130 104l29-136 115 18c-3 5-8 10-14 14Z" fill="#7ed957"/>
+      <path d="M285 427a174 174 0 0 1-153-59l137-43 25 118c-3-5-6-10-9-16Z" fill="#ecf5fb"/>
+      <path d="M132 368a174 174 0 0 1-28-165l103 89-79 86c0-3 2-7 4-10Z" fill="#7ed957"/>
+      <path d="M104 203A174 174 0 0 1 229 88l-29 136-115-18c6-2 12-3 19-3Z" fill="#ecf5fb"/>
+      <circle cx="256" cy="256" r="64" fill="#0d1f0f"/>
+    </g>
+    <g transform="translate(0 220)">
+      <rect width="410" height="22" rx="11" fill="#7ed957"/>
+      <rect y="54" width="720" height="22" rx="11" fill="#ecf5fb"/>
+      <rect y="106" width="560" height="18" rx="9" fill="#d8e6da" opacity=".82"/>
+      <rect y="146" width="470" height="18" rx="9" fill="#d8e6da" opacity=".62"/>
+    </g>
+  </g>
+</svg>
