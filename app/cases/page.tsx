@@ -59,16 +59,24 @@ const provaTecnica = [
   },
 ];
 
-// Placeholder de clientes — substituir pelos logos reais quando disponíveis
+// Clientes atendidos pela Ecoleta (fonte: portfólio 2026)
 const clientes = [
-  { name: "Cliente 1" },
-  { name: "Cliente 2" },
-  { name: "Cliente 3" },
-  { name: "Cliente 4" },
-  { name: "Cliente 5" },
-  { name: "Cliente 6" },
-  { name: "Cliente 7" },
-  { name: "Cliente 8" },
+  { name: "Heineken" },
+  { name: "LIESA" },
+  { name: "VIBRA" },
+  { name: "BrasilCap" },
+  { name: "CEDAE" },
+  { name: "Rio Carnaval" },
+  { name: "Levels" },
+  { name: "Bosque Bar" },
+  { name: "Ferro & Brasa" },
+  { name: "WeMake" },
+  { name: "Virada Sustentável" },
+  { name: "Rio FutSummit 26" },
+  { name: "Sacadura 154" },
+  { name: "NMLSS" },
+  { name: "Café Preto" },
+  { name: "FESA" },
 ];
 
 export default function CasesPage() {
@@ -162,7 +170,7 @@ export default function CasesPage() {
           <SectionHeader
             eyebrow="Clientes atendidos"
             title="Empresas que confiam na Ecoleta"
-            subtitle="Nomes ilustrativos. Os logos reais entram aqui assim que disponibilizados."
+            subtitle="Da produtora de eventos à empresa pública — gestão de resíduos que se adapta a qualquer operação."
             align="center"
           />
         </Reveal>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Children } from "react";
 import Logo from "@/components/Logo";
 import {
   InstagramIcon,
@@ -17,8 +18,9 @@ export default function Footer() {
           <div>
             <Logo variant="accent" />
             <p className="mt-4 text-sm text-white/70 max-w-sm leading-relaxed">
-              Ecoleta — Gestão de resíduos com rastreabilidade, conformidade e
-              impacto ESG real.
+              Braço ambiental da Econformidade. Gestão integrada de resíduos
+              sólidos, infectantes e têxteis com rastreabilidade digital e
+              conformidade ambiental em todo o Estado do Rio de Janeiro.
             </p>
             <div className="mt-6 flex items-center gap-3">
               <a
@@ -60,11 +62,11 @@ export default function Footer() {
             <FooterLink href="/">Home</FooterLink>
           </FooterCol>
 
-          <FooterCol title="Empresa">
-            <FooterLink href="/sobre">Sobre</FooterLink>
-            <FooterLink href="/esg">ESG</FooterLink>
-            <FooterLink href="/cases">Cases</FooterLink>
-            <FooterLink href="/contato">Contato</FooterLink>
+          <FooterCol title="Institucional">
+            <FooterLink href="/contato">Quem somos</FooterLink>
+            <FooterLink href="/esg">ESG & Impacto</FooterLink>
+            <FooterLink href="/solucoes">Serviços</FooterLink>
+            <FooterLink href="/cases">Clientes</FooterLink>
           </FooterCol>
 
           <FooterCol title="Contato">
@@ -114,11 +116,7 @@ function FooterCol({
 }
 
 function wrapItems(children: React.ReactNode) {
-  // Wrap each child in <li>
-  // Allows passing FooterLink fragments and plain elements
-  return Array.isArray(children)
-    ? children.map((c, i) => <li key={i}>{c}</li>)
-    : <li>{children}</li>;
+  return Children.toArray(children).map((c, i) => <li key={i}>{c}</li>);
 }
 
 function FooterLink({
