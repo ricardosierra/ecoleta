@@ -18,7 +18,7 @@ export const siteConfig = {
     /** E-mail de destino do formulário (também sobrescrevível via env CONTACT_TO_EMAIL). */
     email: process.env.NEXT_PUBLIC_CONTACT_EMAIL || "contato@ecoleta.com",
     /** Número de WhatsApp em formato internacional sem caracteres especiais. */
-    whatsappNumber: process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || "55XXXXXXXXXXX",
+    whatsappNumber: process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || "5521967660056",
     whatsappMessage: "Olá! Gostaria de falar com um especialista da Ecoleta.",
   },
 
