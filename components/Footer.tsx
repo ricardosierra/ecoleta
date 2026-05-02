@@ -67,6 +67,7 @@ export default function Footer() {
             <FooterLink href="/esg">ESG & Impacto</FooterLink>
             <FooterLink href="/solucoes">Serviços</FooterLink>
             <FooterLink href="/cases">Clientes</FooterLink>
+            <FooterLink href="/conteudos">Conteúdos</FooterLink>
           </FooterCol>
 
           <FooterCol title="Contato">
