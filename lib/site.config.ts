@@ -31,8 +31,9 @@ export const siteConfig = {
   },
 
   company: {
-    cnpj: process.env.NEXT_PUBLIC_CNPJ || "00.000.000/0000-00",
+    cnpj: process.env.NEXT_PUBLIC_CNPJ || "57.772.812/0001-72",
     address: process.env.NEXT_PUBLIC_ADDRESS || "Endereço a definir",
+    phoneComercial: process.env.NEXT_PUBLIC_PHONE_COMERCIAL || "(21) 99152-9383",
   },
 
   nav: [

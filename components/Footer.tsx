@@ -78,17 +78,29 @@ export default function Footer() {
               <span className="block text-white/90 mb-1">Endereço</span>
               {siteConfig.company.address}
             </p>
-            <a
-              href={whatsappLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-4 inline-block text-sm text-(--color-accent) hover:underline"
-            >
-              (21) 96766-0056
-            </a>
+            <p className="mt-4 text-sm text-white/70 leading-relaxed">
+              <span className="block text-white/90 mb-1">Comercial</span>
+              <a
+                href={`tel:+552199152938`}
+                className="text-(--color-accent) hover:underline"
+              >
+                {siteConfig.company.phoneComercial}
+              </a>
+            </p>
+            <p className="mt-4 text-sm text-white/70 leading-relaxed">
+              <span className="block text-white/90 mb-1">WhatsApp</span>
+              <a
+                href={whatsappLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-(--color-accent) hover:underline"
+              >
+                (21) 96766-0056
+              </a>
+            </p>
             <a
               href={`mailto:${siteConfig.contact.email}`}
-              className="mt-2 inline-block text-sm text-(--color-accent) hover:underline"
+              className="mt-4 inline-block text-sm text-(--color-accent) hover:underline"
             >
               {siteConfig.contact.email}
             </a>
