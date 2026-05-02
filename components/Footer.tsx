@@ -79,8 +79,16 @@ export default function Footer() {
               {siteConfig.company.address}
             </p>
             <a
-              href={`mailto:${siteConfig.contact.email}`}
+              href={whatsappLink}
+              target="_blank"
+              rel="noopener noreferrer"
               className="mt-4 inline-block text-sm text-(--color-accent) hover:underline"
+            >
+              (21) 96766-0056
+            </a>
+            <a
+              href={`mailto:${siteConfig.contact.email}`}
+              className="mt-2 inline-block text-sm text-(--color-accent) hover:underline"
             >
               {siteConfig.contact.email}
             </a>
