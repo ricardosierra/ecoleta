@@ -110,22 +110,39 @@ export default function Typewriter({
     };
   }, [words, typeSpeed, deleteSpeed, pauseAfterType, pauseAfterDelete, loop]);
 
+  const longestWord = [...words].reduce(
+    (a, b) => (a.length >= b.length ? a : b),
+    ""
+  );
+
   return (
     <span
-      className={cn("inline-flex items-baseline", className)}
+      className={cn("inline-grid", className)}
       aria-live="polite"
     >
-      <span>{text}</span>
-      {showCursor && active && (
-        <span
-          aria-hidden
-          className={cn(
-            "inline-block w-[3px] ml-1 bg-current self-stretch animate-[typewriter-blink_1s_steps(2)_infinite]",
-            cursorClassName
-          )}
-          style={{ minHeight: "0.9em" }}
-        />
-      )}
+      {/* Invisible sizer keeps the container as wide as the longest word */}
+      <span
+        aria-hidden
+        className="invisible pointer-events-none select-none col-start-1 row-start-1"
+      >
+        {longestWord}
+      </span>
+
+      {/* Visible typed text overlaid in the same grid cell */}
+      <span className="col-start-1 row-start-1 inline-flex items-baseline">
+        {text}
+        {showCursor && active && (
+          <span
+            aria-hidden
+            className={cn(
+              "inline-block w-[3px] ml-1 bg-current self-stretch animate-[typewriter-blink_1s_steps(2)_infinite]",
+              cursorClassName
+            )}
+            style={{ minHeight: "0.9em" }}
+          />
+        )}
+      </span>
+
       <style jsx>{`
         @keyframes typewriter-blink {
           to {

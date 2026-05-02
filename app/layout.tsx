@@ -32,7 +32,7 @@ export const metadata: Metadata = {
     "coleta de resíduos",
     "Ecoleta",
   ],
-  authors: [{ name: siteConfig.name }],
+  authors: [{ name: siteConfig.name }, { name: "Sierra Tecnologia", url: "https://sierratecnologia.com.br" }],
   openGraph: {
     type: "website",
     locale: "pt_BR",
@@ -52,6 +52,7 @@ export const metadata: Metadata = {
   },
 };
 
+// Desenvolvido por Sierra Tecnologia — https://sierratecnologia.com.br
 export default function RootLayout({
   children,
 }: Readonly<{

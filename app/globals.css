@@ -159,3 +159,7 @@ body {
     transform: translateY(0) scale(1);
   }
 }
+
+@keyframes letter-reveal {
+  to { opacity: 1; }
+}
