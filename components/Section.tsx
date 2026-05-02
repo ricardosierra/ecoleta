@@ -1,5 +1,6 @@
 import { cn } from "@/lib/cn";
 import type { HTMLAttributes, ReactNode } from "react";
+import LetterReveal from "./LetterReveal";
 
 type Tone = "dark" | "light" | "white" | "accent";
 
@@ -86,8 +87,22 @@ export function SectionHeader({
         className
       )}
     >
-      {eyebrow && <Eyebrow className="mb-4">{eyebrow}</Eyebrow>}
-      <h2 className="section-title">{title}</h2>
+      {eyebrow && (
+        <Eyebrow className="mb-4">
+          <LetterReveal text={eyebrow} charDelay={20} />
+        </Eyebrow>
+      )}
+      <h2 className="section-title">
+        {typeof title === "string" ? (
+          <LetterReveal
+            text={title}
+            delay={eyebrow ? eyebrow.length * 20 + 100 : 0}
+            charDelay={25}
+          />
+        ) : (
+          title
+        )}
+      </h2>
       {subtitle && (
         <p className={cn("mt-4 text-base md:text-lg", subtitleColor)}>
           {subtitle}

@@ -5,6 +5,7 @@ import Reveal from "@/components/Reveal";
 import DonutChart from "@/components/DonutChart";
 import MetricCard from "@/components/MetricCard";
 import Typewriter from "@/components/Typewriter";
+import LetterReveal from "@/components/LetterReveal";
 import LeafDecor from "@/components/LeafDecor";
 import TiltCard from "@/components/TiltCard";
 import {
@@ -86,7 +87,7 @@ export default function HomePage() {
                 Conformidade PNRS · ISO 14001
               </span>
               <h1 className="hero-title mt-6 text-balance">
-                Gestão de resíduos com{" "}
+                <LetterReveal text="Gestão de resíduos com " charDelay={35} />
                 <Typewriter
                   className="text-(--color-accent)"
                   cursorClassName="bg-(--color-accent)"
@@ -98,7 +99,7 @@ export default function HomePage() {
                   ]}
                 />
                 <br className="hidden sm:inline" />
-                e operação sob controle
+                <LetterReveal text="e operação sob controle" delay={200} charDelay={35} />
               </h1>
               <p className="mt-6 text-base md:text-lg text-white/80 max-w-2xl leading-relaxed">
                 Redução máxima do envio ao aterro, organização da operação e
@@ -192,10 +193,14 @@ export default function HomePage() {
           <Reveal>
             <p className="eyebrow text-(--color-secondary) flex items-center gap-2">
               <span className="inline-block size-1.5 rounded-full bg-current" />
-              Consultoria
+              <LetterReveal text="Consultoria" charDelay={20} />
             </p>
             <h2 className="section-title mt-4">
-              Consultoria e otimização da gestão de resíduos
+              <LetterReveal
+                text="Consultoria e otimização da gestão de resíduos"
+                delay={11 * 20 + 100}
+                charDelay={25}
+              />
             </h2>
             <p className="mt-5 text-base md:text-lg text-(--color-text-muted) leading-relaxed">
               A Ecoleta não atua apenas na operação. Estruturamos e orientamos
@@ -259,10 +264,14 @@ export default function HomePage() {
         <LeafDecor position="bottom-right" size={200} rotate={210} opacity={0.05} />
         <div className="grid gap-12 lg:grid-cols-[1.2fr_1fr] items-center">
           <Reveal>
-            <Eyebrow>Impacto de Carbono</Eyebrow>
+            <Eyebrow>
+              <LetterReveal text="Impacto de Carbono" charDelay={20} />
+            </Eyebrow>
             <h2 className="section-title mt-4">
-              Sua operação também gera{" "}
-              <span className="text-(--color-accent)">impacto positivo</span>
+              <LetterReveal text="Sua operação também gera " delay={18 * 20 + 100} charDelay={25} />
+              <span className="text-(--color-accent)">
+                <LetterReveal text="impacto positivo" delay={18 * 20 + 100 + 24 * 25 + 80} charDelay={25} />
+              </span>
             </h2>
             <p className="mt-5 text-base md:text-lg text-white/80 leading-relaxed max-w-xl">
               A destinação correta de recicláveis e orgânicos permite a
@@ -301,7 +310,7 @@ export default function HomePage() {
         <div className="container-page text-center">
           <Reveal>
             <h2 className="text-3xl md:text-5xl font-bold text-(--color-bg-dark) leading-tight tracking-tight">
-              Transformamos resíduos em reputação
+              <LetterReveal text="Transformamos resíduos em reputação" charDelay={30} />
             </h2>
             <p className="mt-4 text-(--color-bg-dark)/80 text-base md:text-lg">
               Fale com um especialista e descubra o que a Ecoleta pode fazer

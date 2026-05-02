@@ -41,10 +41,10 @@ export default function Header() {
   return (
     <header
       className={cn(
-        "fixed inset-x-0 top-0 z-50 transition-[background-color,backdrop-filter,box-shadow,border-color] duration-300 border-b",
+        "fixed inset-x-0 top-0 z-50 bg-(--color-bg-dark) border-b transition-[backdrop-filter,box-shadow,border-color] duration-300",
         scrolled || open
-          ? "bg-(--color-bg-dark)/95 backdrop-blur-md border-(--color-border-dark) shadow-[0_2px_18px_rgba(0,0,0,0.25)]"
-          : "bg-(--color-bg-dark) border-transparent"
+          ? "backdrop-blur-md border-(--color-border-dark) shadow-[0_2px_18px_rgba(0,0,0,0.25)]"
+          : "border-transparent"
       )}
     >
       <div className="container-page flex items-center justify-between h-[72px] md:h-[88px]">
@@ -96,7 +96,7 @@ export default function Header() {
       {/* Mobile menu */}
       <div
         className={cn(
-          "md:hidden fixed inset-x-0 top-[72px] bottom-0 bg-(--color-bg-dark) px-5 pb-10 pt-6 transition-[transform,opacity] duration-300 border-t border-(--color-border-dark)",
+          "md:hidden overflow-y-auto fixed inset-x-0 top-[72px] bottom-0 z-40 bg-(--color-bg-dark) px-5 pb-10 pt-6 transition-[transform,opacity] duration-300 border-t border-(--color-border-dark)",
           open
             ? "translate-y-0 opacity-100"
             : "-translate-y-4 opacity-0 pointer-events-none"
