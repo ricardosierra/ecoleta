@@ -16,7 +16,7 @@ export const siteConfig = {
 
   contact: {
     /** E-mail de destino do formulário (também sobrescrevível via env CONTACT_TO_EMAIL). */
-    email: process.env.NEXT_PUBLIC_CONTACT_EMAIL || "contato@ecoleta.com",
+    email: process.env.NEXT_PUBLIC_CONTACT_EMAIL || "diretoria@econformidade.com.br",
     /** Número de WhatsApp em formato internacional sem caracteres especiais. */
     whatsappNumber: process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || "5521967660056",
     whatsappMessage: "Olá! Gostaria de falar com um especialista da Ecoleta.",
@@ -27,7 +27,7 @@ export const siteConfig = {
       process.env.NEXT_PUBLIC_INSTAGRAM_URL || "https://instagram.com/ecoleta.eco",
     linkedin:
       process.env.NEXT_PUBLIC_LINKEDIN_URL ||
-      "https://linkedin.com/company/XXXXXXXX",
+      "https://linkedin.com/company/econformidade",
   },
 
   company: {

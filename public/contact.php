@@ -6,7 +6,7 @@ header('Content-Type: application/json; charset=utf-8');
 
 // ── Configuração ─────────────────────────────────────────────────────────────
 // Substitua pelo e-mail de destino antes do go-live.
-define('CONTACT_TO_EMAIL', getenv('CONTACT_TO_EMAIL') ?: 'contato@ecoleta.com');
+define('CONTACT_TO_EMAIL', getenv('CONTACT_TO_EMAIL') ?: 'diretoria@econformidade.com.br');
 define('CONTACT_FROM',     'noreply@ecoleta.com');
 // ─────────────────────────────────────────────────────────────────────────────
 
