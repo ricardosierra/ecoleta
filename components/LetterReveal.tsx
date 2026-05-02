@@ -30,9 +30,14 @@ export default function LetterReveal({
   const [reduced, setReduced] = useState(false);
 
   useEffect(() => {
+    let frame = 0;
+    const activate = () => {
+      frame = window.requestAnimationFrame(() => setActive(true));
+    };
+
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setReduced(true);
-      return;
+      frame = window.requestAnimationFrame(() => setReduced(true));
+      return () => window.cancelAnimationFrame(frame);
     }
 
     const el = ref.current;
@@ -40,21 +45,24 @@ export default function LetterReveal({
 
     const rect = el.getBoundingClientRect();
     if (rect.top < window.innerHeight && rect.bottom > 0) {
-      setActive(true);
-      return;
+      activate();
+      return () => window.cancelAnimationFrame(frame);
     }
 
     const obs = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
-          setActive(true);
+          activate();
           obs.disconnect();
         }
       },
       { threshold: 0.1, rootMargin: "0px 0px -40px 0px" }
     );
     obs.observe(el);
-    return () => obs.disconnect();
+    return () => {
+      window.cancelAnimationFrame(frame);
+      obs.disconnect();
+    };
   }, []);
 
   if (reduced) {

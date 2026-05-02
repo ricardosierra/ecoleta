@@ -9,10 +9,29 @@
 
 export const siteConfig = {
   name: "Ecoleta",
+  legalName: "Ecoleta Soluções Ambientais",
+  technicalPartners: [
+    { name: "Rica Soluções", url: "https://ricasolucoes.com.br" },
+    { name: "Sierra Tecnologia", url: "https://sierratecnologia.com.br" },
+  ],
   tagline: "Gestão de resíduos com rastreabilidade e impacto ESG",
   description:
     "Gestão completa de resíduos para empresas, eventos e indústrias. Rastreabilidade, conformidade ambiental, MTR, CDF, relatórios ESG e redução do envio ao aterro.",
   url: process.env.NEXT_PUBLIC_SITE_URL || "https://www.ecoleta.com",
+  locale: "pt_BR",
+  keywords: [
+    "gestão de resíduos",
+    "resíduos sólidos",
+    "ESG",
+    "rastreabilidade ambiental",
+    "MTR",
+    "CDF",
+    "PGRS",
+    "conformidade ambiental",
+    "coleta de resíduos",
+    "Ecoleta",
+    "Econformidade",
+  ],
 
   contact: {
     /** E-mail de destino do formulário (também sobrescrevível via env CONTACT_TO_EMAIL). */
@@ -34,6 +53,7 @@ export const siteConfig = {
     cnpj: process.env.NEXT_PUBLIC_CNPJ || "57.772.812/0001-72",
     address: process.env.NEXT_PUBLIC_ADDRESS || "Endereço a definir",
     phoneComercial: process.env.NEXT_PUBLIC_PHONE_COMERCIAL || "(21) 99152-9383",
+    areaServed: "Brasil",
   },
 
   nav: [

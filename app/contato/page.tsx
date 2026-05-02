@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { createPageMetadata } from "@/lib/seo";
 import Section, { Eyebrow } from "@/components/Section";
 import Card from "@/components/Card";
 import Button from "@/components/Button";
@@ -14,9 +15,13 @@ import {
 import { siteConfig, whatsappLink } from "@/lib/site.config";
 
 export const metadata: Metadata = {
-  title: "Sobre + Contato",
-  description:
-    "Especialistas em gestão de resíduos e conformidade ambiental. Fale com a equipe Ecoleta.",
+  ...createPageMetadata({
+    title: "Sobre e Contato",
+    description:
+      "Fale com a Ecoleta para estruturar a gestão de resíduos da sua empresa com rastreabilidade, conformidade ambiental e relatórios ESG.",
+    path: "/contato",
+    keywords: ["contato Ecoleta", "diagnóstico de resíduos", "consultoria ambiental", "conformidade ambiental"],
+  }),
 };
 
 export default function ContatoPage() {
