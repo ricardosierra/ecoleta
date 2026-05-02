@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { createPageMetadata } from "@/lib/seo";
+import { siteConfig } from "@/lib/site.config";
 import Section, { SectionHeader } from "@/components/Section";
 import Card from "@/components/Card";
 import Button from "@/components/Button";
@@ -78,8 +79,49 @@ const residuos = [
 ];
 
 export default function SolucoesPage() {
+  const serviceJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Service",
+    name: "Gestão completa de resíduos",
+    serviceType: "Gestão de resíduos, documentação ambiental e rastreabilidade",
+    provider: {
+      "@type": "Organization",
+      name: siteConfig.name,
+      url: siteConfig.url,
+    },
+    areaServed: {
+      "@type": "AdministrativeArea",
+      name: "Estado do Rio de Janeiro",
+    },
+    audience: {
+      "@type": "BusinessAudience",
+      audienceType: "Empresas, eventos, indústrias e marcas",
+    },
+    hasOfferCatalog: {
+      "@type": "OfferCatalog",
+      name: "Serviços ambientais Ecoleta",
+      itemListElement: [
+        "Diagnóstico e PGRS",
+        "Supervisão técnica em campo",
+        "Coleta e destinação multiresíduos",
+        "MTR, CDF e relatório ESG",
+        "Treinamento e capacitação de equipes",
+      ].map((name) => ({
+        "@type": "Offer",
+        itemOffered: {
+          "@type": "Service",
+          name,
+        },
+      })),
+    },
+  };
+
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(serviceJsonLd) }}
+      />
       <PageHero
         eyebrow="Soluções"
         title={
