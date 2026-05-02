@@ -34,6 +34,9 @@ export const metadata: Metadata = {
   publisher: siteConfig.name,
   alternates: {
     canonical: "/",
+    types: {
+      "application/rss+xml": [{ url: "/feed.xml", title: "Conteúdos Ecoleta" }],
+    },
   },
   icons: {
     icon: [
