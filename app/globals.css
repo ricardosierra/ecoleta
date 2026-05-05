@@ -48,6 +48,13 @@ body {
   word-break: normal;
 }
 
+/* Cursor customizado com símbolo da marca (apenas dispositivos com mouse fino) */
+@media (hover: hover) and (pointer: fine) {
+  body {
+    cursor: url("/cursor.svg") 12 12, auto;
+  }
+}
+
 ::selection {
   background: var(--color-accent);
   color: var(--color-bg-dark);

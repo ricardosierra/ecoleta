@@ -5,14 +5,23 @@ import Section, { SectionHeader } from "@/components/Section";
 import Card from "@/components/Card";
 import Button from "@/components/Button";
 import Reveal from "@/components/Reveal";
-import PageHero from "@/components/PageHero";
 import ProcessSteps from "@/components/ProcessSteps";
 import TiltCard from "@/components/TiltCard";
+import Typewriter from "@/components/Typewriter";
+import LetterReveal from "@/components/LetterReveal";
+import LeafDecor from "@/components/LeafDecor";
+import FractionsRotator, { type Fraction } from "@/components/FractionsRotator";
 import {
+  AlertTriangleIcon,
   ArrowRightIcon,
+  BoxesIcon,
   ClipboardIcon,
   LeafIcon,
+  RecycleIcon,
+  SeedlingIcon,
   SettingsIcon,
+  ShieldIcon,
+  ShuffleIcon,
 } from "@/components/icons";
 
 export const metadata: Metadata = {
@@ -28,7 +37,7 @@ export const metadata: Metadata = {
 const steps = [
   { title: "Diagnóstico", desc: "Levantamento da operação e dos resíduos gerados" },
   { title: "Planejamento", desc: "Elaboração do PGRS e estruturação dos pontos" },
-  { title: "Implementação", desc: "Instalação, treinamento e configuração" },
+  { title: "Implementação", desc: "Instalação, sinalizações, treinamento e configuração da operação" },
   { title: "Operação", desc: "Supervisão técnica e controle contínuo" },
   { title: "Destinação", desc: "Envio correto por fração com rastreabilidade" },
   { title: "Relatórios", desc: "Indicadores e documentação para auditoria" },
@@ -70,12 +79,56 @@ const pilares = [
   },
 ];
 
-const residuos = [
-  { name: "Recicláveis", tag: "Papel · Plástico · Metal · Vidro", color: "bg-(--color-accent)" },
-  { name: "Orgânicos", tag: "Compostagem", color: "bg-emerald-300" },
-  { name: "Rejeitos", tag: "Destinação adequada", color: "bg-zinc-400" },
-  { name: "Infectantes", tag: "Licença específica", color: "bg-rose-400" },
-  { name: "Têxteis", tag: "Doação · Reuso", color: "bg-amber-400" },
+const fractions: Fraction[] = [
+  {
+    name: "Recicláveis",
+    tag: "Papel · Plástico · Metal · Vidro",
+    desc: "Papel, plástico, metal e vidro com destinação correta para a cadeia de reciclagem.",
+    icon: <RecycleIcon width={28} height={28} />,
+    bulletClass: "bg-(--color-accent)",
+    accentClass: "text-(--color-accent)",
+  },
+  {
+    name: "Orgânicos",
+    tag: "Compostagem",
+    desc: "Restos de alimentos e materiais biodegradáveis encaminhados para compostagem.",
+    icon: <SeedlingIcon width={28} height={28} />,
+    bulletClass: "bg-emerald-300",
+    accentClass: "text-emerald-300",
+  },
+  {
+    name: "Rejeitos",
+    tag: "Destinação adequada",
+    desc: "Resíduos sem aproveitamento com destinação ambientalmente correta.",
+    icon: <ShuffleIcon width={28} height={28} />,
+    bulletClass: "bg-zinc-400",
+    accentClass: "text-zinc-300",
+  },
+  {
+    name: "Infectantes",
+    tag: "Licença específica",
+    desc: "Resíduos de serviços de saúde com licença e manuseio especializado.",
+    icon: <ShieldIcon width={28} height={28} />,
+    bulletClass: "bg-rose-400",
+    accentClass: "text-rose-400",
+  },
+  {
+    name: "Têxteis",
+    tag: "Doação · Reuso",
+    desc: "Roupas e tecidos destinados para doação ou reuso, evitando descarte indevido.",
+    icon: <BoxesIcon width={28} height={28} />,
+    bulletClass: "bg-amber-400",
+    accentClass: "text-amber-400",
+  },
+  {
+    name: "Perigosos",
+    tag: "Classe I · Incineração industrial",
+    desc: "Resíduos químicos, solventes e materiais tóxicos de processos industriais — destinação via incineração controlada.",
+    icon: <AlertTriangleIcon width={28} height={28} />,
+    bulletClass: "bg-orange-500",
+    accentClass: "text-orange-400",
+    badge: "Classe I · Perigoso",
+  },
 ];
 
 export default function SolucoesPage() {
@@ -122,25 +175,83 @@ export default function SolucoesPage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(serviceJsonLd) }}
       />
-      <PageHero
-        eyebrow="Soluções"
-        title={
-          <>
-            Gestão completa de resíduos, do{" "}
-            <span className="text-(--color-accent)">planejamento</span> à
-            comprovação
-          </>
-        }
-        subtitle="A Ecoleta estrutura, acompanha e comprova cada etapa da operação, reduzindo riscos e aumentando o controle ambiental."
-      >
-        <Button
-          href="/contato"
-          variant="primary"
-          iconRight={<ArrowRightIcon width={18} height={18} />}
-        >
-          Solicitar diagnóstico
-        </Button>
-      </PageHero>
+      {/* HERO com typewriter + indicadores */}
+      <section className="relative bg-(--color-bg-dark) text-white overflow-hidden">
+        <div
+          aria-hidden
+          className="absolute inset-0 opacity-[0.07] pointer-events-none"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle at 20% 0%, rgba(126,217,87,0.6) 0%, transparent 40%), radial-gradient(circle at 80% 100%, rgba(126,217,87,0.4) 0%, transparent 50%)",
+          }}
+        />
+        <LeafDecor position="top-right" size={320} rotate={-25} opacity={0.08} />
+        <LeafDecor position="bottom-left" size={260} rotate={150} opacity={0.06} />
+        <div className="container-page relative pt-12 pb-20 md:pt-20 md:pb-28">
+          <div className="grid gap-12 lg:grid-cols-[1.2fr_1fr] items-center">
+            <Reveal>
+              <p className="eyebrow flex items-center gap-2 mb-5">
+                <span className="inline-block size-1.5 rounded-full bg-current" />
+                Soluções
+              </p>
+              <h1 className="hero-title text-balance">
+                <LetterReveal text="Gestão de resíduos com " charDelay={35} />
+                <Typewriter
+                  className="text-(--color-accent)"
+                  cursorClassName="bg-(--color-accent)"
+                  words={[
+                    "rastreabilidade",
+                    "conformidade",
+                    "controle real",
+                    "impacto ESG",
+                  ]}
+                />
+                <br className="hidden sm:inline" />
+                <LetterReveal text="e operação sob controle" delay={200} charDelay={35} />
+              </h1>
+              <p className="mt-6 text-base md:text-lg text-white/80 max-w-2xl leading-relaxed">
+                A Ecoleta estrutura, acompanha e comprova cada etapa da
+                operação, reduzindo riscos e aumentando o controle ambiental.
+              </p>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <div>
+                  <Button
+                    href="/contato"
+                    variant="primary"
+                    iconRight={<ArrowRightIcon width={18} height={18} />}
+                  >
+                    Solicitar diagnóstico
+                  </Button>
+                  <p className="mt-2 text-xs text-white/50">
+                    Resposta em até 3 dias úteis
+                  </p>
+                </div>
+                <Button
+                  href="/contato"
+                  variant="ghost"
+                  className="text-white border-white/20 hover:border-(--color-accent) hover:text-(--color-accent)"
+                >
+                  Falar com especialista
+                </Button>
+              </div>
+            </Reveal>
+
+            <Reveal delay={150}>
+              <div className="relative rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-sm p-8">
+                <p className="text-xs uppercase tracking-widest text-(--color-accent) mb-6">
+                  Indicadores da operação
+                </p>
+                <ul className="grid grid-cols-2 gap-4">
+                  <HeroStat value="+200" label="toneladas gerenciadas" />
+                  <HeroStat value="+100" label="operações realizadas" />
+                  <HeroStat value="100%" label="rastreabilidade documental" />
+                  <HeroStat value="94%" label="redução de envio ao aterro" />
+                </ul>
+              </div>
+            </Reveal>
+          </div>
+        </div>
+      </section>
 
       {/* Como funciona */}
       <Section tone="white" id="como-funciona">
@@ -161,21 +272,22 @@ export default function SolucoesPage() {
           <SectionHeader
             eyebrow="O que entregamos"
             title="Três pilares em uma operação"
+            align="center"
           />
         </Reveal>
         <ul className="grid gap-6 md:grid-cols-3">
           {pilares.map(({ icon: Icon, title, desc, items }, i) => (
             <Reveal key={title} as="li" delay={i * 100}>
               <TiltCard intensity={4}>
-                <Card tone="white" className="h-full border-l-4 border-(--color-accent)">
-                  <div className="size-12 rounded-full bg-(--color-accent-soft) text-(--color-secondary) flex items-center justify-center mb-5">
-                    <Icon width={22} height={22} />
+                <Card tone="white" className="h-full text-center flex flex-col items-center">
+                  <div className="size-16 rounded-full bg-(--color-accent-soft) text-(--color-secondary) flex items-center justify-center mb-6">
+                    <Icon width={28} height={28} />
                   </div>
                   <h3 className="card-title mb-3">{title}</h3>
-                  <p className="text-sm text-(--color-text-muted) leading-relaxed mb-4">
+                  <p className="text-sm text-(--color-text-muted) leading-relaxed mb-5">
                     {desc}
                   </p>
-                  <ul className="space-y-2">
+                  <ul className="space-y-2 text-left w-full max-w-[15rem]">
                     {items.map((it) => (
                       <li
                         key={it}
@@ -202,19 +314,9 @@ export default function SolucoesPage() {
             tone="dark"
           />
         </Reveal>
-        <ul className="flex flex-wrap gap-3">
-          {residuos.map((r, i) => (
-            <Reveal key={r.name} as="li" delay={i * 70}>
-              <div className="inline-flex items-center gap-3 px-5 py-3 rounded-full bg-[#0a1810] border border-(--color-border-dark)">
-                <span className={`size-2.5 rounded-full ${r.color}`} />
-                <span className="font-semibold">{r.name}</span>
-                <span className="text-xs px-2 py-1 rounded-full bg-white/5 text-white/70">
-                  {r.tag}
-                </span>
-              </div>
-            </Reveal>
-          ))}
-        </ul>
+        <Reveal delay={120}>
+          <FractionsRotator fractions={fractions} />
+        </Reveal>
       </Section>
 
       {/* Diferencial operacional */}
@@ -230,9 +332,10 @@ export default function SolucoesPage() {
             <div>
               <h2 className="section-title">Controle real da operação</h2>
               <p className="mt-4 text-white/80 leading-relaxed max-w-xl">
-                A Ecoleta atua diretamente na operação, com supervisão técnica
-                garantindo organização, separação correta e redução de erros
-                nos pontos de descarte.
+                Supervisão técnica contínua com controle da operação,
+                rastreabilidade e gestão por fração, reduzindo riscos
+                operacionais, evitando passivos ambientais e garantindo
+                conformidade com a PNRS e padrões ISO 14001.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 {["Menos mistura", "Menos desperdício", "Mais controle"].map(
@@ -249,9 +352,9 @@ export default function SolucoesPage() {
               </div>
             </div>
             <div className="grid gap-3">
-              <StatCard value="68%" label="desvio de aterro" />
-              <StatCard value="100%" label="rastreabilidade" />
-              <StatCard value="PNRS" label="conformidade total" />
+              <StatCard value="93%" label="desvio de aterro" />
+              <StatCard value="96%" label="carbono compensado" />
+              <StatCard value="100%" label="destinação ambientalmente adequada" />
             </div>
           </div>
         </Reveal>
@@ -290,5 +393,18 @@ function StatCard({ value, label }: { value: string; label: string }) {
         {label}
       </p>
     </div>
+  );
+}
+
+function HeroStat({ value, label }: { value: string; label: string }) {
+  return (
+    <li className="rounded-[10px] bg-(--color-bg-dark) border border-(--color-border-dark) p-5">
+      <p className="text-2xl md:text-[1.75rem] font-bold text-(--color-accent) leading-tight">
+        {value}
+      </p>
+      <p className="text-xs uppercase tracking-widest text-white/50 mt-2">
+        {label}
+      </p>
+    </li>
   );
 }

@@ -12,7 +12,6 @@ import {
   ArrowRightIcon,
   ClipboardIcon,
   FileTextIcon,
-  ShieldIcon,
 } from "@/components/icons";
 
 export const metadata: Metadata = {
@@ -48,12 +47,12 @@ const provaTecnica = [
     desc: "Plano de gerenciamento de resíduos sólidos como base do planejamento.",
   },
   {
-    icon: ArrowRightIcon,
+    icon: FileTextIcon,
     title: "MTR",
     desc: "Manifesto de Transporte de Resíduos para rastrear cada movimentação.",
   },
   {
-    icon: ShieldIcon,
+    icon: ClipboardIcon,
     title: "CDF",
     desc: "Certificado de Destinação Final comprovando o destino correto.",
   },
@@ -66,22 +65,22 @@ const provaTecnica = [
 
 // Clientes atendidos pela Ecoleta (fonte: portfólio 2026)
 const clientes = [
-  { name: "Heineken" },
-  { name: "LIESA" },
-  { name: "VIBRA" },
-  { name: "BrasilCap" },
-  { name: "CEDAE" },
-  { name: "Rio Carnaval" },
-  { name: "Levels" },
-  { name: "Bosque Bar" },
-  { name: "Ferro & Brasa" },
-  { name: "WeMake" },
-  { name: "Virada Sustentável" },
-  { name: "Rio FutSummit 26" },
-  { name: "Sacadura 154" },
-  { name: "NMLSS" },
-  { name: "Café Preto" },
-  { name: "FESA" },
+  { name: "Heineken", src: "/logos/heineken.png" },
+  { name: "LIESA", src: "/logos/liesa.png" },
+  { name: "VIBRA", src: "/logos/vibra.png" },
+  { name: "BrasilCap", src: "/logos/brasilcap.png" },
+  { name: "CEDAE", src: "/logos/cedae.png" },
+  { name: "Rio Carnaval", src: "/logos/rio-carnaval.png" },
+  { name: "Levels", src: "/logos/levels.png" },
+  { name: "Bosque Bar", src: "/logos/bosque-bar.png" },
+  { name: "Ferro & Brasa", src: "/logos/ferro-e-brasa.png" },
+  { name: "WeMake", src: "/logos/wemake.png" },
+  { name: "Virada Sustentável", src: "/logos/virada-sustentavel.png" },
+  { name: "Rio FutSummit 26", src: "/logos/rio-futsummit-26.png" },
+  { name: "Sacadura 154", src: "/logos/sacadura-154.png" },
+  { name: "NMLSS", src: "/logos/nmlss.png" },
+  { name: "Café Preto Tattoo", src: "/logos/cafe-preto-tattoo.png" },
+  { name: "FuraTodo", src: "/logos/fura-toblu.png" },
 ];
 
 export default function CasesPage() {
@@ -121,7 +120,7 @@ export default function CasesPage() {
         <div className="grid gap-5 md:grid-cols-3">
           <Reveal delay={0}>
             <Card tone="white" className="h-full border-t-4 border-rose-300">
-              <p className="text-xs uppercase tracking-widest font-semibold text-rose-500 mb-3">
+              <p className="text-sm uppercase tracking-widest font-bold text-rose-500 mb-3">
                 Problema
               </p>
               <p className="text-base leading-relaxed text-(--color-text)">
@@ -132,7 +131,7 @@ export default function CasesPage() {
           </Reveal>
           <Reveal delay={120}>
             <Card tone="white" className="h-full border-t-4 border-(--color-accent)">
-              <p className="text-xs uppercase tracking-widest font-semibold text-(--color-secondary) mb-3">
+              <p className="text-sm uppercase tracking-widest font-bold text-(--color-secondary) mb-3">
                 Solução
               </p>
               <p className="text-base leading-relaxed text-(--color-text)">
@@ -143,7 +142,7 @@ export default function CasesPage() {
           </Reveal>
           <Reveal delay={240}>
             <Card tone="white" className="h-full border-t-4 border-(--color-secondary)">
-              <p className="text-xs uppercase tracking-widest font-semibold text-(--color-secondary) mb-3">
+              <p className="text-sm uppercase tracking-widest font-bold text-(--color-secondary) mb-3">
                 Resultado
               </p>
               <p className="text-base leading-relaxed text-(--color-text)">
@@ -208,7 +207,8 @@ export default function CasesPage() {
         </ul>
         <Reveal delay={400}>
           <p className="mt-12 text-center text-2xl md:text-3xl font-bold text-(--color-accent) tracking-tight">
-            Sem rastreabilidade, não há ESG.
+            Reduza custos, evite riscos e tenha controle total da sua operação
+            de resíduos.
           </p>
         </Reveal>
       </Section>

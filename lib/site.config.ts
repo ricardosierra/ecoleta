@@ -37,7 +37,7 @@ export const siteConfig = {
     /** E-mail de destino do formulário (também sobrescrevível via env CONTACT_TO_EMAIL). */
     email: process.env.NEXT_PUBLIC_CONTACT_EMAIL || "diretoria@econformidade.com.br",
     /** Número de WhatsApp em formato internacional sem caracteres especiais. */
-    whatsappNumber: process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || "5521967660056",
+    whatsappNumber: process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || "5521991529383",
     whatsappMessage: "Olá! Gostaria de falar com um especialista da Ecoleta.",
   },
 
@@ -60,6 +60,7 @@ export const siteConfig = {
     { label: "Soluções", href: "/solucoes" },
     { label: "ESG", href: "/esg" },
     { label: "Cases", href: "/cases" },
+    { label: "Sobre", href: "/sobre" },
     { label: "Contato", href: "/contato" },
   ],
 } as const;

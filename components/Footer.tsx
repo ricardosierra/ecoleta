@@ -18,7 +18,7 @@ export default function Footer() {
           <div>
             <Logo variant="accent" />
             <p className="mt-4 text-sm text-white/70 max-w-sm leading-relaxed">
-              Braço ambiental da Econformidade. Gestão integrada de resíduos
+              Transformando resíduos em reputação. Gestão integrada de resíduos
               sólidos, infectantes e têxteis com rastreabilidade digital e
               conformidade ambiental em todo o Estado do Rio de Janeiro.
             </p>
@@ -63,7 +63,7 @@ export default function Footer() {
           </FooterCol>
 
           <FooterCol title="Institucional">
-            <FooterLink href="/contato">Quem somos</FooterLink>
+            <FooterLink href="/sobre">Quem somos</FooterLink>
             <FooterLink href="/esg">ESG & Impacto</FooterLink>
             <FooterLink href="/solucoes">Serviços</FooterLink>
             <FooterLink href="/cases">Clientes</FooterLink>
@@ -82,7 +82,7 @@ export default function Footer() {
             <p className="mt-4 text-sm text-white/70 leading-relaxed">
               <span className="block text-white/90 mb-1">Comercial</span>
               <a
-                href={`tel:+552199152938`}
+                href={`tel:+5521991529383`}
                 className="text-(--color-accent) hover:underline"
               >
                 {siteConfig.company.phoneComercial}
@@ -96,7 +96,7 @@ export default function Footer() {
                 rel="noopener noreferrer"
                 className="text-(--color-accent) hover:underline"
               >
-                (21) 96766-0056
+                (21) 99152-9383
               </a>
             </p>
             <a

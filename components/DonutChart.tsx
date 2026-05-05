@@ -1,17 +1,76 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { usePrefersReducedMotion } from "@/lib/usePrefersReducedMotion";
+
 type Props = {
   value: number; // 0-100
   label: string;
   size?: number;
+  /** Duração da animação de contagem em ms */
+  duration?: number;
 };
 
-export default function DonutChart({ value, label, size = 220 }: Props) {
+export default function DonutChart({
+  value,
+  label,
+  size = 220,
+  duration = 1500,
+}: Props) {
   const stroke = 18;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (value / 100) * circumference;
+
+  const reduceMotion = usePrefersReducedMotion();
+  const [animated, setAnimated] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const startedRef = useRef(false);
+
+  // Quando reduceMotion está ativo, o número final é mostrado direto.
+  const displayValue = reduceMotion ? value : animated;
+
+  useEffect(() => {
+    if (reduceMotion) return;
+
+    const node = containerRef.current;
+    if (!node) return;
+
+    const run = () => {
+      if (startedRef.current) return;
+      startedRef.current = true;
+      const start = performance.now();
+      let raf = 0;
+      const tick = (now: number) => {
+        const p = Math.min((now - start) / duration, 1);
+        const eased = 1 - Math.pow(1 - p, 3);
+        setAnimated(Math.round(eased * value));
+        if (p < 1) raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+      return () => cancelAnimationFrame(raf);
+    };
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          run();
+          io.disconnect();
+        }
+      },
+      { threshold: 0.3 }
+    );
+    io.observe(node);
+    return () => io.disconnect();
+  }, [value, duration, reduceMotion]);
+
+  const offset = circumference - (displayValue / 100) * circumference;
 
   return (
-    <div className="relative" style={{ width: size, height: size }}>
+    <div
+      ref={containerRef}
+      className="relative"
+      style={{ width: size, height: size }}
+    >
       <svg
         width={size}
         height={size}
@@ -37,7 +96,6 @@ export default function DonutChart({ value, label, size = 220 }: Props) {
           strokeDasharray={circumference}
           strokeDashoffset={offset}
           strokeLinecap="round"
-          style={{ transition: "stroke-dashoffset 1s ease-out" }}
         />
       </svg>
       <div
@@ -45,7 +103,7 @@ export default function DonutChart({ value, label, size = 220 }: Props) {
         aria-label={`${value}% ${label}`}
       >
         <span className="text-5xl md:text-6xl font-bold text-(--color-accent) leading-none">
-          {value}%
+          {displayValue}%
         </span>
         <span className="mt-2 text-xs uppercase tracking-widest text-white/60">
           {label}
