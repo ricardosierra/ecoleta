@@ -9,18 +9,22 @@ import ContactForm from "@/components/ContactForm";
 import {
   ArrowRightIcon,
   InstagramIcon,
-  ShieldIcon,
   WhatsAppIcon,
 } from "@/components/icons";
 import { siteConfig, whatsappLink } from "@/lib/site.config";
 
 export const metadata: Metadata = {
   ...createPageMetadata({
-    title: "Sobre e Contato",
+    title: "Contato",
     description:
       "Fale com a Ecoleta para estruturar a gestão de resíduos da sua empresa com rastreabilidade, conformidade ambiental e relatórios ESG.",
     path: "/contato",
-    keywords: ["contato Ecoleta", "diagnóstico de resíduos", "consultoria ambiental", "conformidade ambiental"],
+    keywords: [
+      "contato Ecoleta",
+      "diagnóstico de resíduos",
+      "consultoria ambiental",
+      "conformidade ambiental",
+    ],
   }),
 };
 
@@ -28,91 +32,24 @@ export default function ContatoPage() {
   return (
     <>
       <PageHero
-        eyebrow="Sobre + Contato"
+        eyebrow="Contato"
         title={
           <>
-            Especialistas em{" "}
-            <span className="text-(--color-accent)">gestão de resíduos</span> e
-            conformidade ambiental
+            Fale com a <span className="text-(--color-accent)">Ecoleta</span>
           </>
         }
-        subtitle="A Ecoleta estrutura operações de resíduos com foco em organização, rastreabilidade e segurança ambiental."
+        subtitle="Conte sobre sua operação e nossa equipe retornará com o melhor caminho para estruturar sua gestão de resíduos."
       />
 
-      {/* Sobre */}
-      <Section tone="white" id="sobre">
-        <div className="grid gap-12 lg:grid-cols-[1.1fr_1fr] items-start">
-          <Reveal>
-            <Eyebrow className="text-(--color-secondary)">A empresa</Eyebrow>
-            <h2 className="section-title mt-4">
-              Quem é a Ecoleta
-            </h2>
-            <p className="mt-5 text-base md:text-lg text-(--color-text-muted) leading-relaxed">
-              A Ecoleta estrutura operações de resíduos com foco em organização,
-              rastreabilidade e segurança ambiental. Atendemos empresas,
-              indústrias, eventos e operações complexas, com presença técnica
-              direta no local.
-            </p>
-          </Reveal>
-          <Reveal delay={120}>
-            <Card tone="soft" interactive={false}>
-              <div className="flex items-center gap-3 mb-4">
-                <span className="size-12 rounded-full bg-(--color-accent) text-(--color-bg-dark) flex items-center justify-center">
-                  <ShieldIcon width={22} height={22} />
-                </span>
-                <p className="text-xs uppercase tracking-widest font-semibold text-(--color-secondary)">
-                  Responsável técnica
-                </p>
-              </div>
-              <p className="text-base leading-relaxed text-(--color-text)">
-                Operação conduzida por responsável técnica habilitada pelo CREA,
-                garantindo conformidade com a legislação ambiental.
-              </p>
-            </Card>
-          </Reveal>
-        </div>
-      </Section>
-
-      {/* Econformidade */}
-      <Section tone="dark" id="econformidade">
-        <div className="grid gap-10 lg:grid-cols-[1.1fr_1fr] items-center">
-          <Reveal>
-            <Eyebrow>Econformidade</Eyebrow>
-            <h2 className="section-title mt-4">
-              Tecnologia aplicada à{" "}
-              <span className="text-(--color-accent)">sustentabilidade</span>
-            </h2>
-            <p className="mt-5 text-base md:text-lg text-white/80 leading-relaxed max-w-xl">
-              A Econformidade é o braço tecnológico da Ecoleta, responsável por
-              automação, indicadores ESG e estruturação de dados ambientais.
-            </p>
-          </Reveal>
-          <Reveal delay={120}>
-            <ul className="grid gap-3 sm:grid-cols-2">
-              {["Automação", "Dashboards", "Sistemas de controle", "Treinamentos"].map(
-                (s) => (
-                  <li
-                    key={s}
-                    className="px-5 py-4 rounded-[10px] bg-[#0a1810] border border-(--color-border-dark) text-sm font-medium"
-                  >
-                    {s}
-                  </li>
-                )
-              )}
-            </ul>
-          </Reveal>
-        </div>
-      </Section>
-
-      {/* Formulário */}
+      {/* Formulário + canais diretos */}
       <Section tone="light" id="formulario">
         <div className="grid gap-10 lg:grid-cols-[1fr_1.2fr] items-start">
           <Reveal>
-            <Eyebrow className="text-(--color-secondary)">Contato</Eyebrow>
-            <h2 className="section-title mt-4">Fale com a Ecoleta</h2>
+            <Eyebrow className="text-(--color-secondary)">Canais diretos</Eyebrow>
+            <h2 className="section-title mt-4">Resposta rápida</h2>
             <p className="mt-5 text-(--color-text-muted) leading-relaxed">
-              Conte sobre sua operação e nossa equipe retornará com o melhor
-              caminho para estruturar sua gestão de resíduos.
+              Prefere falar agora? Use os canais abaixo para contato direto com
+              o time.
             </p>
 
             <div className="mt-8 grid gap-3">
@@ -133,7 +70,11 @@ export default function ContatoPage() {
                     Resposta rápida com nossa equipe
                   </p>
                 </div>
-                <ArrowRightIcon className="ml-auto text-(--color-secondary)" width={20} height={20} />
+                <ArrowRightIcon
+                  className="ml-auto text-(--color-secondary)"
+                  width={20}
+                  height={20}
+                />
               </a>
 
               <a
@@ -153,7 +94,11 @@ export default function ContatoPage() {
                     Operação real, registros e bastidores
                   </p>
                 </div>
-                <ArrowRightIcon className="ml-auto text-(--color-secondary)" width={20} height={20} />
+                <ArrowRightIcon
+                  className="ml-auto text-(--color-secondary)"
+                  width={20}
+                  height={20}
+                />
               </a>
             </div>
           </Reveal>

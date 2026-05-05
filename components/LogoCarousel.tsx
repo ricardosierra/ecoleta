@@ -1,12 +1,16 @@
 "use client";
 
+import Image from "next/image";
 import { cn } from "@/lib/cn";
 
-type Item = { name: string };
+type Item = {
+  name: string;
+  /** Caminho da logo em /public (ex: "/logos/heineken.png"). Se ausente, renderiza só o nome em texto. */
+  src?: string;
+};
+
 type Props = { items: Item[]; className?: string };
 
-// When real logo files arrive, replace each <li> body with:
-//   <Image src={item.src} alt={item.name} width={160} height={48} className="object-contain" />
 export default function LogoCarousel({ items, className }: Props) {
   if (items.length === 0) return null;
 
@@ -15,7 +19,23 @@ export default function LogoCarousel({ items, className }: Props) {
   const row2 = [...items.slice(half), ...items.slice(half)];
 
   const card =
-    "shrink-0 flex items-center justify-center min-w-[190px] h-[72px] px-8 rounded-[10px] bg-white border border-gray-100 shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-(--color-text-muted) text-sm font-bold uppercase tracking-widest select-none cursor-default transition-[color,box-shadow] duration-300 hover:text-(--color-bg-dark) hover:shadow-[0_4px_14px_rgba(0,0,0,0.11)]";
+    "shrink-0 flex items-center justify-center min-w-[180px] h-[80px] px-5 rounded-[10px] bg-white border border-gray-100 shadow-[0_1px_4px_rgba(0,0,0,0.06)] select-none cursor-default transition-[box-shadow] duration-300 hover:shadow-[0_4px_14px_rgba(0,0,0,0.11)]";
+
+  const renderItem = (item: Item) =>
+    item.src ? (
+      <Image
+        src={item.src}
+        alt={item.name}
+        width={140}
+        height={56}
+        className="object-contain max-h-[56px] max-w-[140px] w-auto h-auto"
+        unoptimized
+      />
+    ) : (
+      <span className="text-(--color-text-muted) text-sm font-bold uppercase tracking-widest">
+        {item.name}
+      </span>
+    );
 
   return (
     <div
@@ -31,7 +51,7 @@ export default function LogoCarousel({ items, className }: Props) {
       >
         {row1.map((item, i) => (
           <li key={`r1-${item.name}-${i}`} className={card}>
-            {item.name}
+            {renderItem(item)}
           </li>
         ))}
       </ul>
@@ -42,7 +62,7 @@ export default function LogoCarousel({ items, className }: Props) {
       >
         {row2.map((item, i) => (
           <li key={`r2-${item.name}-${i}`} className={card}>
-            {item.name}
+            {renderItem(item)}
           </li>
         ))}
       </ul>

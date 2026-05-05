@@ -158,7 +158,7 @@ export default function EsgPage() {
             </p>
           </Reveal>
           <Reveal delay={150} className="flex justify-center">
-            <DonutChart value={68} label="desvio de aterro" size={260} />
+            <DonutChart value={96} label="carbono compensado" size={260} />
           </Reveal>
         </div>
       </Section>
