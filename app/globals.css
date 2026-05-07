@@ -30,6 +30,15 @@
   color-scheme: light;
 }
 
+*,
+*::before,
+*::after {
+  hyphens: none !important;
+  -webkit-hyphens: none !important;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
 html {
   scroll-behavior: smooth;
   scroll-padding-top: 88px;

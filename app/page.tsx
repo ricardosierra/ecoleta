@@ -121,7 +121,7 @@ export default function HomePage() {
             </Reveal>
 
             <Reveal delay={150}>
-              <div className="relative rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-sm p-8">
+              <div className="relative rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-sm p-5 md:p-8">
                 <p className="text-xs uppercase tracking-widest text-(--color-accent) mb-6">
                   Indicadores da operação
                 </p>
@@ -330,11 +330,11 @@ export default function HomePage() {
 
 function Stat({ value, label }: { value: string; label: string }) {
   return (
-    <div className="rounded-[10px] bg-(--color-bg-dark) border border-(--color-border-dark) p-5">
-      <p className="text-2xl md:text-[1.75rem] font-bold text-(--color-accent) leading-tight">
+    <div className="rounded-[10px] bg-(--color-bg-dark) border border-(--color-border-dark) p-3 md:p-5">
+      <p className="text-lg md:text-[1.75rem] font-bold text-(--color-accent) leading-tight break-words min-w-0">
         {value}
       </p>
-      <p className="text-xs uppercase tracking-widest text-white/50 mt-2">
+      <p className="text-[0.65rem] md:text-xs uppercase tracking-widest text-white/50 mt-1.5 break-words min-w-0">
         {label}
       </p>
     </div>
