@@ -69,16 +69,29 @@ export default function HomePage() {
     <>
       {/* HERO */}
       <section className="relative bg-(--color-bg-dark) text-white overflow-hidden">
+        {/* Vídeo de fundo */}
+        <video
+          aria-hidden
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+        >
+          <source src="/hero-video.webm" type="video/webm" />
+          <source src="/hero-video.mp4" type="video/mp4" />
+        </video>
+        {/* Overlay escuro para legibilidade do texto */}
+        <div aria-hidden className="absolute inset-0 bg-(--color-bg-dark)/80 pointer-events-none" />
+        {/* Gradiente de cor de marca */}
         <div
           aria-hidden
-          className="absolute inset-0 opacity-[0.07] pointer-events-none"
+          className="absolute inset-0 opacity-30 pointer-events-none"
           style={{
             backgroundImage:
-              "radial-gradient(circle at 20% 0%, rgba(126,217,87,0.6) 0%, transparent 40%), radial-gradient(circle at 80% 100%, rgba(126,217,87,0.4) 0%, transparent 50%)",
+              "radial-gradient(circle at 20% 0%, rgba(126,217,87,0.5) 0%, transparent 40%), radial-gradient(circle at 80% 100%, rgba(126,217,87,0.3) 0%, transparent 50%)",
           }}
         />
-        <LeafDecor position="top-right" size={320} rotate={-25} opacity={0.08} />
-        <LeafDecor position="bottom-left" size={260} rotate={150} opacity={0.06} />
         <div className="container-page relative pt-12 pb-20 md:pt-20 md:pb-28">
           <div className="grid gap-12 lg:grid-cols-[1.2fr_1fr] items-center">
             <Reveal>
