@@ -34,10 +34,26 @@ const dynamicWords = [
 ];
 
 const galleryItems = [
-  { label: "Operação", caption: "Imagem real da operação Ecoleta" },
-  { label: "Caçambas organizadas", caption: "Pontos de descarte padronizados" },
-  { label: "Equipe", caption: "Supervisão técnica no local" },
-  { label: "Separação de resíduos", caption: "Frações separadas corretamente" },
+  {
+    src: "/gallery/equipe-sambadrome.jpg",
+    label: "Equipe no Sambódromo",
+    caption: "Operação durante o Carnaval do Rio de Janeiro",
+  },
+  {
+    src: "/gallery/supervisao-coleta-01.jpg",
+    label: "Supervisão da coleta",
+    caption: "Acompanhamento técnico da destinação de resíduos",
+  },
+  {
+    src: "/gallery/supervisao-coleta-02.jpg",
+    label: "Gestão no campo",
+    caption: "Equipe Ecoleta coordenando a operação no local",
+  },
+  {
+    src: "/gallery/carga-reciclaveis.jpg",
+    label: "Carregamento de recicláveis",
+    caption: "Separação e destinação correta dos materiais recicláveis",
+  },
 ];
 
 const provaTecnica = [
