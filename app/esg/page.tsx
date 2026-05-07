@@ -10,11 +10,14 @@ import LeafDecor from "@/components/LeafDecor";
 import TiltCard from "@/components/TiltCard";
 import {
   ArrowRightIcon,
+  CarIcon,
+  DropletIcon,
   LeafIcon,
   RecycleIcon,
   SeedlingIcon,
   ShieldIcon,
   UsersIcon,
+  ZapIcon,
 } from "@/components/icons";
 
 export const metadata: Metadata = {
@@ -26,6 +29,15 @@ export const metadata: Metadata = {
     keywords: ["ESG ambiental", "relatório ESG", "indicadores ambientais", "compensação de carbono"],
   }),
 };
+
+const impactoIndicadores = [
+  { icon: UsersIcon,   value: "169,9 Mil",  label: "Pessoas impactadas" },
+  { icon: LeafIcon,    value: "90,9 tCO₂e", label: "CO₂ evitado" },
+  { icon: ZapIcon,     value: "118,1 Mil kWh", label: "Energia economizada" },
+  { icon: SeedlingIcon,value: "645",         label: "Árvores preservadas" },
+  { icon: CarIcon,     value: "53",          label: "Carros fora de circulação" },
+  { icon: DropletIcon, value: "3,4 Mi",      label: "Litros de água poupada" },
+];
 
 const pilares = [
   {
@@ -131,6 +143,30 @@ export default function EsgPage() {
                   </ul>
                 </Card>
               </TiltCard>
+            </Reveal>
+          ))}
+        </ul>
+      </Section>
+
+      {/* Indicadores de impacto */}
+      <Section tone="white" id="indicadores">
+        <Reveal>
+          <SectionHeader
+            eyebrow="Impacto mensurável"
+            title="Números reais da nossa operação"
+            align="center"
+          />
+        </Reveal>
+        <ul className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
+          {impactoIndicadores.map(({ icon: Icon, value, label }, i) => (
+            <Reveal key={label} as="li" delay={i * 80}>
+              <div className="flex flex-col items-center text-center p-6 rounded-[10px] border border-(--color-border-light) bg-(--color-bg-light) h-full">
+                <span className="size-12 rounded-full bg-(--color-accent-soft) text-(--color-secondary) flex items-center justify-center mb-4">
+                  <Icon width={22} height={22} />
+                </span>
+                <p className="text-2xl md:text-3xl font-bold text-(--color-bg-dark) leading-tight">{value}</p>
+                <p className="mt-1.5 text-xs uppercase tracking-widest text-(--color-text-muted)">{label}</p>
+              </div>
             </Reveal>
           ))}
         </ul>

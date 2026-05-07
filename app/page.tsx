@@ -1,4 +1,5 @@
 import Section, { Eyebrow, SectionHeader } from "@/components/Section";
+import LogoCarousel from "@/components/LogoCarousel";
 import Card from "@/components/Card";
 import Button from "@/components/Button";
 import Reveal from "@/components/Reveal";
@@ -62,6 +63,25 @@ const resultados = [
   { symbol: <CheckIcon width={36} height={36} />, label: "Operação organizada e documentada" },
   { symbol: <ScaleIcon width={36} height={36} />, label: "Segurança jurídica e ambiental" },
   { symbol: "ESG", label: "Valor e reputação para sua marca" },
+];
+
+const clientes = [
+  { name: "Heineken", src: "/logos/heineken.png" },
+  { name: "LIESA", src: "/logos/liesa.png" },
+  { name: "VIBRA", src: "/logos/vibra.png" },
+  { name: "BrasilCap", src: "/logos/brasilcap.png" },
+  { name: "CEDAE", src: "/logos/cedae.png" },
+  { name: "Rio Carnaval", src: "/logos/rio-carnaval.png" },
+  { name: "Levels", src: "/logos/levels.png" },
+  { name: "Bosque Bar", src: "/logos/bosque-bar.png" },
+  { name: "Ferro & Brasa", src: "/logos/ferro-e-brasa.png" },
+  { name: "WeMake", src: "/logos/wemake.png" },
+  { name: "Virada Sustentável", src: "/logos/virada-sustentavel.png" },
+  { name: "Rio FutSummit 26", src: "/logos/rio-futsummit-26.png" },
+  { name: "Sacadura 154", src: "/logos/sacadura-154.png" },
+  { name: "NMLSS", src: "/logos/nmlss.png" },
+  { name: "Café Preto Tattoo", src: "/logos/cafe-preto-tattoo.png" },
+  { name: "FuraTodo", src: "/logos/fura-toblu.png" },
 ];
 
 export default function HomePage() {
@@ -316,6 +336,21 @@ export default function HomePage() {
             </Reveal>
           ))}
         </ul>
+      </Section>
+
+      {/* CLIENTES */}
+      <Section tone="white" id="clientes">
+        <Reveal>
+          <SectionHeader
+            eyebrow="Clientes atendidos"
+            title="Empresas que confiam na Ecoleta"
+            subtitle="Da produtora de eventos à empresa pública — gestão de resíduos que se adapta a qualquer operação."
+            align="center"
+          />
+        </Reveal>
+        <Reveal delay={120}>
+          <LogoCarousel items={clientes} />
+        </Reveal>
       </Section>
 
       {/* CTA FINAL */}
