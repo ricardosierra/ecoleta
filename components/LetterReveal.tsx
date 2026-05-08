@@ -81,25 +81,58 @@ export default function LetterReveal({
     );
   }
 
+  // Split into word tokens so each word is wrapped in whitespace-nowrap,
+  // preventing mid-word line breaks caused by per-letter inline-block spans.
+  const tokens = text.split(/( )/);
+  let charIndex = 0;
+
   return (
     <span ref={ref} className={className}>
       <span aria-hidden>
-        {text.split("").map((char, i) => (
-          <span
-            key={i}
-            className="inline-block"
-            style={{
-              opacity: 0,
-              animationName: "letter-reveal",
-              animationDuration: "1ms",
-              animationTimingFunction: "step-end",
-              animationDelay: `${delay + i * charDelay}ms`,
-              animationFillMode: "forwards",
-            }}
-          >
-            {char === " " ? " " : char}
-          </span>
-        ))}
+        {tokens.map((token, ti) => {
+          if (token === " ") {
+            const idx = charIndex++;
+            return (
+              <span
+                key={`sp-${ti}`}
+                style={{
+                  opacity: 0,
+                  animationName: "letter-reveal",
+                  animationDuration: "1ms",
+                  animationTimingFunction: "step-end",
+                  animationDelay: `${delay + idx * charDelay}ms`,
+                  animationFillMode: "forwards",
+                }}
+              >
+                {" "}
+              </span>
+            );
+          }
+          const wordChars = token.split("").map((char, ci) => {
+            const idx = charIndex++;
+            return (
+              <span
+                key={`c-${ci}`}
+                style={{
+                  opacity: 0,
+                  display: "inline",
+                  animationName: "letter-reveal",
+                  animationDuration: "1ms",
+                  animationTimingFunction: "step-end",
+                  animationDelay: `${delay + idx * charDelay}ms`,
+                  animationFillMode: "forwards",
+                }}
+              >
+                {char}
+              </span>
+            );
+          });
+          return (
+            <span key={`w-${ti}`} className="inline-block whitespace-nowrap">
+              {wordChars}
+            </span>
+          );
+        })}
       </span>
       <span className="sr-only">{text}</span>
     </span>
