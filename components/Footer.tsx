@@ -16,7 +16,7 @@ export default function Footer() {
       <div className="container-page">
         <div className="grid gap-10 md:grid-cols-[2fr_1fr_1fr_1.2fr]">
           <div>
-            <Logo variant="accent" />
+            <Logo variant="white" />
             <p className="mt-4 text-sm text-white/70 max-w-sm leading-relaxed">
               Transformando resíduos em reputação. Gestão integrada de resíduos
               sólidos, infectantes e têxteis com rastreabilidade digital e

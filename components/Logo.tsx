@@ -1,28 +1,30 @@
+import Image from "next/image";
 import { cn } from "@/lib/cn";
 
 type Props = {
   className?: string;
-  /** Color of the wordmark. Use "accent" on dark backgrounds. */
-  variant?: "accent" | "dark" | "white";
+  /**
+   * "dark" → logo preta + verde (fundos claros)
+   * "white" → logo branca + verde via CSS filter (fundos escuros)
+   */
+  variant?: "dark" | "white";
+  height?: number;
 };
 
-const variantClasses = {
-  accent: "text-(--color-accent)",
-  dark: "text-(--color-bg-dark)",
-  white: "text-white",
-} as const;
-
-export default function Logo({ className, variant = "accent" }: Props) {
+export default function Logo({ className, variant = "dark", height = 40 }: Props) {
   return (
-    <span
+    <Image
+      src="/ecoleta-logo.png"
+      alt="Ecoleta"
+      height={height}
+      width={0}
+      sizes="200px"
       className={cn(
-        "font-bold text-2xl md:text-[1.625rem] tracking-tight lowercase",
-        variantClasses[variant],
+        "w-auto",
+        variant === "white" && "brightness-0 invert",
         className
       )}
-      aria-label="Ecoleta"
-    >
-      ecoleta
-    </span>
+      priority
+    />
   );
 }

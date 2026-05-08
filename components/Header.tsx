@@ -53,7 +53,7 @@ export default function Header() {
           aria-label="Página inicial Ecoleta"
           className="flex items-center"
         >
-          <Logo variant="accent" />
+          <Logo variant="white" />
         </Link>
 
         <nav className="hidden md:flex items-center gap-8" aria-label="Navegação principal">
