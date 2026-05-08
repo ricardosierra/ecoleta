@@ -8,19 +8,21 @@ type Props = {
    * "white" → logo branca + verde via CSS filter (fundos escuros)
    */
   variant?: "dark" | "white";
+  /** Height in pixels — controls actual rendered CSS height. */
   height?: number;
 };
 
-export default function Logo({ className, variant = "dark", height = 40 }: Props) {
+export default function Logo({ className, variant = "dark", height = 32 }: Props) {
   return (
     <Image
       src="/ecoleta-logo.png"
       alt="Ecoleta"
-      height={height}
-      width={0}
+      // intrinsic dimensions for aspect-ratio calculation
+      width={955}
+      height={432}
       sizes="200px"
+      style={{ height, width: "auto" }}
       className={cn(
-        "w-auto",
         variant === "white" && "brightness-0 invert",
         className
       )}
