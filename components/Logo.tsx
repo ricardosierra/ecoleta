@@ -12,20 +12,20 @@ type Props = {
   height?: number;
 };
 
-export default function Logo({ className, variant = "dark", height = 32 }: Props) {
+export default function Logo({ className, variant = "dark", height = 38 }: Props) {
+  const src =
+    variant === "white" ? "/ecoleta-logo-white.png" : "/ecoleta-logo-dark.png";
+
   return (
     <Image
-      src="/ecoleta-logo.png"
+      src={src}
       alt="Ecoleta"
       // intrinsic dimensions for aspect-ratio calculation
-      width={955}
-      height={432}
+      width={1200}
+      height={544}
       sizes="200px"
       style={{ height, width: "auto" }}
-      className={cn(
-        variant === "white" && "brightness-0 invert",
-        className
-      )}
+      className={cn(className)}
       priority
     />
   );

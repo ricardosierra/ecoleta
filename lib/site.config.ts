@@ -59,7 +59,6 @@ export const siteConfig = {
   nav: [
     { label: "Soluções", href: "/solucoes" },
     { label: "ESG", href: "/esg" },
-    { label: "Cases", href: "/cases" },
     { label: "Sobre", href: "/sobre" },
     { label: "Contato", href: "/contato" },
   ],

@@ -35,7 +35,10 @@ export default function LetterReveal({
       frame = window.requestAnimationFrame(() => setActive(true));
     };
 
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    if (
+      window.matchMedia("(prefers-reduced-motion: reduce), (max-width: 767px)")
+        .matches
+    ) {
       frame = window.requestAnimationFrame(() => setReduced(true));
       return () => window.cancelAnimationFrame(frame);
     }

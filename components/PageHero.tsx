@@ -34,7 +34,7 @@ export default function PageHero({
       />
       <LeafDecor position="top-right" size={300} rotate={-20} opacity={0.08} />
       <LeafDecor position="bottom-left" size={220} rotate={160} opacity={0.05} />
-      <div className="container-page relative pt-12 pb-16 md:pt-20 md:pb-24">
+      <div className="container-page relative pt-10 pb-14 md:pt-16 md:pb-20">
         <div className="max-w-3xl">
           {eyebrow && (
             <p className="eyebrow flex items-center gap-2 mb-5">

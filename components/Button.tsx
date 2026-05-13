@@ -18,9 +18,9 @@ const variantClasses: Record<Variant, string> = {
 };
 
 const sizeClasses: Record<Size, string> = {
-  default: "px-[35px] py-[15px] text-[0.9375rem]",
-  sm: "px-6 py-3 text-sm",
-  lg: "px-10 py-5 text-base",
+  default: "px-7 py-3.5 text-sm",
+  sm: "px-5 py-2.5 text-[0.8125rem]",
+  lg: "px-8 py-4 text-[0.9375rem]",
 };
 
 type CommonProps = {

@@ -18,9 +18,10 @@ export default function Footer() {
           <div>
             <Logo variant="white" />
             <p className="mt-4 text-sm text-white/70 max-w-sm leading-relaxed">
-              Transformando resíduos em reputação. Gestão integrada de resíduos
-              sólidos, infectantes e têxteis com rastreabilidade digital e
-              conformidade ambiental em todo o Estado do Rio de Janeiro.
+              Transformamos resíduos em reputação. Soluções em gestão de
+              resíduos com rastreabilidade, supervisão técnica e conformidade
+              ambiental para operações mais organizadas, seguras e
+              sustentáveis.
             </p>
             <div className="mt-6 flex items-center gap-3">
               <a
@@ -66,7 +67,6 @@ export default function Footer() {
             <FooterLink href="/sobre">Quem somos</FooterLink>
             <FooterLink href="/esg">ESG & Impacto</FooterLink>
             <FooterLink href="/solucoes">Serviços</FooterLink>
-            <FooterLink href="/cases">Clientes</FooterLink>
             <FooterLink href="/conteudos">Conteúdos</FooterLink>
           </FooterCol>
 
@@ -78,15 +78,6 @@ export default function Footer() {
             <p className="mt-4 text-sm text-white/70 leading-relaxed">
               <span className="block text-white/90 mb-1">Endereço</span>
               {siteConfig.company.address}
-            </p>
-            <p className="mt-4 text-sm text-white/70 leading-relaxed">
-              <span className="block text-white/90 mb-1">Comercial</span>
-              <a
-                href={`tel:+5521991529383`}
-                className="text-(--color-accent) hover:underline"
-              >
-                {siteConfig.company.phoneComercial}
-              </a>
             </p>
             <p className="mt-4 text-sm text-white/70 leading-relaxed">
               <span className="block text-white/90 mb-1">WhatsApp</span>

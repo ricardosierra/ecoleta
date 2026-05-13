@@ -11,7 +11,9 @@ import TiltCard from "@/components/TiltCard";
 import {
   ArrowRightIcon,
   CarIcon,
+  ClipboardIcon,
   DropletIcon,
+  FileTextIcon,
   LeafIcon,
   RecycleIcon,
   SeedlingIcon,
@@ -45,7 +47,7 @@ const pilares = [
     label: "Ambiental",
     items: [
       "Redução do envio ao aterro",
-      "Reciclagem e valorização",
+      "Reciclagem e valorização dos materiais",
       "Destinação ambientalmente adequada",
     ],
   },
@@ -54,18 +56,41 @@ const pilares = [
     label: "Social",
     items: [
       "Geração de renda para cooperativas",
-      "Inclusão social",
-      "Fortalecimento da cadeia de reciclagem",
+      "Inclusão e valorização da cadeia da reciclagem",
+      "Operação mais organizada e segura",
     ],
   },
   {
     icon: ShieldIcon,
     label: "Governança",
     items: [
-      "Controle técnico",
-      "Rastreabilidade",
-      "Documentação ambiental",
+      "Controle e supervisão da operação",
+      "Rastreabilidade dos resíduos",
+      "Documentação ambiental e conformidade",
     ],
+  },
+];
+
+const provaTecnica = [
+  {
+    icon: ClipboardIcon,
+    title: "PGRS",
+    desc: "Plano de gerenciamento de resíduos sólidos como base do planejamento.",
+  },
+  {
+    icon: FileTextIcon,
+    title: "MTR",
+    desc: "Manifesto de Transporte de Resíduos para rastrear cada movimentação.",
+  },
+  {
+    icon: ClipboardIcon,
+    title: "CDF",
+    desc: "Certificado de Destinação Final comprovando o destino correto.",
+  },
+  {
+    icon: FileTextIcon,
+    title: "Relatório ESG",
+    desc: "Indicadores ambientais consolidados para auditoria e divulgação.",
   },
 ];
 
@@ -92,29 +117,6 @@ export default function EsgPage() {
         </Button>
       </PageHero>
 
-      {/* O que é ESG */}
-      <Section tone="white" id="o-que-e-esg">
-        <div className="grid gap-12 lg:grid-cols-[1fr_1.2fr] items-start">
-          <Reveal>
-            <p className="eyebrow text-(--color-secondary) flex items-center gap-2">
-              <span className="inline-block size-1.5 rounded-full bg-current" />
-              O que é ESG
-            </p>
-            <h2 className="section-title mt-4">
-              Critérios que viram operação
-            </h2>
-          </Reveal>
-          <Reveal delay={120}>
-            <p className="text-base md:text-lg text-(--color-text-muted) leading-relaxed">
-              Aplicamos critérios ambientais, sociais e de governança na gestão
-              de resíduos para que empresas tenham controle, documentação e
-              impacto mensurável. Cada operação vira dado, cada destinação vira
-              comprovação.
-            </p>
-          </Reveal>
-        </div>
-      </Section>
-
       {/* Pilares */}
       <Section tone="light" id="pilares">
         <Reveal>
@@ -124,10 +126,11 @@ export default function EsgPage() {
           {pilares.map(({ icon: Icon, label, items }, i) => (
             <Reveal key={label} as="li" delay={i * 100}>
               <TiltCard intensity={4}>
-                <Card tone="white" className="h-full">
+                <Card tone="dark" className="h-full overflow-hidden relative">
+                  <div aria-hidden className="absolute -right-10 -top-10 size-32 rounded-full bg-(--color-accent)/10" />
                   <div className="flex items-center gap-3 mb-5">
-                    <span className="size-12 rounded-full bg-(--color-accent-soft) text-(--color-secondary) flex items-center justify-center">
-                      <Icon width={22} height={22} />
+                    <span className="size-14 rounded-full bg-(--color-accent) text-(--color-bg-dark) flex items-center justify-center">
+                      <Icon width={28} height={28} />
                     </span>
                     <h3 className="card-title">{label}</h3>
                   </div>
@@ -135,7 +138,7 @@ export default function EsgPage() {
                     {items.map((it) => (
                       <li key={it} className="flex items-start gap-3 text-sm">
                         <span className="mt-1.5 size-1.5 rounded-full bg-(--color-accent) shrink-0" />
-                        <span className="text-(--color-text-muted) leading-relaxed">
+                        <span className="text-white/75 leading-relaxed">
                           {it}
                         </span>
                       </li>
@@ -172,6 +175,36 @@ export default function EsgPage() {
         </ul>
       </Section>
 
+      {/* Prova técnica */}
+      <Section tone="dark" id="comprovacao-ambiental">
+        <Reveal>
+          <SectionHeader
+            eyebrow="Prova técnica"
+            title="Comprovação ambiental completa"
+            tone="dark"
+          />
+        </Reveal>
+        <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          {provaTecnica.map(({ icon: Icon, title, desc }, i) => (
+            <Reveal key={title} as="li" delay={i * 80}>
+              <Card tone="dark" className="h-full">
+                <div className="size-12 rounded-full bg-(--color-accent-soft) text-(--color-accent) flex items-center justify-center mb-5">
+                  <Icon width={22} height={22} />
+                </div>
+                <h3 className="card-title mb-2">{title}</h3>
+                <p className="text-sm text-white/70 leading-relaxed">{desc}</p>
+              </Card>
+            </Reveal>
+          ))}
+        </ul>
+        <Reveal delay={360}>
+          <p className="mt-10 text-center text-xl md:text-2xl font-bold text-(--color-accent) tracking-tight">
+            Reduza custos, evite riscos e tenha controle total da sua operação
+            de resíduos.
+          </p>
+        </Reveal>
+      </Section>
+
       {/* Carbono */}
       <Section tone="dark" id="carbono">
         <LeafDecor position="top-right" size={280} rotate={-30} opacity={0.07} />
@@ -180,13 +213,13 @@ export default function EsgPage() {
           <Reveal>
             <Eyebrow>Compensação de carbono</Eyebrow>
             <h2 className="section-title mt-4">
-              Compensação de carbono através da{" "}
-              <span className="text-(--color-accent)">operação</span>
+              Sua operação gera carbono evitado — e a gente comprova
             </h2>
-            <p className="mt-5 text-base md:text-lg text-white/80 leading-relaxed max-w-xl">
-              A destinação adequada de resíduos recicláveis e orgânicos gera
-              redução de emissões, permitindo compensação de carbono com base em
-              dados reais.
+            <p className="mt-5 text-base text-white/80 leading-relaxed max-w-xl">
+              A gestão correta dos resíduos não só reduz impacto — ela gera
+              dados ambientais reais. Com rastreabilidade por fração, pesagem e
+              destinação licenciada, calculamos o carbono evitado da operação
+              com base em metodologias reconhecidas (GHG Protocol e DEFRA).
             </p>
             <p className="mt-6 inline-flex items-center gap-2 text-xs text-white/50 px-3 py-2 rounded-full border border-white/10">
               <SeedlingIcon width={14} height={14} />
@@ -194,7 +227,7 @@ export default function EsgPage() {
             </p>
           </Reveal>
           <Reveal delay={150} className="flex justify-center">
-            <DonutChart value={96} label="carbono compensado" size={260} />
+            <DonutChart value={92} label="carbono evitado" size={240} />
           </Reveal>
         </div>
       </Section>
