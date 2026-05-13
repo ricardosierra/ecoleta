@@ -29,7 +29,7 @@ export default function Card({
     <div
       {...rest}
       className={cn(
-        "rounded-[10px] p-6 md:p-7 transition-[transform,box-shadow,border-color] duration-200",
+        "rounded-[10px] p-5 md:p-6 transition-[transform,box-shadow,border-color] duration-200",
         toneClasses[tone],
         interactive && "hover:-translate-y-1",
         className

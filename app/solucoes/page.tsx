@@ -46,35 +46,41 @@ const steps = [
 const pilares = [
   {
     icon: SettingsIcon,
-    title: "Gestão completa",
-    desc: "Planejamento, estruturação e operação com supervisão técnica no local.",
+    title: "Gestão operacional",
+    desc: "Estruturação completa da operação de resíduos com supervisão técnica, organização logística e controle operacional.",
     items: [
-      "Diagnóstico e PGRS",
-      "Supervisão presencial",
-      "Organização de caçambas",
-      "Controle de pontos de descarte",
+      "Planejamento e implantação da operação",
+      "Supervisão técnica presencial",
+      "Organização das coletas e descarte ambientalmente corretos",
+      "Sinalização ambiental do local",
+      "Segregação por tipo de resíduo",
+      "Controle de caçambas e armazenamento em big bags",
     ],
   },
   {
     icon: LeafIcon,
     title: "ESG aplicado",
-    desc: "Indicadores ambientais, impacto social e relatórios estruturados para divulgação.",
+    desc: "Indicadores ambientais e rastreabilidade para transformar a gestão de resíduos em dados, conformidade e valor para a marca.",
     items: [
-      "Indicadores de desvio de aterro",
+      "Indicadores ambientais da operação",
+      "Redução do envio de resíduos ao aterro",
       "Compensação de carbono",
-      "Relatório ESG mensal",
-      "Alinhado à ISO 14001",
+      "Relatórios ESG estruturados",
+      "Dados para patrocinadores e auditorias",
+      "Alinhado à PNRS e ISO 14001",
     ],
   },
   {
     icon: ClipboardIcon,
-    title: "Documentação ambiental",
-    desc: "Toda a documentação exigida pela legislação para conformidade e auditoria.",
+    title: "Conformidade e rastreabilidade",
+    desc: "Documentação ambiental e controle operacional para garantir conformidade, segurança jurídica e rastreabilidade da destinação dos resíduos.",
     items: [
       "PGRS",
-      "MTR (Manifesto de Transporte)",
-      "CDF (Certificado de Destinação)",
-      "Relatório ESG",
+      "Emissão e controle de MTR",
+      "Certificado de Destinação Final (CDF)",
+      "Controle de pesagens por fração",
+      "Rastreabilidade da destinação",
+      "Controle ambiental da operação",
     ],
   },
 ];
@@ -82,48 +88,48 @@ const pilares = [
 const fractions: Fraction[] = [
   {
     name: "Recicláveis",
-    tag: "Papel · Plástico · Metal · Vidro",
-    desc: "Papel, plástico, metal e vidro com destinação correta para a cadeia de reciclagem.",
+    tag: "Papel • Plástico • Metal • Vidro",
+    desc: "Triagem e reciclagem.",
     icon: <RecycleIcon width={28} height={28} />,
     bulletClass: "bg-(--color-accent)",
     accentClass: "text-(--color-accent)",
   },
   {
     name: "Orgânicos",
-    tag: "Compostagem",
-    desc: "Restos de alimentos e materiais biodegradáveis encaminhados para compostagem.",
+    tag: "Restos alimentares e resíduos orgânicos",
+    desc: "Compostagem.",
     icon: <SeedlingIcon width={28} height={28} />,
     bulletClass: "bg-emerald-300",
     accentClass: "text-emerald-300",
   },
   {
     name: "Rejeitos",
-    tag: "Destinação adequada",
-    desc: "Resíduos sem aproveitamento com destinação ambientalmente correta.",
+    tag: "Resíduos sem viabilidade de reciclagem",
+    desc: "Destinação ambientalmente adequada.",
     icon: <ShuffleIcon width={28} height={28} />,
     bulletClass: "bg-zinc-400",
     accentClass: "text-zinc-300",
   },
   {
     name: "Infectantes",
-    tag: "Licença específica",
-    desc: "Resíduos de serviços de saúde com licença e manuseio especializado.",
+    tag: "Materiais contaminados e biológicos",
+    desc: "Tratamento e incineração licenciada.",
     icon: <ShieldIcon width={28} height={28} />,
     bulletClass: "bg-rose-400",
     accentClass: "text-rose-400",
   },
   {
     name: "Têxteis",
-    tag: "Doação · Reuso",
-    desc: "Roupas e tecidos destinados para doação ou reuso, evitando descarte indevido.",
+    tag: "Uniformes, tecidos e resíduos têxteis",
+    desc: "Reuso, upcycling e reciclagem.",
     icon: <BoxesIcon width={28} height={28} />,
     bulletClass: "bg-amber-400",
     accentClass: "text-amber-400",
   },
   {
     name: "Perigosos",
-    tag: "Classe I · Incineração industrial",
-    desc: "Resíduos químicos, solventes e materiais tóxicos de processos industriais — destinação via incineração controlada.",
+    tag: "Químicos, contaminados e Classe I",
+    desc: "Tratamento e incineração industrial.",
     icon: <AlertTriangleIcon width={28} height={28} />,
     bulletClass: "bg-orange-500",
     accentClass: "text-orange-400",
@@ -245,7 +251,7 @@ export default function SolucoesPage() {
                   <HeroStat value="+200" label="toneladas gerenciadas" />
                   <HeroStat value="+100" label="operações realizadas" />
                   <HeroStat value="100%" label="rastreabilidade documental" />
-                  <HeroStat value="94%" label="redução de envio ao aterro" />
+                  <HeroStat value="92%" label="redução de envio ao aterro" />
                 </ul>
               </div>
             </Reveal>
@@ -287,7 +293,7 @@ export default function SolucoesPage() {
                   <p className="text-sm text-(--color-text-muted) leading-relaxed mb-5">
                     {desc}
                   </p>
-                  <ul className="space-y-2 text-left w-full max-w-[15rem]">
+                  <ul className="space-y-2 text-left w-full max-w-[17rem]">
                     {items.map((it) => (
                       <li
                         key={it}
@@ -352,7 +358,7 @@ export default function SolucoesPage() {
               </div>
             </div>
             <div className="grid gap-3">
-              <StatCard value="93%" label="desvio de aterro" />
+              <StatCard value="92%" label="desvio de aterro" />
               <StatCard value="96%" label="carbono compensado" />
               <StatCard value="100%" label="destinação ambientalmente adequada" />
             </div>

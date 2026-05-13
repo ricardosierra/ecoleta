@@ -9,6 +9,7 @@ import Typewriter from "@/components/Typewriter";
 import LetterReveal from "@/components/LetterReveal";
 import LeafDecor from "@/components/LeafDecor";
 import TiltCard from "@/components/TiltCard";
+import HeroVideo from "@/components/HeroVideo";
 import {
   AlertTriangleIcon,
   ArrowRightIcon,
@@ -19,7 +20,6 @@ import {
   ScaleIcon,
   SettingsIcon,
   ShieldIcon,
-  TrendingDownIcon,
   UsersIcon,
 } from "@/components/icons";
 
@@ -29,14 +29,6 @@ const problems = [
   { title: "Acúmulo e desorganização", desc: "Caçambas mal posicionadas, pontos de descarte sem padrão." },
   { title: "Risco de multa", desc: "Resíduos sem documentação ambiental válida expõem o negócio." },
   { title: "Falta de documentação", desc: "Ausência de PGRS, MTR e CDF inviabiliza auditoria e ESG." },
-];
-
-const solution = [
-  "Separação por fração",
-  "Supervisão técnica na operação",
-  "Controle da área de descarte",
-  "Destinação ambientalmente adequada",
-  "Rastreabilidade completa",
 ];
 
 const consultoria = [
@@ -49,17 +41,41 @@ const consultoria = [
 ];
 
 const diferenciais = [
-  { icon: SettingsIcon, title: "Consultoria", desc: "Estruturação técnica da gestão de resíduos da sua operação." },
-  { icon: UsersIcon, title: "Supervisão no local", desc: "Controle real da operação com presença técnica contínua." },
-  { icon: BoxesIcon, title: "Organização operacional", desc: "Caçambas, contêineres e pontos de descarte padronizados." },
-  { icon: FileTextIcon, title: "Emissão de MTR e CDF", desc: "Documentação ambiental completa e rastreável." },
-  { icon: ClipboardIcon, title: "Relatório ESG", desc: "Indicadores ambientais para tomada de decisão e divulgação." },
-  { icon: ShieldIcon, title: "PNRS · ISO 14001", desc: "Conformidade com a legislação e alinhamento à norma." },
+  {
+    icon: SettingsIcon,
+    title: "Gestão multiresíduos",
+    desc: "Um único parceiro para toda a sua operação. Integração de fornecedores, redução de custo e mais controle.",
+  },
+  {
+    icon: UsersIcon,
+    title: "Supervisão técnica contínua",
+    desc: "Operação acompanhada por especialista. Controle real da separação, limpeza e fluxo dos resíduos.",
+  },
+  {
+    icon: BoxesIcon,
+    title: "Organização operacional",
+    desc: "Fluxo estruturado do início ao fim. Caçambas, pontos de descarte e logística pensados para evitar falhas.",
+  },
+  {
+    icon: FileTextIcon,
+    title: "Rastreabilidade e documentação",
+    desc: "MTR, CDF, PGRS e controle completo. Tudo registrado, auditável e em conformidade com a PNRS.",
+  },
+  {
+    icon: ClipboardIcon,
+    title: "Indicadores ESG e carbono",
+    desc: "Dados reais para tomada de decisão. Relatórios ESG + compensação estimada de carbono com metodologia reconhecida.",
+  },
+  {
+    icon: ShieldIcon,
+    title: "Conformidade e inovação ambiental",
+    desc: "PNRS, ISO 14001 e soluções pioneiras. Gestão alinhada à legislação, incluindo atuação com resíduos têxteis.",
+  },
 ];
 
 const resultados = [
-  { symbol: <TrendingDownIcon width={36} height={36} />, label: "Redução de custo operacional" },
-  { symbol: "68%", label: "Menos envio ao aterro" },
+  { symbol: "↓R$", label: "Redução de custo operacional" },
+  { symbol: "92%", label: "Menos envio ao aterro" },
   { symbol: <CheckIcon width={36} height={36} />, label: "Operação organizada e documentada" },
   { symbol: <ScaleIcon width={36} height={36} />, label: "Segurança jurídica e ambiental" },
   { symbol: "ESG", label: "Valor e reputação para sua marca" },
@@ -90,19 +106,11 @@ export default function HomePage() {
       {/* HERO */}
       <section className="relative bg-(--color-bg-dark) text-white overflow-hidden">
         {/* Vídeo de fundo */}
-        <video
-          aria-hidden
-          autoPlay
-          loop
-          muted
-          playsInline
+        <HeroVideo
           className="absolute inset-0 w-full h-full object-cover pointer-events-none"
-        >
-          <source src="/hero-video.webm" type="video/webm" />
-          <source src="/hero-video.mp4" type="video/mp4" />
-        </video>
+        />
         {/* Overlay escuro para legibilidade do texto */}
-        <div aria-hidden className="absolute inset-0 bg-(--color-bg-dark)/80 pointer-events-none" />
+        <div aria-hidden className="absolute inset-0 bg-(--color-bg-dark)/62 pointer-events-none" />
         {/* Gradiente de cor de marca */}
         <div
           aria-hidden
@@ -112,7 +120,7 @@ export default function HomePage() {
               "radial-gradient(circle at 20% 0%, rgba(126,217,87,0.5) 0%, transparent 40%), radial-gradient(circle at 80% 100%, rgba(126,217,87,0.3) 0%, transparent 50%)",
           }}
         />
-        <div className="container-page relative pt-12 pb-20 md:pt-20 md:pb-28">
+        <div className="container-page relative pt-10 pb-16 md:pt-16 md:pb-24">
           <div className="grid gap-12 lg:grid-cols-[1.2fr_1fr] items-center">
             <Reveal>
               <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-(--color-accent-soft) text-(--color-accent) text-xs font-semibold tracking-wide">
@@ -197,32 +205,9 @@ export default function HomePage() {
         </ul>
       </Section>
 
-      {/* SOLUÇÃO */}
-      <Section tone="dark" id="solucao">
-        <Reveal>
-          <SectionHeader
-            eyebrow="A Solução"
-            title="A Ecoleta organiza, controla e comprova."
-            tone="dark"
-          />
-        </Reveal>
-        <ul className="grid gap-3 max-w-3xl">
-          {solution.map((item, i) => (
-            <Reveal key={item} as="li" delay={i * 70}>
-              <div className="flex items-center gap-4 px-5 py-4 rounded-[10px] bg-[#0a1810] border border-(--color-border-dark)">
-                <span className="shrink-0 size-9 rounded-full bg-(--color-accent) text-(--color-bg-dark) flex items-center justify-center">
-                  <CheckIcon width={18} height={18} strokeWidth={2.5} />
-                </span>
-                <span className="text-base md:text-lg">{item}</span>
-              </div>
-            </Reveal>
-          ))}
-        </ul>
-      </Section>
-
       {/* CONSULTORIA */}
       <Section tone="white" id="consultoria">
-        <div className="grid gap-12 lg:grid-cols-2 items-start">
+        <div className="grid gap-10 lg:grid-cols-2 items-center">
           <Reveal>
             <p className="eyebrow text-(--color-secondary) flex items-center gap-2">
               <span className="inline-block size-1.5 rounded-full bg-current" />
@@ -235,14 +220,14 @@ export default function HomePage() {
                 charDelay={25}
               />
             </h2>
-            <p className="mt-5 text-base md:text-lg text-(--color-text-muted) leading-relaxed">
+            <p className="mt-5 text-base text-(--color-text-muted) leading-relaxed">
               A Ecoleta não atua apenas na operação. Estruturamos e orientamos
               empresas para reduzir desperdícios, melhorar processos e diminuir
               custos com resíduos.
             </p>
           </Reveal>
           <Reveal delay={120}>
-            <ul className="grid gap-3 sm:grid-cols-2">
+            <ul className="grid gap-3 sm:grid-cols-2 max-w-2xl mx-auto">
               {consultoria.map((item) => (
                 <li
                   key={item}
@@ -301,22 +286,20 @@ export default function HomePage() {
               <LetterReveal text="Impacto de Carbono" charDelay={20} />
             </Eyebrow>
             <h2 className="section-title mt-4">
-              <LetterReveal text="Sua operação também gera " delay={18 * 20 + 100} charDelay={25} />
-              <span className="text-(--color-accent)">
-                <LetterReveal text="impacto positivo" delay={18 * 20 + 100 + 24 * 25 + 80} charDelay={25} />
-              </span>
+              <LetterReveal text="Sua operação gera carbono evitado — e a gente comprova" delay={18 * 20 + 100} charDelay={25} />
             </h2>
-            <p className="mt-5 text-base md:text-lg text-white/80 leading-relaxed max-w-xl">
-              A destinação correta de recicláveis e orgânicos permite a
-              compensação de carbono da operação. Transformamos resíduos em
-              impacto ambiental mensurável.
+            <p className="mt-5 text-base text-white/80 leading-relaxed max-w-xl">
+              A gestão correta dos resíduos não só reduz impacto — ela gera
+              dados ambientais reais. Com rastreabilidade por fração, pesagem e
+              destinação licenciada, calculamos o carbono evitado da operação
+              com base em metodologias reconhecidas (GHG Protocol e DEFRA).
             </p>
             <p className="mt-6 text-xs text-white/40">
-              Indicador ilustrativo. Ajustar com dados reais da operação.
+              Indicadores calculados a partir de dados reais da operação.
             </p>
           </Reveal>
           <Reveal delay={150} className="flex justify-center">
-            <DonutChart value={68} label="desvio de aterro" size={260} />
+            <DonutChart value={92} label="desvio de aterro" size={240} />
           </Reveal>
         </div>
       </Section>
@@ -357,12 +340,13 @@ export default function HomePage() {
       <section className="bg-(--color-accent) py-16 md:py-20">
         <div className="container-page text-center">
           <Reveal>
-            <h2 className="text-3xl md:text-5xl font-bold text-(--color-bg-dark) leading-tight tracking-tight">
-              <LetterReveal text="Transformamos resíduos em reputação" charDelay={30} />
+            <h2 className="text-2xl md:text-4xl font-bold text-(--color-bg-dark) leading-tight tracking-tight">
+              <LetterReveal text="Transformamos resíduos em reputação." charDelay={30} />
             </h2>
-            <p className="mt-4 text-(--color-bg-dark)/80 text-base md:text-lg">
-              Fale com um especialista e descubra o que a Ecoleta pode fazer
-              pela sua operação.
+            <p className="mt-4 text-(--color-bg-dark)/80 text-base max-w-3xl mx-auto">
+              Soluções em gestão de resíduos com rastreabilidade, supervisão
+              técnica e conformidade ambiental para operações mais organizadas,
+              seguras e sustentáveis.
             </p>
             <div className="mt-8 flex flex-wrap gap-3 justify-center">
               <Button href="/contato" variant="dark" iconRight={<ArrowRightIcon width={18} height={18} />}>
