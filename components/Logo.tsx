@@ -5,7 +5,7 @@ type Props = {
   className?: string;
   /**
    * "dark" → logo preta + verde (fundos claros)
-   * "white" → logo branca + verde via CSS filter (fundos escuros)
+   * "white" → logo toda branca (fundos escuros)
    */
   variant?: "dark" | "white";
   /** Height in pixels — controls actual rendered CSS height. */
