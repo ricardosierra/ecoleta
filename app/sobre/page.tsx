@@ -13,12 +13,12 @@ import {
 
 export const metadata: Metadata = {
   ...createPageMetadata({
-    title: "Sobre a Ecoleta",
+    title: "Sobre a Ecoleva",
     description:
-      "Quem é a Ecoleta — empresa de gestão de resíduos com presença técnica direta, rastreabilidade e foco em conformidade ambiental e ESG.",
+      "Quem é a Ecoleva, empresa de gestão de resíduos com presença técnica direta, rastreabilidade e foco em conformidade ambiental e ESG.",
     path: "/sobre",
     keywords: [
-      "sobre Ecoleta",
+      "sobre Ecoleva",
       "empresa gestão de resíduos",
       "Econformidade",
       "responsável técnica ambiental",
@@ -49,8 +49,8 @@ const caseModelo = [
 
 const galleryItems = [
   {
-    src: "/gallery/equipe-sambadrome.jpg",
-    alt: "Equipe Ecoleta em operação no Sambódromo",
+    src: "/gallery/equipe-ecoleva.jpg",
+    alt: "Equipe Ecoleva reunida em operação",
   },
   {
     src: "/gallery/supervisao-coleta-01.jpg",
@@ -62,15 +62,15 @@ const galleryItems = [
   },
   {
     src: "/gallery/operacao-triagem-noturna.jpg",
-    alt: "Equipe Ecoleta fazendo triagem noturna de resíduos",
+    alt: "Equipe Ecoleva fazendo triagem noturna de resíduos",
   },
   {
-    src: "/gallery/treinamento-equipe-01.jpg",
-    alt: "Equipe em treinamento operacional Ecoleta",
+    src: "/gallery/triagem-reciclaveis-dia.jpg",
+    alt: "Equipe Ecoleva triando recicláveis durante operação em campo",
   },
   {
-    src: "/gallery/treinamento-equipe-02.jpg",
-    alt: "Treinamento de equipe com operação de resíduos ao fundo",
+    src: "/gallery/pontos-coleta-sustentavel.jpg",
+    alt: "Pontos de coleta seletiva sinalizados em evento sustentável",
   },
 ];
 
@@ -86,32 +86,32 @@ export default function SobrePage() {
             conformidade ambiental
           </>
         }
-        subtitle="A Ecoleta estrutura operações de resíduos com foco em organização, rastreabilidade e segurança ambiental."
+        subtitle="A Ecoleva estrutura operações de resíduos com foco em organização, rastreabilidade e segurança ambiental."
       />
 
-      {/* Quem é a Ecoleta */}
+      {/* Quem é a Ecoleva */}
       <Section tone="white" id="quem-somos">
         <div className="grid gap-10 lg:grid-cols-[1.05fr_1fr] items-center">
           <Reveal>
             <Eyebrow className="text-(--color-secondary)">A empresa</Eyebrow>
-            <h2 className="section-title mt-4">Quem é a Ecoleta</h2>
+            <h2 className="section-title mt-4">Quem é a Ecoleva</h2>
             <p className="mt-5 text-base text-(--color-text-muted) leading-relaxed">
-              A Ecoleta estrutura operações de resíduos com foco em organização,
+              A Ecoleva estrutura operações de resíduos com foco em organização,
               rastreabilidade e segurança ambiental. Atendemos empresas,
               indústrias, eventos e operações complexas, com presença técnica
               direta no local.
             </p>
             <p className="mt-4 text-base text-(--color-text-muted) leading-relaxed">
-              Transformamos resíduos em reputação — entregando não só destinação
+              Transformamos resíduos em reputação, entregando não só destinação
               correta, mas também os indicadores e a documentação que comprovam
               o impacto positivo da operação.
             </p>
           </Reveal>
           <Reveal delay={120}>
-            <div className="relative aspect-[4/5] rounded-[10px] overflow-hidden border border-(--color-border-light) bg-(--color-bg-light)">
+            <div className="relative aspect-[4/3] rounded-[10px] overflow-hidden border border-(--color-border-light) bg-(--color-bg-light)">
               <Image
-                src="/gallery/treinamento-equipe-01.jpg"
-                alt="Equipe Ecoleta reunida em treinamento operacional"
+                src="/gallery/equipe-ecoleva.jpg"
+                alt="Equipe Ecoleva reunida em operação"
                 fill
                 sizes="(max-width: 1024px) 100vw, 45vw"
                 className="object-cover"
@@ -126,7 +126,7 @@ export default function SobrePage() {
         <Reveal>
           <SectionHeader
             eyebrow="Case modelo"
-            title="Como uma operação se transforma com a Ecoleta"
+            title="Como uma operação se transforma com a Ecoleva"
           />
         </Reveal>
         <div className="grid gap-5 md:grid-cols-3">
@@ -168,8 +168,12 @@ export default function SobrePage() {
               <span className="text-(--color-accent)">sustentabilidade</span>
             </h2>
             <p className="mt-5 text-base text-(--color-text-muted) leading-relaxed max-w-xl">
-              A Econformidade é o braço tecnológico da Ecoleta, responsável por
-              automação, indicadores ESG e estruturação de dados ambientais.
+              A{" "}
+              <strong className="font-bold text-(--color-bg-dark)">
+                Econformidade
+              </strong>{" "}
+              é o braço tecnológico da Ecoleva, responsável por automação,
+              indicadores ESG e estruturação de dados ambientais.
             </p>
             <ul className="mt-6 grid gap-3 sm:grid-cols-2">
               {["Automação", "Dashboards", "Sistemas de controle", "Treinamentos"].map(
@@ -189,7 +193,7 @@ export default function SobrePage() {
               <div className="relative sm:col-span-2 aspect-[16/9] rounded-[10px] overflow-hidden border border-(--color-border-light) bg-white">
                 <Image
                   src="/gallery/dashboard-indicadores.png"
-                  alt="Dashboard de indicadores ambientais da Ecoleta"
+                  alt="Dashboard de indicadores ambientais da Ecoleva"
                   fill
                   sizes="(max-width: 1024px) 100vw, 55vw"
                   className="object-cover"
@@ -198,7 +202,7 @@ export default function SobrePage() {
               <div className="relative aspect-[4/3] rounded-[10px] overflow-hidden border border-(--color-border-light) bg-white">
                 <Image
                   src="/gallery/treinamento-equipe-01.jpg"
-                  alt="Treinamento operacional da equipe Ecoleta"
+                  alt="Treinamento operacional da equipe Ecoleva"
                   fill
                   sizes="(max-width: 640px) 100vw, 28vw"
                   className="object-cover"
@@ -226,7 +230,7 @@ export default function SobrePage() {
               Vamos estruturar a sua operação?
             </h2>
             <p className="mt-3 text-(--color-bg-dark)/80">
-              Solicite um diagnóstico e veja o que a Ecoleta pode entregar.
+              Solicite um diagnóstico e veja o que a Ecoleva pode entregar.
             </p>
             <div className="mt-7">
               <Button

@@ -52,12 +52,7 @@ export default function Typewriter({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (
-      window.matchMedia("(prefers-reduced-motion: reduce), (max-width: 767px)")
-        .matches
-    ) {
-      return;
-    }
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     if (words.length <= 1) return;
 
     // eslint-disable-next-line react-hooks/set-state-in-effect

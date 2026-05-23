@@ -10,16 +10,19 @@ import LeafDecor from "@/components/LeafDecor";
 import TiltCard from "@/components/TiltCard";
 import {
   ArrowRightIcon,
-  CarIcon,
   ClipboardIcon,
-  DropletIcon,
   FileTextIcon,
+  ImpactCarbonIcon,
+  ImpactCarsIcon,
+  ImpactEnergyIcon,
+  ImpactPeopleIcon,
+  ImpactTreesIcon,
+  ImpactWaterIcon,
   LeafIcon,
   RecycleIcon,
   SeedlingIcon,
   ShieldIcon,
   UsersIcon,
-  ZapIcon,
 } from "@/components/icons";
 
 export const metadata: Metadata = {
@@ -33,12 +36,12 @@ export const metadata: Metadata = {
 };
 
 const impactoIndicadores = [
-  { icon: UsersIcon,   value: "169,9 Mil",  label: "Pessoas impactadas" },
-  { icon: LeafIcon,    value: "90,9 tCO₂e", label: "CO₂ evitado" },
-  { icon: ZapIcon,     value: "118,1 Mil kWh", label: "Energia economizada" },
-  { icon: SeedlingIcon,value: "645",         label: "Árvores preservadas" },
-  { icon: CarIcon,     value: "53",          label: "Carros fora de circulação" },
-  { icon: DropletIcon, value: "3,4 Mi",      label: "Litros de água poupada" },
+  { icon: ImpactPeopleIcon, value: "169,9 Mil", label: "Pessoas impactadas" },
+  { icon: ImpactCarbonIcon, value: "90,9 tCO₂e", label: "CO₂ evitado" },
+  { icon: ImpactEnergyIcon, value: "118,1 Mil kWh", label: "Energia economizada" },
+  { icon: ImpactTreesIcon, value: "645", label: "Árvores preservadas" },
+  { icon: ImpactCarsIcon, value: "53", label: "Carros fora de circulação" },
+  { icon: ImpactWaterIcon, value: "3,4 Mi", label: "Litros de água poupada" },
 ];
 
 const pilares = [
@@ -113,7 +116,7 @@ export default function EsgPage() {
           variant="primary"
           iconRight={<ArrowRightIcon width={18} height={18} />}
         >
-          Conversar com a Ecoleta
+          Conversar com a Ecoleva
         </Button>
       </PageHero>
 
@@ -152,23 +155,35 @@ export default function EsgPage() {
       </Section>
 
       {/* Indicadores de impacto */}
-      <Section tone="white" id="indicadores">
+      <Section
+        tone="white"
+        id="indicadores"
+        className="py-14 md:py-20"
+        innerClassName="max-w-[1320px]"
+      >
         <Reveal>
-          <SectionHeader
-            eyebrow="Impacto mensurável"
-            title="Números reais da nossa operação"
-            align="center"
-          />
+          <header className="mb-9 md:mb-12 text-center">
+            <Eyebrow className="mb-5 justify-center text-(--color-accent)">
+              Impacto mensurável
+            </Eyebrow>
+            <h2 className="mx-auto max-w-5xl text-balance text-4xl md:text-5xl lg:text-[3.35rem] font-bold leading-tight tracking-normal text-(--color-text)">
+              Números reais da nossa operação
+            </h2>
+          </header>
         </Reveal>
-        <ul className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
+        <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 md:gap-6 lg:gap-7">
           {impactoIndicadores.map(({ icon: Icon, value, label }, i) => (
             <Reveal key={label} as="li" delay={i * 80}>
-              <div className="flex flex-col items-center text-center p-6 rounded-[10px] border border-(--color-border-light) bg-(--color-bg-light) h-full">
-                <span className="size-12 rounded-full bg-(--color-accent-soft) text-(--color-secondary) flex items-center justify-center mb-4">
-                  <Icon width={22} height={22} />
+              <div className="flex min-h-[13.75rem] h-full flex-col items-center justify-center rounded-[10px] border border-(--color-border-dark) bg-(--color-bg-dark) px-6 py-7 text-center shadow-[var(--shadow-sm)] md:min-h-[14.5rem] md:px-8 md:py-8">
+                <span className="mb-5 flex size-24 items-center justify-center rounded-full border-2 border-white/15 bg-white/[0.06] text-(--color-accent) shadow-[0_0_0_8px_var(--color-accent-soft),0_0_28px_var(--color-accent-soft)] md:size-28">
+                  <Icon width={58} height={58} />
                 </span>
-                <p className="text-2xl md:text-3xl font-bold text-(--color-bg-dark) leading-tight">{value}</p>
-                <p className="mt-1.5 text-xs uppercase tracking-widest text-(--color-text-muted)">{label}</p>
+                <p className="text-3xl font-bold leading-none tracking-normal text-white sm:text-[2.15rem] md:text-[2.55rem]">
+                  {value}
+                </p>
+                <p className="mt-4 text-xs font-medium uppercase tracking-[0.18em] text-white/60 md:text-sm">
+                  {label}
+                </p>
               </div>
             </Reveal>
           ))}
@@ -213,17 +228,17 @@ export default function EsgPage() {
           <Reveal>
             <Eyebrow>Compensação de carbono</Eyebrow>
             <h2 className="section-title mt-4">
-              Sua operação gera carbono evitado — e a gente comprova
+              Sua operação gera carbono evitado e a gente comprova
             </h2>
             <p className="mt-5 text-base text-white/80 leading-relaxed max-w-xl">
-              A gestão correta dos resíduos não só reduz impacto — ela gera
+              A gestão correta dos resíduos não só reduz impacto, ela gera
               dados ambientais reais. Com rastreabilidade por fração, pesagem e
               destinação licenciada, calculamos o carbono evitado da operação
               com base em metodologias reconhecidas (GHG Protocol e DEFRA).
             </p>
             <p className="mt-6 inline-flex items-center gap-2 text-xs text-white/50 px-3 py-2 rounded-full border border-white/10">
               <SeedlingIcon width={14} height={14} />
-              Baseado em metodologia reconhecida — GHG Protocol
+              Baseado em metodologia reconhecida, GHG Protocol
             </p>
           </Reveal>
           <Reveal delay={150} className="flex justify-center">

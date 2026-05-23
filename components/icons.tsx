@@ -17,6 +17,35 @@ const baseProps: SVGProps<SVGSVGElement> = {
   "aria-hidden": true,
 };
 
+const wasteIconProps: SVGProps<SVGSVGElement> = {
+  viewBox: "0 0 64 64",
+  fill: "none",
+  width: 48,
+  height: 48,
+  "aria-hidden": true,
+};
+
+const wasteStrokeProps: SVGProps<SVGSVGElement> = {
+  strokeWidth: 3.2,
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+};
+
+const wasteMainStroke = "var(--color-white)";
+const wasteAccentStroke = "var(--color-accent)";
+
+const impactIconProps: SVGProps<SVGSVGElement> = {
+  viewBox: "0 0 64 64",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 2.8,
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+  width: 56,
+  height: 56,
+  "aria-hidden": true,
+};
+
 export const CheckIcon = (p: SVGProps<SVGSVGElement>) => (
   <svg {...baseProps} {...p}>
     <path d="m4.5 12.5 5 5 10-11" />
@@ -210,5 +239,186 @@ export const CarIcon = (p: SVGProps<SVGSVGElement>) => (
 export const DropletIcon = (p: SVGProps<SVGSVGElement>) => (
   <svg {...baseProps} {...p}>
     <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" />
+  </svg>
+);
+
+export const ImpactPeopleIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...impactIconProps} {...p}>
+    <path d="M14 25.5 27 15l10 7.5L52 10" />
+    <path d="M52 10v10" />
+    <path d="M42 10h10" />
+    <circle cx="20" cy="36" r="4.5" />
+    <circle cx="32" cy="33.5" r="4.5" />
+    <circle cx="44" cy="36" r="4.5" />
+    <path d="M12 52v-3.5c0-5 3.3-8.2 8-8.2s8 3.2 8 8.2V52" />
+    <path d="M24 52v-5.3c0-5.2 3.4-8.5 8-8.5s8 3.3 8 8.5V52" />
+    <path d="M36 52v-3.5c0-5 3.3-8.2 8-8.2s8 3.2 8 8.2V52" />
+  </svg>
+);
+
+export const ImpactCarbonIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...impactIconProps} {...p}>
+    <path d="M20.5 42h25A11.2 11.2 0 0 0 46 19.6a15.2 15.2 0 0 0-29.5 5A8.8 8.8 0 0 0 20.5 42Z" />
+    <text
+      x="32"
+      y="34"
+      fill="currentColor"
+      stroke="none"
+      textAnchor="middle"
+      fontSize="11"
+      fontWeight="700"
+    >
+      CO2
+    </text>
+    <path d="M32 45v10" />
+    <path d="m26.5 49.5 5.5 5.5 5.5-5.5" />
+  </svg>
+);
+
+export const ImpactEnergyIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...impactIconProps} {...p}>
+    <path d="M27 8 13.5 35H28l-5 21 20-30H29l6-18Z" />
+    <path d="M48 18v11" />
+    <path d="M56 18v11" />
+    <path d="M44 29h16" />
+    <path d="M52 29v8.5c0 6-4 10-10 10h-2" />
+    <path d="M32 47.5h8" />
+  </svg>
+);
+
+export const ImpactTreesIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...impactIconProps} {...p}>
+    <path d="M31 42H18.5A10.5 10.5 0 0 1 17 21.1a15 15 0 0 1 29.1 4.8" />
+    <path d="M32 31v23" />
+    <path d="m23 38 9 7 9-7" />
+    <path d="M21 54h22" />
+    <circle cx="47" cy="43" r="10" />
+    <path d="m42.5 43 3 3 6-6" />
+  </svg>
+);
+
+export const ImpactCarsIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...impactIconProps} {...p}>
+    <path d="M14 35h32l-4.5-12.5a5 5 0 0 0-4.7-3.3H23.2a5 5 0 0 0-4.7 3.3L14 35Z" />
+    <path d="M14 35v12h8" />
+    <path d="M42 47h4" />
+    <path d="M20 47a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
+    <path d="M40 47a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
+    <path d="M21 27h18" />
+    <circle cx="49" cy="43" r="10" />
+    <path d="M44.5 43h9" />
+  </svg>
+);
+
+export const ImpactWaterIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...impactIconProps} {...p}>
+    <path d="M28 9C20 20.5 14 30 14 39.5 14 49 20.2 55 28 55s14-6 14-15.5C42 30 36 20.5 28 9Z" />
+    <path d="M22 43c1.5 3 3.8 4.5 7 4.5" />
+    <path d="M48 13v42" />
+    <path d="M48 16h7" />
+    <path d="M48 25h5" />
+    <path d="M48 34h7" />
+    <path d="M48 43h5" />
+    <path d="M48 52h7" />
+  </svg>
+);
+
+export const WasteRecyclablesIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...wasteIconProps} {...p}>
+    <g {...wasteStrokeProps} stroke={wasteMainStroke}>
+      <path d="M19 12h10" />
+      <path d="M21 12v6c-3.2 2.3-5 5.7-5 9.6V51c0 3 2.4 5 5.4 5h8.2c3 0 5.4-2 5.4-5V27.6c0-3.9-1.8-7.3-5-9.6v-6" />
+      <path d="M16.5 27h18" />
+      <path d="M16.5 44.5h18" />
+      <path d="M40 34h8.8c2.2 0 3.8 1.6 3.8 3.8v14c0 2.2-1.6 3.8-3.8 3.8H40c-2.2 0-3.8-1.6-3.8-3.8v-14c0-2.2 1.6-3.8 3.8-3.8Z" />
+      <path d="M36.8 40.5h15.1" />
+    </g>
+    <g {...wasteStrokeProps} stroke={wasteAccentStroke}>
+      <path d="m48.5 10 3.2 5.5h-6.3" />
+      <path d="m51.7 15.5-1.4-2.4" />
+      <path d="m55.3 21.1-6.4.1 3.1-5.5" />
+      <path d="m48.9 21.2 2.7 1.6" />
+      <path d="m44.6 20.8 3.2-5.5 3.1 5.4" />
+      <path d="m47.8 15.3-3.2.2" />
+    </g>
+  </svg>
+);
+
+export const WasteOrganicsIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...wasteIconProps} {...p}>
+    <g {...wasteStrokeProps} stroke={wasteMainStroke}>
+      <path d="M28.5 14c2.7 11 2.5 25.4-.6 38" />
+      <path d="M23.5 17.5c3.1 9.4.8 20.2-10.6 28.2 8.5 4.1 17.4.5 20.3-11.1" />
+      <path d="M35.2 17.2c-4.2 9-2.9 20.2 9.7 28.4-8.7 3.8-17.2.8-20.2-10.8" />
+      <path d="M20.8 52.4c6.9 3 14.1 2.3 21.6-2.2" />
+      <path d="M27.9 13.7c2.3-1.7 4.9-1.7 7.3.1" />
+    </g>
+    <g {...wasteStrokeProps} stroke={wasteAccentStroke}>
+      <path d="M40 22.4c3.4-8.5 11.6-8.1 17.2-12.1-.5 8.8-4.6 15.1-12.3 15.7-2.4.2-4-.7-4.9-3.6Z" />
+      <path d="M38.1 27.2c4.4-5.6 10.1-10.5 17.5-15.2" />
+    </g>
+  </svg>
+);
+
+export const WasteRejectsIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...wasteIconProps} {...p}>
+    <g {...wasteStrokeProps} stroke={wasteMainStroke}>
+      <path d="M24.2 17.8c1.5-5 4.1-7.2 7.8-4.9 3.7-2.3 6.3-.1 7.8 4.9" />
+      <path d="M22.2 19.3h19.6" />
+      <path d="M21 21.5c-6.2 10.4-8.3 23.1-4.3 29.6C19.2 55.2 24.5 57 32 57s12.8-1.8 15.3-5.9c4-6.5 1.9-19.2-4.3-29.6" />
+      <path d="M22.4 22.6c5.2 2.7 14 2.7 19.2 0" />
+      <path d="M18.8 50.6c2.7 2 6.9 3 13.2 3s10.5-1 13.2-3" />
+    </g>
+  </svg>
+);
+
+export const WasteInfectantsIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...wasteIconProps} {...p}>
+    <g {...wasteStrokeProps} stroke={wasteMainStroke}>
+      <circle cx="26" cy="29" r="4.8" />
+      <path d="M26.2 24.2c-4.5-4.2-3.5-11 2.3-14.2 4.5 4.4 4.3 11.6.2 15" />
+      <path d="M21.6 30.6c-5.8 1.8-11.6-2-12.4-8.5 6-1.9 12.2 1.5 13.7 6.7" />
+      <path d="M30.4 30.6c5.8 1.8 11.6-2 12.4-8.5-6-1.9-12.2 1.5-13.7 6.7" />
+      <path d="M20.2 39c3.4 3.5 8.3 3.5 11.6 0" />
+      <path d="M14.4 34.6c-2.8 1.4-5 4.1-5.6 7.4" />
+      <path d="M37.6 34.6c2.8 1.4 5 4.1 5.6 7.4" />
+    </g>
+    <g {...wasteStrokeProps} stroke={wasteMainStroke}>
+      <path d="M43.4 39.8 53.8 50.2" />
+      <path d="M39.6 43.6 50 54" />
+      <path d="m45.3 37.9-7.6 7.6 8.8 8.8 7.6-7.6Z" />
+      <path d="M53.4 34.6 58 39.2" />
+      <path d="M56.1 31.9 49.8 38.2" />
+    </g>
+  </svg>
+);
+
+export const WasteTextilesIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...wasteIconProps} {...p}>
+    <g {...wasteStrokeProps} stroke={wasteMainStroke}>
+      <path d="m23.6 16.4 6.6 4.2h3.6l6.6-4.2 10.1 7.2-5.3 8.6-4.8-3V53H23.6V29.2l-4.8 3-5.3-8.6 10.1-7.2Z" />
+      <path d="M30.2 20.6c.3 3.7 7.3 3.7 7.6 0" />
+      <path d="M24 45.7h16" />
+      <path d="M24 52.8h16.4" />
+      <path d="m43.3 34.2 6.9-4.1v20.3l-6.9 4.1" />
+      <path d="m44.1 39 5.4-3.2" />
+    </g>
+  </svg>
+);
+
+export const WasteHazardousIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...wasteIconProps} {...p}>
+    <g {...wasteStrokeProps} stroke={wasteMainStroke}>
+      <path d="M18.5 19.5h7.3l4.1-5h15.2l3.9 5h4.5v30.8c0 3.4-2 5.2-5.2 5.2H23.7c-3.2 0-5.2-1.8-5.2-5.2V19.5Z" />
+      <path d="M23.2 19.3v-5.5h8.2" />
+      <path d="M42.2 14h7.2v5.3" />
+      <path d="M24.5 28.1h17.2" />
+    </g>
+    <g {...wasteStrokeProps} stroke={wasteAccentStroke}>
+      <path d="M25.3 34.2v14.2h16.4V34.2Z" strokeDasharray="6 5" />
+      <path d="m49.8 39.1 9.3 16.3H40.5l9.3-16.3Z" />
+      <path d="M49.8 45.8v4.7" />
+      <path d="M49.8 53.8h.1" />
+    </g>
   </svg>
 );

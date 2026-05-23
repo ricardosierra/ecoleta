@@ -7,7 +7,7 @@ header('Content-Type: application/json; charset=utf-8');
 // ── Configuração ─────────────────────────────────────────────────────────────
 // Substitua pelo e-mail de destino antes do go-live.
 define('CONTACT_TO_EMAIL', getenv('CONTACT_TO_EMAIL') ?: 'diretoria@econformidade.com.br');
-define('CONTACT_FROM',     'noreply@ecoleta.com');
+define('CONTACT_FROM',     'noreply@ecoleva.com');
 // ─────────────────────────────────────────────────────────────────────────────
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -73,7 +73,7 @@ $now           = (new DateTime('now', new DateTimeZone('America/Sao_Paulo')))->f
 // Corpo HTML (template igual ao route.ts Node.js)
 $htmlBody = <<<HTML
 <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#242424;">
-  <h1 style="font-size:18px;margin:0 0 16px;color:#0D1F0F;">Novo contato pelo site Ecoleta</h1>
+  <h1 style="font-size:18px;margin:0 0 16px;color:#0D1F0F;">Novo contato pelo site Ecoleva</h1>
   <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
     <tr><td style="padding:8px 0;color:#5a5a5a;width:160px;">Nome</td><td style="padding:8px 0;font-weight:600;">{$sNome}</td></tr>
     <tr><td style="padding:8px 0;color:#5a5a5a;">E-mail</td><td style="padding:8px 0;"><a href="mailto:{$sEmail}" style="color:#2D5934;">{$sEmail}</a></td></tr>
@@ -85,25 +85,25 @@ $htmlBody = <<<HTML
     <p style="margin:0 0 8px;color:#5a5a5a;font-size:13px;text-transform:uppercase;letter-spacing:0.1em;">Mensagem</p>
     <p style="margin:0;white-space:pre-wrap;">{$mensagem}</p>
   </div>
-  <p style="margin:0;color:#5a5a5a;font-size:12px;">Origem: Site Ecoleta · {$now}</p>
+  <p style="margin:0;color:#5a5a5a;font-size:12px;">Origem: Site Ecoleva · {$now}</p>
 </div>
 HTML;
 
 // Corpo texto puro (fallback)
-$textBody = "Novo contato recebido pelo site Ecoleta\n\n"
+$textBody = "Novo contato recebido pelo site Ecoleva\n\n"
           . "Nome: {$sNome}\n"
           . "E-mail: {$sEmail}\n"
           . "Telefone/WhatsApp: {$sTelefone}\n"
           . "Empresa: {$sEmpresa}\n"
           . "Tipo de operação: {$sTipoOperacao}\n\n"
           . "Mensagem:\n{$mensagem}\n\n"
-          . "Data/Hora: {$now}\nOrigem: Site Ecoleta";
+          . "Data/Hora: {$now}\nOrigem: Site Ecoleva";
 
 // Monta e-mail multipart (HTML + texto)
 $boundary = '----=_' . bin2hex(random_bytes(8));
-$subject  = '=?UTF-8?B?' . base64_encode('Novo contato pelo site Ecoleta') . '?=';
+$subject  = '=?UTF-8?B?' . base64_encode('Novo contato pelo site Ecoleva') . '?=';
 $headers  = implode("\r\n", [
-    'From: Site Ecoleta <' . CONTACT_FROM . '>',
+    'From: Site Ecoleva <' . CONTACT_FROM . '>',
     "Reply-To: {$sEmail}",
     'MIME-Version: 1.0',
     "Content-Type: multipart/alternative; boundary=\"{$boundary}\"",

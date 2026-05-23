@@ -6,15 +6,16 @@ import { cn } from "@/lib/cn";
 type Props = {
   text: string;
   className?: string;
-  /** Delay before the first character appears (ms). */
+  /** Delay before the text appears (ms). */
   delay?: number;
-  /** Gap between each character appearing (ms). */
+  /** Kept for call-site compatibility; static text reveals as one unit. */
   charDelay?: number;
 };
 
 /**
- * Reveals a text string character-by-character (typewriter style) when the
- * element enters the viewport. Respects prefers-reduced-motion.
+ * Reveals a complete text string when the element enters the viewport.
+ * Static copy should never show partial words; the typed effect is reserved for
+ * Typewriter.
  *
  * SSR: renders opacity-0 text (preserves layout, text still in DOM for SEO).
  * After hydration: fires immediately if already in viewport, otherwise waits.
@@ -23,7 +24,6 @@ export default function LetterReveal({
   text,
   className,
   delay = 0,
-  charDelay = 28,
 }: Props) {
   const ref = useRef<HTMLSpanElement>(null);
   const [active, setActive] = useState(false);
@@ -35,10 +35,7 @@ export default function LetterReveal({
       frame = window.requestAnimationFrame(() => setActive(true));
     };
 
-    if (
-      window.matchMedia("(prefers-reduced-motion: reduce), (max-width: 767px)")
-        .matches
-    ) {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       frame = window.requestAnimationFrame(() => setReduced(true));
       return () => window.cancelAnimationFrame(frame);
     }
@@ -84,60 +81,20 @@ export default function LetterReveal({
     );
   }
 
-  // Split into word tokens so each word is wrapped in whitespace-nowrap,
-  // preventing mid-word line breaks caused by per-letter inline-block spans.
-  const tokens = text.split(/( )/);
-  let charIndex = 0;
-
   return (
-    <span ref={ref} className={className}>
-      <span aria-hidden>
-        {tokens.map((token, ti) => {
-          if (token === " ") {
-            const idx = charIndex++;
-            return (
-              <span
-                key={`sp-${ti}`}
-                style={{
-                  opacity: 0,
-                  animationName: "letter-reveal",
-                  animationDuration: "1ms",
-                  animationTimingFunction: "step-end",
-                  animationDelay: `${delay + idx * charDelay}ms`,
-                  animationFillMode: "forwards",
-                }}
-              >
-                {" "}
-              </span>
-            );
-          }
-          const wordChars = token.split("").map((char, ci) => {
-            const idx = charIndex++;
-            return (
-              <span
-                key={`c-${ci}`}
-                style={{
-                  opacity: 0,
-                  display: "inline",
-                  animationName: "letter-reveal",
-                  animationDuration: "1ms",
-                  animationTimingFunction: "step-end",
-                  animationDelay: `${delay + idx * charDelay}ms`,
-                  animationFillMode: "forwards",
-                }}
-              >
-                {char}
-              </span>
-            );
-          });
-          return (
-            <span key={`w-${ti}`} className="inline-block whitespace-nowrap">
-              {wordChars}
-            </span>
-          );
-        })}
-      </span>
-      <span className="sr-only">{text}</span>
+    <span
+      ref={ref}
+      className={className}
+      style={{
+        opacity: 0,
+        animationName: "letter-reveal",
+        animationDuration: "220ms",
+        animationTimingFunction: "ease-out",
+        animationDelay: `${delay}ms`,
+        animationFillMode: "forwards",
+      }}
+    >
+      {text}
     </span>
   );
 }

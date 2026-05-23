@@ -226,7 +226,7 @@ export default async function ConteudoPostPage({ params }: Props) {
                 Precisa organizar sua operação?
               </h2>
               <p className="mt-3 text-sm leading-relaxed text-(--color-text-muted)">
-                A Ecoleta estrutura resíduos, documentação e indicadores com
+                A Ecoleva estrutura resíduos, documentação e indicadores com
                 rastreabilidade para empresas, eventos e indústrias.
               </p>
               <Button href="/contato" variant="secondary" size="sm" className="mt-5">

@@ -14,12 +14,12 @@ type Props = {
 
 export default function Logo({ className, variant = "dark", height = 38 }: Props) {
   const src =
-    variant === "white" ? "/ecoleta-logo-white.png" : "/ecoleta-logo-dark.png";
+    variant === "white" ? "/ecoleva-logo-white.png" : "/ecoleva-logo-dark.png";
 
   return (
     <Image
       src={src}
-      alt="Ecoleta"
+      alt="Ecoleva"
       // intrinsic dimensions for aspect-ratio calculation
       width={1200}
       height={544}
