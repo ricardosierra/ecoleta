@@ -71,7 +71,7 @@ export default function FractionsRotator({
           >
             <span
               className={cn(
-                "size-10 rounded-full flex items-center justify-center shrink-0 bg-white/5",
+                "size-14 rounded-full flex items-center justify-center shrink-0 bg-white/5",
                 f.accentClass
               )}
             >
@@ -156,7 +156,7 @@ export default function FractionsRotator({
         )}
         <span
           className={cn(
-            "size-16 rounded-full flex items-center justify-center bg-white/5 border border-white/10 mb-5",
+            "size-24 rounded-full flex items-center justify-center bg-white/5 border border-white/10 shadow-[0_0_32px_var(--color-accent-soft)] mb-5",
             current.accentClass
           )}
         >

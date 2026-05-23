@@ -28,7 +28,7 @@ export default function Footer() {
                 href={whatsappLink}
                 target="_blank"
                 rel="noopener noreferrer"
-                aria-label="WhatsApp Ecoleta"
+                aria-label="WhatsApp Ecoleva"
                 className="inline-flex items-center justify-center size-10 rounded-full border border-white/15 hover:bg-(--color-accent) hover:text-(--color-bg-dark) hover:border-transparent transition-colors"
               >
                 <WhatsAppIcon width={18} height={18} />
@@ -37,7 +37,7 @@ export default function Footer() {
                 href={siteConfig.social.instagram}
                 target="_blank"
                 rel="noopener noreferrer"
-                aria-label="Instagram Ecoleta"
+                aria-label="Instagram Ecoleva"
                 className="inline-flex items-center justify-center size-10 rounded-full border border-white/15 hover:bg-(--color-accent) hover:text-(--color-bg-dark) hover:border-transparent transition-colors"
               >
                 <InstagramIcon width={18} height={18} />
@@ -46,7 +46,7 @@ export default function Footer() {
                 href={siteConfig.social.linkedin}
                 target="_blank"
                 rel="noopener noreferrer"
-                aria-label="LinkedIn Ecoleta"
+                aria-label="LinkedIn Ecoleva"
                 className="inline-flex items-center justify-center size-10 rounded-full border border-white/15 hover:bg-(--color-accent) hover:text-(--color-bg-dark) hover:border-transparent transition-colors"
               >
                 <LinkedInIcon width={18} height={18} />
@@ -100,9 +100,26 @@ export default function Footer() {
         </div>
 
         <div className="mt-14 pt-6 border-t border-white/10 flex flex-col md:flex-row gap-3 justify-between items-start md:items-center text-xs text-white/50">
-          <p>© {year} Ecoleta. Todos os direitos reservados.</p>
-          <p className="flex items-center gap-1">
-            Site desenvolvido com foco em conformidade e ESG.
+          <p>© {year} Ecoleva. Todos os direitos reservados.</p>
+          <p className="flex items-center gap-1 text-[9px]">
+            Site desenvolvido por{" "}
+            <a
+              href="https://ricasolucoes.com.br"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-(--color-accent) hover:underline transition-colors"
+            >
+              RicaSolucoes
+            </a>{" "}
+            e{" "}
+            <a
+              href="https://sierratecnologia.com.br"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-(--color-accent) hover:underline transition-colors"
+            >
+              SierraTecnologia
+            </a>
           </p>
         </div>
       </div>

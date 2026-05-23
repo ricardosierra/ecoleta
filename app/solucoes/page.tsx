@@ -12,16 +12,16 @@ import LetterReveal from "@/components/LetterReveal";
 import LeafDecor from "@/components/LeafDecor";
 import FractionsRotator, { type Fraction } from "@/components/FractionsRotator";
 import {
-  AlertTriangleIcon,
   ArrowRightIcon,
-  BoxesIcon,
   ClipboardIcon,
   LeafIcon,
-  RecycleIcon,
-  SeedlingIcon,
   SettingsIcon,
-  ShieldIcon,
-  ShuffleIcon,
+  WasteHazardousIcon,
+  WasteInfectantsIcon,
+  WasteOrganicsIcon,
+  WasteRecyclablesIcon,
+  WasteRejectsIcon,
+  WasteTextilesIcon,
 } from "@/components/icons";
 
 export const metadata: Metadata = {
@@ -90,7 +90,7 @@ const fractions: Fraction[] = [
     name: "Recicláveis",
     tag: "Papel • Plástico • Metal • Vidro",
     desc: "Triagem e reciclagem.",
-    icon: <RecycleIcon width={28} height={28} />,
+    icon: <WasteRecyclablesIcon />,
     bulletClass: "bg-(--color-accent)",
     accentClass: "text-(--color-accent)",
   },
@@ -98,7 +98,7 @@ const fractions: Fraction[] = [
     name: "Orgânicos",
     tag: "Restos alimentares e resíduos orgânicos",
     desc: "Compostagem.",
-    icon: <SeedlingIcon width={28} height={28} />,
+    icon: <WasteOrganicsIcon />,
     bulletClass: "bg-emerald-300",
     accentClass: "text-emerald-300",
   },
@@ -106,7 +106,7 @@ const fractions: Fraction[] = [
     name: "Rejeitos",
     tag: "Resíduos sem viabilidade de reciclagem",
     desc: "Destinação ambientalmente adequada.",
-    icon: <ShuffleIcon width={28} height={28} />,
+    icon: <WasteRejectsIcon />,
     bulletClass: "bg-zinc-400",
     accentClass: "text-zinc-300",
   },
@@ -114,7 +114,7 @@ const fractions: Fraction[] = [
     name: "Infectantes",
     tag: "Materiais contaminados e biológicos",
     desc: "Tratamento e incineração licenciada.",
-    icon: <ShieldIcon width={28} height={28} />,
+    icon: <WasteInfectantsIcon />,
     bulletClass: "bg-rose-400",
     accentClass: "text-rose-400",
   },
@@ -122,7 +122,7 @@ const fractions: Fraction[] = [
     name: "Têxteis",
     tag: "Uniformes, tecidos e resíduos têxteis",
     desc: "Reuso, upcycling e reciclagem.",
-    icon: <BoxesIcon width={28} height={28} />,
+    icon: <WasteTextilesIcon />,
     bulletClass: "bg-amber-400",
     accentClass: "text-amber-400",
   },
@@ -130,7 +130,7 @@ const fractions: Fraction[] = [
     name: "Perigosos",
     tag: "Químicos, contaminados e Classe I",
     desc: "Tratamento e incineração industrial.",
-    icon: <AlertTriangleIcon width={28} height={28} />,
+    icon: <WasteHazardousIcon />,
     bulletClass: "bg-orange-500",
     accentClass: "text-orange-400",
     badge: "Classe I · Perigoso",
@@ -158,7 +158,7 @@ export default function SolucoesPage() {
     },
     hasOfferCatalog: {
       "@type": "OfferCatalog",
-      name: "Serviços ambientais Ecoleta",
+      name: "Serviços ambientais Ecoleva",
       itemListElement: [
         "Diagnóstico e PGRS",
         "Supervisão técnica em campo",
@@ -216,7 +216,7 @@ export default function SolucoesPage() {
                 <LetterReveal text="e operação sob controle" delay={200} charDelay={35} />
               </h1>
               <p className="mt-6 text-base md:text-lg text-white/80 max-w-2xl leading-relaxed">
-                A Ecoleta estrutura, acompanha e comprova cada etapa da
+                A Ecoleva estrutura, acompanha e comprova cada etapa da
                 operação, reduzindo riscos e aumentando o controle ambiental.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
@@ -374,7 +374,7 @@ export default function SolucoesPage() {
               Pronto para organizar sua operação?
             </h2>
             <p className="mt-3 text-(--color-bg-dark)/80">
-              Solicite um diagnóstico e veja o que a Ecoleta pode entregar para
+              Solicite um diagnóstico e veja o que a Ecoleva pode entregar para
               sua empresa.
             </p>
             <div className="mt-7">

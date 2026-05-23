@@ -28,9 +28,9 @@ export function GET() {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
     <rss version="2.0">
       <channel>
-        <title>Conteúdos Ecoleta</title>
+        <title>Conteúdos Ecoleva</title>
         <link>${base}/conteudos</link>
-        <description>${escapeXml("Artigos da Ecoleta sobre gestão de resíduos, MTR, CDF, PGRS, ESG, eventos e economia circular.")}</description>
+        <description>${escapeXml("Artigos da Ecoleva sobre gestão de resíduos, MTR, CDF, PGRS, ESG, eventos e economia circular.")}</description>
         <language>pt-BR</language>
         <lastBuildDate>${new Date(updated).toUTCString()}</lastBuildDate>
         ${items}

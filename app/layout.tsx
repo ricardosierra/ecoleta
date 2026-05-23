@@ -35,7 +35,7 @@ export const metadata: Metadata = {
   alternates: {
     canonical: "/",
     types: {
-      "application/rss+xml": [{ url: "/feed.xml", title: "Conteúdos Ecoleta" }],
+      "application/rss+xml": [{ url: "/feed.xml", title: "Conteúdos Ecoleva" }],
     },
   },
   icons: {
@@ -60,7 +60,7 @@ export const metadata: Metadata = {
         url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: "Ecoleta - Gestão de resíduos com rastreabilidade e impacto ESG",
+        alt: "Ecoleva - Gestão de resíduos com rastreabilidade e impacto ESG",
       },
     ],
   },

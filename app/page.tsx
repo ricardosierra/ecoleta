@@ -83,20 +83,22 @@ const resultados = [
 
 const clientes = [
   { name: "Heineken", src: "/logos/heineken.png" },
-  { name: "LIESA", src: "/logos/liesa.png" },
+  { name: "LIESA", src: "/logos/virada-sustentavel.png" },
   { name: "VIBRA", src: "/logos/vibra.png" },
+  { name: "GH Music", src: "/logos/ghmusic.png" },
   { name: "BrasilCap", src: "/logos/brasilcap.png" },
   { name: "CEDAE", src: "/logos/cedae.png" },
   { name: "Rio Carnaval", src: "/logos/rio-carnaval.png" },
-  { name: "Levels", src: "/logos/levels.png" },
+  { name: "Levels", src: "/logos/levels-correct.png" },
   { name: "Bosque Bar", src: "/logos/bosque-bar.png" },
   { name: "Ferro & Brasa", src: "/logos/ferro-e-brasa.png" },
   { name: "WeMake", src: "/logos/wemake.png" },
-  { name: "Virada Sustentável", src: "/logos/virada-sustentavel.png" },
+  { name: "Virada Sustentável", src: "/logos/liesa.png" },
   { name: "Rio FutSummit 26", src: "/logos/rio-futsummit-26.png" },
   { name: "Sacadura 154", src: "/logos/sacadura-154.png" },
-  { name: "NMLSS", src: "/logos/nmlss.png" },
-  { name: "Café Preto Tattoo", src: "/logos/cafe-preto-tattoo.png" },
+  { name: "NMLSS", src: "/logos/nmlss-correct.png" },
+  { name: "Subsea 7", src: "/logos/subsea7.png" },
+  { name: "Café Preto Tattoo", src: "/logos/cafe-preto-tattoo-correct.png" },
   { name: "FuraTodo", src: "/logos/fura-toblu.png" },
 ];
 
@@ -189,8 +191,8 @@ export default function HomePage() {
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {problems.map((p, i) => (
             <Reveal key={p.title} as="li" delay={i * 80}>
-              <Card tone="white" className="h-full flex flex-col">
-                <div className="size-11 rounded-full bg-orange-50 text-orange-500 flex items-center justify-center mb-4">
+              <Card tone="white" className="h-full min-h-[13rem] flex flex-col items-center justify-center text-center">
+                <div className="size-12 rounded-full bg-orange-50 text-orange-500 flex items-center justify-center mb-4">
                   <AlertTriangleIcon width={20} height={20} />
                 </div>
                 <h3 className="font-semibold text-base leading-snug mb-2">
@@ -221,7 +223,7 @@ export default function HomePage() {
               />
             </h2>
             <p className="mt-5 text-base text-(--color-text-muted) leading-relaxed">
-              A Ecoleta não atua apenas na operação. Estruturamos e orientamos
+              A Ecoleva não atua apenas na operação. Estruturamos e orientamos
               empresas para reduzir desperdícios, melhorar processos e diminuir
               custos com resíduos.
             </p>
@@ -241,7 +243,7 @@ export default function HomePage() {
                       className="text-(--color-bg-dark)"
                     />
                   </span>
-                  <span className="text-sm leading-snug">{item}</span>
+                  <span className="text-[0.95rem] md:text-base leading-snug">{item}</span>
                 </li>
               ))}
             </ul>
@@ -286,10 +288,10 @@ export default function HomePage() {
               <LetterReveal text="Impacto de Carbono" charDelay={20} />
             </Eyebrow>
             <h2 className="section-title mt-4">
-              <LetterReveal text="Sua operação gera carbono evitado — e a gente comprova" delay={18 * 20 + 100} charDelay={25} />
+              <LetterReveal text="Sua operação gera carbono evitado e a gente comprova" delay={18 * 20 + 100} charDelay={25} />
             </h2>
             <p className="mt-5 text-base text-white/80 leading-relaxed max-w-xl">
-              A gestão correta dos resíduos não só reduz impacto — ela gera
+              A gestão correta dos resíduos não só reduz impacto, ela gera
               dados ambientais reais. Com rastreabilidade por fração, pesagem e
               destinação licenciada, calculamos o carbono evitado da operação
               com base em metodologias reconhecidas (GHG Protocol e DEFRA).
@@ -326,8 +328,8 @@ export default function HomePage() {
         <Reveal>
           <SectionHeader
             eyebrow="Clientes atendidos"
-            title="Empresas que confiam na Ecoleta"
-            subtitle="Da produtora de eventos à empresa pública — gestão de resíduos que se adapta a qualquer operação."
+            title="Empresas que confiam na Ecoleva"
+            subtitle="Da produtora de eventos à empresa pública, gestão de resíduos que se adapta a qualquer operação."
             align="center"
           />
         </Reveal>

@@ -57,7 +57,7 @@ export const blogPosts: BlogPost[] = [
         ],
       },
       {
-        heading: "Como a Ecoleta organiza essa trilha",
+        heading: "Como a Ecoleva organiza essa trilha",
         body: [
           "A operação fica mais segura quando cada fração tem identificação, pesagem, registro fotográfico, responsável definido e documentação associada. Esse conjunto é o que permite transformar coleta em relatório ambiental.",
           "Para eventos, indústrias e espaços de entretenimento, a rastreabilidade também melhora a comunicação com patrocinadores e parceiros, porque os dados deixam de ser promessa e passam a ser comprovação.",
@@ -107,7 +107,7 @@ export const blogPosts: BlogPost[] = [
       {
         heading: "Indicadores que mostram evolução",
         body: [
-          "A Ecoleta recomenda acompanhar massa por fração, percentual de desvio de aterro, custo por etapa, ocorrências de mistura, status de MTR/CDF e registros fotográficos por período.",
+          "A Ecoleva recomenda acompanhar massa por fração, percentual de desvio de aterro, custo por etapa, ocorrências de mistura, status de MTR/CDF e registros fotográficos por período.",
           "Esses dados mostram onde existe desperdício e onde a operação pode reduzir custo sem perder conformidade.",
         ],
       },
@@ -254,7 +254,7 @@ export const blogPosts: BlogPost[] = [
       {
         heading: "Como isso fortalece reputação",
         body: [
-          "A Ecoleta trata resíduos têxteis como parte da estratégia multiresíduos. O objetivo é reduzir envio a aterro, aumentar controle e transformar descarte em uma narrativa concreta de economia circular.",
+          "A Ecoleva trata resíduos têxteis como parte da estratégia multiresíduos. O objetivo é reduzir envio a aterro, aumentar controle e transformar descarte em uma narrativa concreta de economia circular.",
         ],
       },
     ],

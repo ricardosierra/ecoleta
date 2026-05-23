@@ -1,5 +1,5 @@
 /**
- * Configuração central da Ecoleta.
+ * Configuração central da Ecoleva.
  *
  * Placeholders devem ser substituídos antes do go-live:
  * - WHATSAPP_NUMBER, INSTAGRAM_URL, LINKEDIN_URL
@@ -8,8 +8,8 @@
  */
 
 export const siteConfig = {
-  name: "Ecoleta",
-  legalName: "Ecoleta Soluções Ambientais",
+  name: "Ecoleva",
+  legalName: "Ecoleva Soluções Ambientais",
   technicalPartners: [
     { name: "Rica Soluções", url: "https://ricasolucoes.com.br" },
     { name: "Sierra Tecnologia", url: "https://sierratecnologia.com.br" },
@@ -17,7 +17,7 @@ export const siteConfig = {
   tagline: "Gestão de resíduos com rastreabilidade e impacto ESG",
   description:
     "Gestão completa de resíduos para empresas, eventos e indústrias. Rastreabilidade, conformidade ambiental, MTR, CDF, relatórios ESG e redução do envio ao aterro.",
-  url: process.env.NEXT_PUBLIC_SITE_URL || "https://www.ecoleta.com",
+  url: process.env.NEXT_PUBLIC_SITE_URL || "https://www.ecoleva.com",
   locale: "pt_BR",
   keywords: [
     "gestão de resíduos",
@@ -29,7 +29,7 @@ export const siteConfig = {
     "PGRS",
     "conformidade ambiental",
     "coleta de resíduos",
-    "Ecoleta",
+    "Ecoleva",
     "Econformidade",
   ],
 
@@ -38,12 +38,12 @@ export const siteConfig = {
     email: process.env.NEXT_PUBLIC_CONTACT_EMAIL || "diretoria@econformidade.com.br",
     /** Número de WhatsApp em formato internacional sem caracteres especiais. */
     whatsappNumber: process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || "5521991529383",
-    whatsappMessage: "Olá! Gostaria de falar com um especialista da Ecoleta.",
+    whatsappMessage: "Olá! Gostaria de falar com um especialista da Ecoleva.",
   },
 
   social: {
     instagram:
-      process.env.NEXT_PUBLIC_INSTAGRAM_URL || "https://instagram.com/ecoleta.eco",
+      process.env.NEXT_PUBLIC_INSTAGRAM_URL || "https://instagram.com/ecoleva.eco",
     linkedin:
       process.env.NEXT_PUBLIC_LINKEDIN_URL ||
       "https://linkedin.com/company/econformidade",

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
-  <title id="title">Ecoleta</title>
-  <desc id="desc">Simbolo circular verde da Ecoleta inspirado em diafragma e rastreabilidade ambiental.</desc>
+  <title id="title">Ecoleva</title>
+  <desc id="desc">Simbolo circular verde da Ecoleva inspirado em diafragma e rastreabilidade ambiental.</desc>
   <rect width="512" height="512" rx="112" fill="#0d1f0f"/>
   <circle cx="256" cy="256" r="174" fill="#2d5934"/>
   <path d="M256 82a174 174 0 0 1 145 78l-137 43-25-118c6-2 11-3 17-3Z" fill="#7ed957"/>

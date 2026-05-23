@@ -38,65 +38,82 @@ export default function Header() {
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [open]);
+
   return (
-    <header
-      className={cn(
-        "fixed inset-x-0 top-0 z-50 bg-(--color-bg-dark) border-b transition-[backdrop-filter,box-shadow,border-color] duration-300",
-        scrolled || open
-          ? "backdrop-blur-md border-(--color-border-dark) shadow-[0_2px_18px_rgba(0,0,0,0.25)]"
-          : "border-transparent"
-      )}
-    >
-      <div className="container-page flex items-center justify-between h-[72px] md:h-[88px]">
-        <Link
-          href="/"
-          aria-label="Página inicial Ecoleta"
-          className="flex items-center"
-        >
-          <Logo variant="white" />
-        </Link>
+    <>
+      <header
+        className={cn(
+          "fixed inset-x-0 top-0 z-[70] bg-(--color-bg-dark) border-b transition-[backdrop-filter,box-shadow,border-color] duration-300",
+          scrolled || open
+            ? "backdrop-blur-md border-(--color-border-dark) shadow-[0_2px_18px_rgba(0,0,0,0.25)]"
+            : "border-transparent"
+        )}
+      >
+        <div className="container-page flex items-center justify-between h-[72px] md:h-[88px]">
+          <Link
+            href="/"
+            aria-label="Página inicial Ecoleva"
+            className="flex items-center"
+          >
+            <Logo variant="white" />
+          </Link>
 
-        <nav className="hidden md:flex items-center gap-8" aria-label="Navegação principal">
-          {siteConfig.nav.map((item) => {
-            const active = pathname.startsWith(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "text-sm font-medium transition-colors",
-                  active
-                    ? "text-(--color-accent)"
-                    : "text-white/80 hover:text-white"
-                )}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
+          <nav className="hidden md:flex items-center gap-8" aria-label="Navegação principal">
+            {siteConfig.nav.map((item) => {
+              const active = pathname.startsWith(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "text-base font-medium transition-colors",
+                    active
+                      ? "text-(--color-accent)"
+                      : "text-white/80 hover:text-white"
+                  )}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
 
-        <div className="hidden md:flex items-center">
-          <Button href="/contato" size="sm" variant="primary">
-            Diagnóstico gratuito
-          </Button>
+          <div className="hidden md:flex items-center">
+            <Button href="/contato" size="sm" variant="primary" className="text-sm">
+              Diagnóstico gratuito
+            </Button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-label={open ? "Fechar menu" : "Abrir menu"}
+            aria-expanded={open}
+            className="md:hidden inline-flex items-center justify-center size-11 rounded-full border border-(--color-border-dark) text-white hover:bg-white/5 transition-colors"
+          >
+            {open ? <CloseIcon /> : <MenuIcon />}
+          </button>
         </div>
-
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-label={open ? "Fechar menu" : "Abrir menu"}
-          aria-expanded={open}
-          className="md:hidden inline-flex items-center justify-center size-11 rounded-full border border-(--color-border-dark) text-white hover:bg-white/5 transition-colors"
-        >
-          {open ? <CloseIcon /> : <MenuIcon />}
-        </button>
-      </div>
+      </header>
 
       {/* Mobile menu */}
       <div
+        aria-hidden={!open}
+        inert={!open}
         className={cn(
-          "md:hidden overflow-y-auto fixed inset-x-0 top-[72px] bottom-0 z-40 bg-(--color-bg-dark) px-5 pb-10 pt-6 transition-[transform,opacity] duration-300 border-t border-(--color-border-dark)",
+          "md:hidden fixed inset-x-0 top-[72px] z-[60] h-[calc(100dvh-72px)] overflow-y-auto overscroll-contain bg-(--color-bg-dark) px-5 pb-10 pt-6 transition-[transform,opacity] duration-300 border-t border-(--color-border-dark)",
           open
             ? "translate-y-0 opacity-100"
             : "-translate-y-4 opacity-0 pointer-events-none"
@@ -109,6 +126,7 @@ export default function Header() {
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={() => setOpen(false)}
                 className={cn(
                   "py-4 text-lg font-medium border-b border-(--color-border-dark) transition-colors",
                   active
@@ -122,11 +140,16 @@ export default function Header() {
           })}
         </nav>
         <div className="mt-8">
-          <Button href="/contato" variant="primary" className="w-full">
+          <Button
+            href="/contato"
+            variant="primary"
+            className="w-full"
+            onClick={() => setOpen(false)}
+          >
             Diagnóstico gratuito
           </Button>
         </div>
       </div>
-    </header>
+    </>
   );
 }

@@ -115,7 +115,7 @@ export default function ContactForm() {
           Mensagem enviada com sucesso.
         </h3>
         <p className="mt-2 text-(--color-text-muted)">
-          Em breve a equipe Ecoleta entrará em contato.
+          Em breve a equipe Ecoleva entrará em contato.
         </p>
         <button
           type="button"
@@ -267,7 +267,7 @@ export default function ContactForm() {
           {submitting ? "Enviando…" : "Enviar mensagem"}
         </Button>
         <p className="mt-3 text-xs text-(--color-text-muted)">
-          Ao enviar, você concorda em receber retorno da equipe Ecoleta.
+          Ao enviar, você concorda em receber retorno da equipe Ecoleva.
         </p>
       </div>
     </form>

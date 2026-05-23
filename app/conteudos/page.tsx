@@ -11,9 +11,9 @@ export const metadata: Metadata = {
   ...createPageMetadata({
     title: "Conteúdos sobre Gestão de Resíduos",
     description:
-      "Artigos da Ecoleta sobre gestão de resíduos, MTR, CDF, PGRS, ESG, eventos e economia circular.",
+      "Artigos da Ecoleva sobre gestão de resíduos, MTR, CDF, PGRS, ESG, eventos e economia circular.",
     path: "/conteudos",
-    keywords: ["blog gestão de resíduos", "conteúdos Ecoleta", "MTR CDF", "PGRS", "ESG resíduos"],
+    keywords: ["blog gestão de resíduos", "conteúdos Ecoleva", "MTR CDF", "PGRS", "ESG resíduos"],
   }),
 };
 
@@ -46,7 +46,7 @@ export default function ConteudosPage() {
           className="mb-8"
         />
         <div className="max-w-3xl">
-          <Eyebrow className="text-(--color-secondary)">Biblioteca Ecoleta</Eyebrow>
+          <Eyebrow className="text-(--color-secondary)">Biblioteca Ecoleva</Eyebrow>
           <h2 className="section-title mt-4">Guias práticos para tomada de decisão</h2>
           <p className="mt-4 text-(--color-text-muted) leading-relaxed">
             Conteúdo público, direto e baseado em fontes oficiais para apoiar

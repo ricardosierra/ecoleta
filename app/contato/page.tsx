@@ -17,10 +17,10 @@ export const metadata: Metadata = {
   ...createPageMetadata({
     title: "Contato",
     description:
-      "Fale com a Ecoleta para estruturar a gestão de resíduos da sua empresa com rastreabilidade, conformidade ambiental e relatórios ESG.",
+      "Fale com a Ecoleva para estruturar a gestão de resíduos da sua empresa com rastreabilidade, conformidade ambiental e relatórios ESG.",
     path: "/contato",
     keywords: [
-      "contato Ecoleta",
+      "contato Ecoleva",
       "diagnóstico de resíduos",
       "consultoria ambiental",
       "conformidade ambiental",
@@ -35,7 +35,7 @@ export default function ContatoPage() {
         eyebrow="Contato"
         title={
           <>
-            Fale com a <span className="text-(--color-accent)">Ecoleta</span>
+            Fale com a <span className="text-(--color-accent)">Ecoleva</span>
           </>
         }
         subtitle="Conte sobre sua operação e nossa equipe retornará com o melhor caminho para estruturar sua gestão de resíduos."
@@ -125,7 +125,7 @@ export default function ContatoPage() {
                 variant="dark"
                 iconRight={<ArrowRightIcon width={18} height={18} />}
               >
-                Quero a Ecoleta melhorando minha gestão
+                Falar com a Ecoleva
               </Button>
             </div>
           </Reveal>
