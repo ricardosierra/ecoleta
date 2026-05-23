@@ -4,7 +4,33 @@
 
 ## [Futuro]
 
-## [Unreleased](https://github.com/ricardosierra/ecoleta/compare/v1.0.1...master)
+## [Unreleased](https://github.com/ricardosierra/ecoleta/compare/v1.0.3...master)
+
+## [v1.0.3 (2026-05-23)](https://github.com/ricardosierra/ecoleta/compare/v1.0.2...v1.0.3)
+
+### 🎨 Melhorias
+
+- [x] Rebranding textual e visual de Ecoleta para Ecoleva em páginas, metadados, feed, manifesto, formulário e e-mails de contato
+- [x] Novas marcas Ecoleva aplicadas nas variações clara e escura, com ajustes em favicon, ícones PWA e imagem OG
+- [x] Carrossel de clientes revisado com logos corrigidos e inclusão de GH Music e Subsea 7
+- [x] Cards de impacto ESG redesenhados com fundo escuro, ícones próprios e maior hierarquia visual
+- [x] Página Sobre atualizada com novas imagens de equipe, triagem e pontos de coleta sustentável
+- [x] Página Soluções recebeu ícones próprios para as frações de resíduos atendidas
+- [x] Rodapé atualizado com assinatura de desenvolvimento RicaSolucoes e SierraTecnologia
+
+### 🐛 Correções
+
+- [x] Logo branca corrigida para usar asset branco real em fundos escuros
+- [x] Menu mobile fecha ao navegar, fecha com Escape e bloqueia interação quando está oculto
+- [x] Animação `LetterReveal` passou a revelar o texto completo para evitar palavras parciais em títulos
+- [x] Ajustes de tamanho, espaçamento e alinhamento em cards, botões e listas para melhorar leitura responsiva
+
+### 🔧 Técnico
+
+- [x] Novos ícones SVG internos adicionados sem dependência de UI externa
+- [x] Configurações centrais atualizadas em `siteConfig`, manifesto, feed XML e `contact.php`
+- [x] Build estático regenerado e empacotado em `ecoleta-out.zip`
+- [x] Validação executada com `npm run build` e `npm run lint`
 
 ## [v1.0.1 (2026-05-13)](https://github.com/ricardosierra/ecoleta/compare/v1.0.0...v1.0.1)
 
