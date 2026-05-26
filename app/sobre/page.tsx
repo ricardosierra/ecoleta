@@ -49,8 +49,8 @@ const caseModelo = [
 
 const galleryItems = [
   {
-    src: "/gallery/equipe-ecoleva.jpg",
-    alt: "Equipe Ecoleva reunida em operação",
+    src: "/gallery/caminhao-cacamba-operacao.jpg",
+    alt: "Caminhão caçamba da Ecoleta em operação com técnico uniformizado",
   },
   {
     src: "/gallery/supervisao-coleta-01.jpg",
@@ -110,8 +110,8 @@ export default function SobrePage() {
           <Reveal delay={120}>
             <div className="relative aspect-[4/3] rounded-[10px] overflow-hidden border border-(--color-border-light) bg-(--color-bg-light)">
               <Image
-                src="/gallery/equipe-ecoleva.jpg"
-                alt="Equipe Ecoleva reunida em operação"
+                src="/gallery/equipe-ecoleta-sambadrome.jpg"
+                alt="Equipe Ecoleta em operação no sambódromo, com camisas da Econformidade e da gestão de resíduos"
                 fill
                 sizes="(max-width: 1024px) 100vw, 45vw"
                 className="object-cover"
@@ -162,7 +162,9 @@ export default function SobrePage() {
       <Section tone="light" id="econformidade">
         <div className="grid gap-10 lg:grid-cols-[0.9fr_1.2fr] items-center">
           <Reveal>
-            <Eyebrow className="text-(--color-secondary)">Econformidade</Eyebrow>
+            <Eyebrow className="!text-base md:!text-lg font-semibold text-(--color-secondary)">
+              Econformidade
+            </Eyebrow>
             <h2 className="section-title mt-4">
               Tecnologia aplicada à{" "}
               <span className="text-(--color-accent)">sustentabilidade</span>
