@@ -47,7 +47,27 @@ npm run dev                   # http://localhost:3000
 Ver [`.env.example`](./.env.example) — separadas em duas categorias:
 
 - **`NEXT_PUBLIC_*`** — exibidas no site (WhatsApp, Instagram, CNPJ, endereço, e-mail).
-- **Server-only** — credenciais de e-mail (Resend ou SMTP), nunca expostas no client.
+- **Server-only** — credenciais de e-mail (Resend ou SMTP) e banco de dados, nunca expostas no client.
+
+### Banco de Dados (Hostinger / Expansões Futuras)
+
+Banco MySQL criado na Hostinger para integrar funcionalidades futuras (ex: persistência de cadastros ou auditoria):
+
+- Preencha `DB_HOST`, `DB_NAME`, `DB_USER` e `DB_PASS` apenas no arquivo `.env` local.
+
+### Publicação FTP
+
+Copie `.env.example` para `.env`, preencha `FTP_PASSWORD` e execute:
+
+```bash
+npm run deploy:ftp
+```
+
+O comando compila o projeto e envia o conteúdo de `out/` para `FTP_UPLOAD_PATH` no
+host definido em `FTP_HOST`. As credenciais de FTP e banco permanecem apenas no `.env`
+local. Variáveis `NEXT_PUBLIC_*` são incluídas no JavaScript gerado e, portanto,
+não devem conter segredos.
+
 
 ### Envio de e-mail
 
