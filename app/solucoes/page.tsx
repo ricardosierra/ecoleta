@@ -244,9 +244,6 @@ export default function SolucoesPage() {
 
             <Reveal delay={150}>
               <div className="relative rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-sm p-8">
-                <p className="text-xs uppercase tracking-widest text-(--color-accent) mb-6">
-                  Indicadores da operação
-                </p>
                 <ul className="grid grid-cols-2 gap-4">
                   <HeroStat value="+200" label="toneladas gerenciadas" />
                   <HeroStat value="+100" label="operações realizadas" />

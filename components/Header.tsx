@@ -72,7 +72,8 @@ export default function Header() {
 
           <nav className="hidden md:flex items-center gap-8" aria-label="Navegação principal">
             {siteConfig.nav.map((item) => {
-              const active = pathname.startsWith(item.href);
+              const active =
+                item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
               return (
                 <Link
                   key={item.href}
@@ -121,7 +122,8 @@ export default function Header() {
       >
         <nav className="flex flex-col gap-1" aria-label="Navegação mobile">
           {siteConfig.nav.map((item) => {
-            const active = pathname.startsWith(item.href);
+            const active =
+              item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
             return (
               <Link
                 key={item.href}

@@ -17,7 +17,7 @@ export const siteConfig = {
   tagline: "Gestão de resíduos com rastreabilidade e impacto ESG",
   description:
     "Gestão completa de resíduos para empresas, eventos e indústrias. Rastreabilidade, conformidade ambiental, MTR, CDF, relatórios ESG e redução do envio ao aterro.",
-  url: process.env.NEXT_PUBLIC_SITE_URL || "https://www.ecoleva.com",
+  url: process.env.NEXT_PUBLIC_SITE_URL || "https://www.ecolevaeco.com",
   locale: "pt_BR",
   keywords: [
     "gestão de resíduos",
@@ -57,6 +57,7 @@ export const siteConfig = {
   },
 
   nav: [
+    { label: "Início", href: "/" },
     { label: "Soluções", href: "/solucoes" },
     { label: "ESG", href: "/esg" },
     { label: "Sobre", href: "/sobre" },

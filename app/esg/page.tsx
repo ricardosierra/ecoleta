@@ -36,12 +36,12 @@ export const metadata: Metadata = {
 };
 
 const impactoIndicadores = [
-  { icon: ImpactPeopleIcon, value: "169,9 Mil", label: "Pessoas impactadas" },
-  { icon: ImpactCarbonIcon, value: "90,9 tCO₂e", label: "CO₂ evitado" },
-  { icon: ImpactEnergyIcon, value: "118,1 Mil kWh", label: "Energia economizada" },
-  { icon: ImpactTreesIcon, value: "645", label: "Árvores preservadas" },
-  { icon: ImpactCarsIcon, value: "53", label: "Carros fora de circulação" },
-  { icon: ImpactWaterIcon, value: "3,4 Mi", label: "Litros de água poupada" },
+  { icon: ImpactPeopleIcon, value: "300 Mil", label: "Pessoas impactadas" },
+  { icon: ImpactCarbonIcon, value: "190 tCO₂e", label: "CO₂ evitado" },
+  { icon: ImpactEnergyIcon, value: "300 Mil kWh", label: "Energia economizada" },
+  { icon: ImpactTreesIcon, value: "1.300", label: "Árvores preservadas" },
+  { icon: ImpactCarsIcon, value: "120", label: "Carros fora de circulação" },
+  { icon: ImpactWaterIcon, value: "7 Mi", label: "Litros de água poupada" },
 ];
 
 const pilares = [

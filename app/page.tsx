@@ -83,7 +83,7 @@ const resultados = [
 
 const clientes = [
   { name: "Heineken", src: "/logos/heineken.png" },
-  { name: "LIESA", src: "/logos/virada-sustentavel.png" },
+  { name: "LIESA", src: "/logos/liesa.png" },
   { name: "VIBRA", src: "/logos/vibra.png" },
   { name: "GH Music", src: "/logos/ghmusic.png" },
   { name: "BrasilCap", src: "/logos/brasilcap.png" },
@@ -93,7 +93,7 @@ const clientes = [
   { name: "Bosque Bar", src: "/logos/bosque-bar.png" },
   { name: "Ferro & Brasa", src: "/logos/ferro-e-brasa.png" },
   { name: "WeMake", src: "/logos/wemake.png" },
-  { name: "Virada Sustentável", src: "/logos/liesa.png" },
+  { name: "Virada Sustentável", src: "/logos/virada-sustentavel.png" },
   { name: "Rio FutSummit 26", src: "/logos/rio-futsummit-26.png" },
   { name: "Sacadura 154", src: "/logos/sacadura-154.png" },
   { name: "NMLSS", src: "/logos/nmlss-correct.png" },
@@ -165,9 +165,6 @@ export default function HomePage() {
 
             <Reveal delay={150}>
               <div className="relative rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-sm p-5 md:p-8">
-                <p className="text-xs uppercase tracking-widest text-(--color-accent) mb-6">
-                  Indicadores da operação
-                </p>
                 <div className="grid grid-cols-2 gap-4">
                   <Stat value="100%" label="rastreabilidade" />
                   <Stat value="PNRS" label="conformidade" />
