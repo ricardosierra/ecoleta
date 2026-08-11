@@ -4,7 +4,28 @@
 
 ## [Futuro]
 
-## [Unreleased](https://github.com/ricardosierra/ecoleta/compare/v1.0.3...master)
+## [Unreleased](https://github.com/ricardosierra/ecoleta/compare/v1.0.4...master)
+
+## [v1.0.4 (2026-08-10)](https://github.com/ricardosierra/ecoleta/compare/v1.0.3...v1.0.4)
+
+### 🎨 Melhorias
+
+- [x] Painel BI público adicionado em `/dashboard` com embed do Power BI, recarregamento e modo tela cheia
+- [x] Navegação e rodapé atualizados com acesso ao Painel BI e destaque correto do item Início
+- [x] Indicadores ESG, logos de clientes e imagem da página Sobre atualizados para a identidade Ecoleva
+- [x] Grade de clientes simplificada para melhorar leitura, responsividade e acessibilidade
+
+### 🔒 Segurança
+
+- [x] Autenticação simulada do dashboard removida: senhas e variáveis `NEXT_PUBLIC_*` não são usadas no client
+- [x] Configurações de banco e FTP mantidas como placeholders em `.env.example`, sem identificadores ou credenciais reais
+
+### 🔧 Técnico
+
+- [x] Script `npm run deploy:ftp` adicionado para publicação com credenciais lidas exclusivamente do `.env` local
+- [x] `robots.txt` configurado para não indexar `/dashboard/`
+- [x] Build estático regenerado e empacotado em `ecoleta-out.zip`
+- [x] Validação executada com `npm run build` e `npm run lint`
 
 ## [v1.0.3 (2026-05-23)](https://github.com/ricardosierra/ecoleta/compare/v1.0.2...v1.0.3)
 
