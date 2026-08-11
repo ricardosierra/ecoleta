@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
 import { Montserrat } from "next/font/google";
 import "./globals.css";
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
-import WhatsAppFloatingButton from "@/components/WhatsAppFloatingButton";
+import { SiteChrome } from "@/components/SiteChrome";
 import { siteConfig } from "@/lib/site.config";
 
 const montserrat = Montserrat({
@@ -145,10 +143,7 @@ export default function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(webSiteJsonLd) }}
         />
-        <Header />
-        <main className="flex-1 pt-[72px] md:pt-[88px]">{children}</main>
-        <Footer />
-        <WhatsAppFloatingButton />
+        <SiteChrome>{children}</SiteChrome>
       </body>
     </html>
   );
