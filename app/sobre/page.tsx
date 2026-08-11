@@ -108,10 +108,10 @@ export default function SobrePage() {
             </p>
           </Reveal>
           <Reveal delay={120}>
-            <div className="relative aspect-[4/3] rounded-[10px] overflow-hidden border border-(--color-border-light) bg-(--color-bg-light)">
+            <div className="relative aspect-[3/4] w-full max-w-[520px] justify-self-center rounded-[10px] overflow-hidden border border-(--color-border-light) bg-(--color-bg-light)">
               <Image
-                src="/gallery/equipe-ecoleta-sambadrome.jpg"
-                alt="Equipe Ecoleta em operação no sambódromo, com camisas da Econformidade e da gestão de resíduos"
+                src="/gallery/ecoleva-quem-somos.png"
+                alt="Equipe Ecoleva em evento, com uniformes de gestão de resíduos"
                 fill
                 sizes="(max-width: 1024px) 100vw, 45vw"
                 className="object-cover"
