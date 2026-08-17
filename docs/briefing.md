@@ -42,7 +42,8 @@ Paleta-base informada pela cliente:
 
 ## 4. Domínio
 
-Migrar para `www.ecoleta.com` (novo domínio principal — sem `.br`).
+Migrar para `https://ecolevaeco.com/` (novo domínio principal).
+Atualmente: `econformidade.com.br`
 
 Pendências:
 

@@ -126,8 +126,9 @@ Detalhes em [`docs/identidade-visual.md`](./docs/identidade-visual.md).
 - [ ] Substituir placeholders em `lib/site.config.ts` se quiser hardcodar
 - [ ] Trocar logos placeholder em `app/cases/page.tsx` pelos reais (do `PORTFOLIO ECOLETA.pdf`)
 - [ ] Substituir Gallery placeholders por fotos reais da operação (OneDrive da cliente)
-- [ ] Configurar DNS de `ecoleta.com` apontando para a hospedagem
-- [ ] Migração de e-mail `@econformidade` → `@ecoleta` no Microsoft 365
+- [ ] Publicar no servidor de produção via script FTP
+- [ ] Configurar DNS de `ecolevaeco.com` apontando para a hospedagem
+- [ ] Configurar banco de dados e rodar `setup_db.php` no servidor
 
 ## Comandos
 

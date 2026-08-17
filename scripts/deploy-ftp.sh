@@ -51,6 +51,7 @@ define('DB_NAME', '${DB_NAME:-}');
 define('DB_USER', '${DB_USER:-}');
 define('DB_PASS', '${DB_PASS:-}');
 define('NEXT_PUBLIC_DASHBOARD_PASSWORD', '${NEXT_PUBLIC_DASHBOARD_PASSWORD:-}');
+define('NEXT_PUBLIC_DASHBOARD_USER', '${NEXT_PUBLIC_DASHBOARD_USER:-admin}');
 EOF
 
 echo "Validando acesso FTP..."
