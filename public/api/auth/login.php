@@ -25,8 +25,8 @@ if (!$login || !$password) {
 $db = getDbConnection();
 
 // Fetch user
-$stmt = $db->prepare("SELECT * FROM users WHERE login = ? LIMIT 1");
-$stmt->execute([$login]);
+$stmt = $db->prepare("SELECT * FROM users WHERE login = ? OR email = ? LIMIT 1");
+$stmt->execute([$login, $login]);
 $user = $stmt->fetch();
 
 $adminUsername = defined('NEXT_PUBLIC_DASHBOARD_USER') && NEXT_PUBLIC_DASHBOARD_USER ? NEXT_PUBLIC_DASHBOARD_USER : 'admin';
