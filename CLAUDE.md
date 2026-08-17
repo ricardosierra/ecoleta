@@ -131,5 +131,5 @@ Conteúdo dinâmico que precisa ser editado no código:
 
 ## Domínio alvo
 
-`www.ecoleta.com` (em migração — atualmente `econformidade.com.br`).
-E-mail em migração: `@econformidade` → `@ecoleta`.
+`https://ecolevaeco.com/` (em migração — atualmente `econformidade.com.br`).
+E-mail em migração: `@econformidade` → `@ecolevaeco`.

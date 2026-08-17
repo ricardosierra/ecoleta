@@ -29,18 +29,20 @@ $stmt = $db->prepare("SELECT * FROM users WHERE login = ? LIMIT 1");
 $stmt->execute([$login]);
 $user = $stmt->fetch();
 
+$adminUsername = defined('NEXT_PUBLIC_DASHBOARD_USER') && NEXT_PUBLIC_DASHBOARD_USER ? NEXT_PUBLIC_DASHBOARD_USER : 'admin';
+
 if (!$user) {
-    // Se o login for 'root' e não existir, verifica a senha padrão
-    if ($login === 'root') {
+    // Se o login for o admin padrão e não existir, verifica a senha padrão
+    if ($login === $adminUsername) {
         if ($password === NEXT_PUBLIC_DASHBOARD_PASSWORD) {
-            // Cria o usuário root
+            // Cria o usuário admin
             $hash = password_hash($password, PASSWORD_DEFAULT);
-            $insert = $db->prepare("INSERT INTO users (login, password_hash, role, force_password_change) VALUES ('root', ?, 'root', 1)");
-            $insert->execute([$hash]);
+            $insert = $db->prepare("INSERT INTO users (login, password_hash, role, force_password_change) VALUES (?, ?, 'root', 1)");
+            $insert->execute([$adminUsername, $hash]);
             $userId = (int)$db->lastInsertId();
             
             // Re-fetch user
-            $stmt->execute(['root']);
+            $stmt->execute([$adminUsername]);
             $user = $stmt->fetch();
         } else {
             http_response_code(401);
