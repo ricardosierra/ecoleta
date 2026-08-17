@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { DashboardGate } from "@/components/DashboardGate";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 
 type User = {
   id: number;
@@ -23,14 +23,16 @@ type Log = {
 export default function ViewUsuarioPage() {
   return (
     <DashboardGate>
-      <UsuarioDetails />
+      <Suspense fallback={<div className="p-8 text-white">Carregando...</div>}>
+        <UsuarioDetails />
+      </Suspense>
     </DashboardGate>
   );
 }
 
 function UsuarioDetails() {
-  const params = useParams();
-  const id = params.id as string;
+  const searchParams = useSearchParams();
+  const id = searchParams.get('id');
   
   const [user, setUser] = useState<User | null>(null);
   const [logs, setLogs] = useState<Log[]>([]);

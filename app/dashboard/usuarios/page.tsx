@@ -151,7 +151,7 @@ function UsuariosList() {
                   {u.force_password_change ? <span className="text-amber-400 text-xs">Pendente troca de senha</span> : <span className="text-green-400 text-xs">Ativo</span>}
                 </td>
                 <td className="px-6 py-4 text-right">
-                  <Link href={`/dashboard/usuarios/${u.id}`} className="text-[var(--color-accent)] hover:underline text-sm font-semibold">
+                  <Link href={`/dashboard/usuarios/ver?id=${u.id}`} className="text-[var(--color-accent)] hover:underline text-sm font-semibold">
                     Ver Histórico
                   </Link>
                 </td>
