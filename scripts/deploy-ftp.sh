@@ -42,6 +42,17 @@ FTP_UPLOAD_PATH="${FTP_UPLOAD_PATH:-.}"
 echo "Gerando build de produção..."
 (cd "$ROOT_DIR" && npm run build)
 
+echo "Gerando out/api/env.php..."
+mkdir -p "$ROOT_DIR/out/api"
+cat <<EOF > "$ROOT_DIR/out/api/env.php"
+<?php
+define('DB_HOST', '${DB_HOST:-}');
+define('DB_NAME', '${DB_NAME:-}');
+define('DB_USER', '${DB_USER:-}');
+define('DB_PASS', '${DB_PASS:-}');
+define('NEXT_PUBLIC_DASHBOARD_PASSWORD', '${NEXT_PUBLIC_DASHBOARD_PASSWORD:-}');
+EOF
+
 echo "Validando acesso FTP..."
 validation_url="$FTP_HOST/"
 if [[ "$FTP_UPLOAD_PATH" != "." ]]; then
