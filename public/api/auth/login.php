@@ -74,12 +74,38 @@ $ua = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
 $logStmt = $db->prepare("INSERT INTO access_logs (user_id, ip_address, user_agent) VALUES (?, ?, ?)");
 $logStmt->execute([$user['id'], $ip, substr($ua, 0, 255)]);
 
+// Registra no histórico de atividades
+logActivity(
+    $db,
+    (int)$user['id'],
+    'login',
+    'Login realizado com sucesso',
+    (int)$user['id'],
+    $user['login'],
+    $user['login']
+);
+
+// Busca dados completos incluindo o grupo
+$stmtDetails = $db->prepare("
+    SELECT u.id, u.login, u.email, u.role, u.group_id, u.force_password_change,
+           g.name AS group_name, g.powerbi_url AS group_powerbi_url
+    FROM users u
+    LEFT JOIN `groups` g ON u.group_id = g.id
+    WHERE u.id = ?
+");
+$stmtDetails->execute([$user['id']]);
+$userDetails = $stmtDetails->fetch();
+
 echo json_encode([
     'ok' => true,
     'user' => [
-        'id' => $user['id'],
-        'login' => $user['login'],
-        'role' => $user['role'],
-        'force_password_change' => (bool)$user['force_password_change']
+        'id' => (int)$userDetails['id'],
+        'login' => $userDetails['login'],
+        'email' => $userDetails['email'],
+        'role' => $userDetails['role'],
+        'group_id' => $userDetails['group_id'] ? (int)$userDetails['group_id'] : null,
+        'group_name' => $userDetails['group_name'] ?? null,
+        'group_powerbi_url' => $userDetails['group_powerbi_url'] ?? null,
+        'force_password_change' => (bool)$userDetails['force_password_change']
     ]
 ]);

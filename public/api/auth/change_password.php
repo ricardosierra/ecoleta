@@ -33,4 +33,15 @@ $hash = password_hash($newPassword, PASSWORD_DEFAULT);
 $stmt = $db->prepare("UPDATE users SET password_hash = ?, force_password_change = 0 WHERE id = ?");
 $stmt->execute([$hash, $_SESSION['user_id']]);
 
+// Grava no histórico de atividades
+logActivity(
+    $db,
+    (int)$_SESSION['user_id'],
+    'change_password',
+    'Senha alterada com sucesso pelo próprio usuário',
+    (int)$_SESSION['user_id'],
+    $_SESSION['login'] ?? 'usuario',
+    $_SESSION['login'] ?? null
+);
+
 echo json_encode(['ok' => true]);

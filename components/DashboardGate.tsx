@@ -1,19 +1,38 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { createContext, FormEvent, useContext, useEffect, useState } from "react";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { PowerBIViewer } from "@/components/PowerBIViewer";
 
-type User = {
+export type DashboardUser = {
   id: number;
   login: string;
   email: string | null;
   role: string;
+  group_id?: number | null;
+  group_name?: string | null;
+  group_powerbi_url?: string | null;
   force_password_change: boolean;
 };
 
+type DashboardAuthContextType = {
+  user: DashboardUser | null;
+  logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
+};
+
+const DashboardAuthContext = createContext<DashboardAuthContextType>({
+  user: null,
+  logout: async () => {},
+  refreshUser: async () => {},
+});
+
+export function useDashboardAuth() {
+  return useContext(DashboardAuthContext);
+}
+
 export function DashboardGate({ children }: { children?: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<DashboardUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Form states
@@ -23,16 +42,43 @@ export function DashboardGate({ children }: { children?: React.ReactNode }) {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const refreshUser = async () => {
+    try {
+      const res = await fetch("/api/auth/me.php");
+      const data = await res.json();
+      if (res.ok && data.ok && data.user) {
+        setUser(data.user);
+      } else {
+        setUser(null);
+      }
+    } catch {
+      setUser(null);
+    }
+  };
+
   useEffect(() => {
+    let isMounted = true;
     fetch("/api/auth/me.php")
       .then((res) => res.json())
       .then((data) => {
-        if (data.ok && data.user) {
-          setUser(data.user);
+        if (isMounted) {
+          if (data.ok && data.user) {
+            setUser(data.user);
+          } else {
+            setUser(null);
+          }
         }
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (isMounted) setUser(null);
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
@@ -53,7 +99,7 @@ export function DashboardGate({ children }: { children?: React.ReactNode }) {
       } else {
         setError(data.error || "Erro ao fazer login.");
       }
-    } catch (e) {
+    } catch {
       setError("Erro de conexão.");
     } finally {
       setIsSubmitting(false);
@@ -83,7 +129,7 @@ export function DashboardGate({ children }: { children?: React.ReactNode }) {
       } else {
         setError(data.error || "Erro ao trocar senha.");
       }
-    } catch (e) {
+    } catch {
       setError("Erro de conexão.");
     } finally {
       setIsSubmitting(false);
@@ -108,7 +154,7 @@ export function DashboardGate({ children }: { children?: React.ReactNode }) {
           <h1 className="text-2xl font-bold">Dashboard Ecoleta</h1>
           <p className="mt-2 text-sm text-[var(--color-text-on-dark)]">Informe suas credenciais para acessar o painel de gestão.</p>
           <div className="mt-7 space-y-4">
-            <label className="block text-sm font-medium" htmlFor="dashboard-user">Usuário
+            <label className="block text-sm font-medium" htmlFor="dashboard-user">Usuário ou E-mail
               <input id="dashboard-user" autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} className="mt-2 w-full rounded-xl border border-[var(--color-border-dark)] bg-black/20 px-4 py-3 text-white outline-none focus:border-[var(--color-accent)]" required />
             </label>
             <label className="block text-sm font-medium" htmlFor="dashboard-password">Senha
@@ -141,11 +187,13 @@ export function DashboardGate({ children }: { children?: React.ReactNode }) {
   }
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-[var(--color-bg-dark)] font-sans text-white">
-      <DashboardHeader onLogout={handleLogout} user={user} />
-      <main className="min-h-0 flex-1 pt-16">
-        {children ? children : <PowerBIViewer />}
-      </main>
-    </div>
+    <DashboardAuthContext.Provider value={{ user, logout: handleLogout, refreshUser }}>
+      <div className="flex h-dvh flex-col overflow-hidden bg-[var(--color-bg-dark)] font-sans text-white">
+        <DashboardHeader onLogout={handleLogout} user={user} />
+        <main className="min-h-0 flex-1 pt-16">
+          {children ? children : <PowerBIViewer />}
+        </main>
+      </div>
+    </DashboardAuthContext.Provider>
   );
 }
