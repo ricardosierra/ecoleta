@@ -31,9 +31,14 @@ export function DashboardHeader({ onLogout, user }: DashboardHeaderProps) {
             Painel
           </Link>
           {canManageUsers && (
-            <Link href="/dashboard/usuarios" className="text-sm font-medium text-white hover:text-[var(--color-accent)] transition-colors ml-4">
-              Usuários
-            </Link>
+            <>
+              <Link href="/dashboard/usuarios" className="text-sm font-medium text-white hover:text-[var(--color-accent)] transition-colors ml-4">
+                Usuários
+              </Link>
+              <Link href="/dashboard/grupos" className="text-sm font-medium text-white hover:text-[var(--color-accent)] transition-colors ml-4">
+                Grupos
+              </Link>
+            </>
           )}
         </div>
       </div>

@@ -23,10 +23,151 @@ function getDbConnection(): PDO {
     ];
 
     try {
-        return new PDO($dsn, DB_USER, DB_PASS, $options);
+        $db = new PDO($dsn, DB_USER, DB_PASS, $options);
+        ensureTablesExist($db);
+        return $db;
     } catch (PDOException $e) {
         http_response_code(500);
         echo json_encode(['error' => 'Falha na conexão com o banco de dados.']);
         exit;
     }
 }
+
+function ensureTablesExist(PDO $db): void {
+    static $ensured = false;
+    if ($ensured) return;
+
+    try {
+        // Tabela de Grupos (ex: Coleta, Infectantes)
+        $db->exec("
+            CREATE TABLE IF NOT EXISTS `groups` (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(100) NOT NULL UNIQUE,
+                powerbi_url TEXT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ");
+
+        $db->exec("
+            CREATE TABLE IF NOT EXISTS users (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                login VARCHAR(50) NOT NULL UNIQUE,
+                password_hash VARCHAR(255) NOT NULL,
+                email VARCHAR(100) NULL,
+                role ENUM('root', 'master', 'user') NOT NULL DEFAULT 'user',
+                group_id INT NULL,
+                force_password_change TINYINT(1) NOT NULL DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ");
+
+        // Migração para adicionar group_id na tabela users se ela já existia antes
+        try {
+            $checkColumn = $db->query("SHOW COLUMNS FROM users LIKE 'group_id'");
+            if ($checkColumn && $checkColumn->rowCount() === 0) {
+                $db->exec("ALTER TABLE users ADD COLUMN group_id INT NULL AFTER role");
+            }
+        } catch (\Throwable $e) {
+            // Ignora se não for possível verificar colunas
+        }
+
+        // Seed dos grupos padrão (Coleta e Infectantes)
+        try {
+            $defaultPbi = defined('NEXT_PUBLIC_POWERBI_URL') ? NEXT_PUBLIC_POWERBI_URL : (getenv('NEXT_PUBLIC_POWERBI_URL') ?: '');
+            
+            $stmt = $db->prepare("SELECT id FROM `groups` WHERE name = ? LIMIT 1");
+            
+            // Grupo Coleta
+            $stmt->execute(['Coleta']);
+            if (!$stmt->fetch()) {
+                $insertGroup = $db->prepare("INSERT INTO `groups` (name, powerbi_url) VALUES (?, ?)");
+                $insertGroup->execute(['Coleta', $defaultPbi]);
+            }
+
+            // Grupo Infectantes
+            $stmt->execute(['Infectantes']);
+            if (!$stmt->fetch()) {
+                $insertGroup = $db->prepare("INSERT INTO `groups` (name, powerbi_url) VALUES (?, ?)");
+                $insertGroup->execute(['Infectantes', '']);
+            }
+        } catch (\Throwable $e) {
+            error_log("Group seeding notice: " . $e->getMessage());
+        }
+
+        $db->exec("
+            CREATE TABLE IF NOT EXISTS access_logs (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                ip_address VARCHAR(45) NOT NULL,
+                user_agent VARCHAR(255) NULL,
+                logged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_access_user (user_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ");
+
+        $db->exec("
+            CREATE TABLE IF NOT EXISTS activity_logs (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NULL,
+                target_login VARCHAR(50) NULL,
+                action VARCHAR(50) NOT NULL,
+                description VARCHAR(255) NULL,
+                performed_by_id INT NULL,
+                performed_by_login VARCHAR(50) NULL,
+                ip_address VARCHAR(45) NOT NULL,
+                user_agent VARCHAR(255) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_activity_user (user_id),
+                INDEX idx_activity_action (action)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ");
+    } catch (\Throwable $e) {
+        // Table creation or verification error logged without crashing
+        error_log("Database initialization notice: " . $e->getMessage());
+    }
+
+    $ensured = true;
+}
+
+function logActivity(
+    PDO $db,
+    ?int $userId,
+    string $action,
+    ?string $description = null,
+    ?int $performedById = null,
+    ?string $performedByLogin = null,
+    ?string $targetLogin = null
+): void {
+    try {
+        ensureTablesExist($db);
+
+        $ip = $_SERVER['HTTP_CLIENT_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+        if (str_contains($ip, ',')) {
+            $ip = trim(explode(',', $ip)[0]);
+        }
+        $ip = substr($ip, 0, 45);
+
+        $ua = substr($_SERVER['HTTP_USER_AGENT'] ?? 'unknown', 0, 255);
+
+        $stmt = $db->prepare("
+            INSERT INTO activity_logs 
+            (user_id, target_login, action, description, performed_by_id, performed_by_login, ip_address, user_agent)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ");
+        $stmt->execute([
+            $userId,
+            $targetLogin,
+            $action,
+            $description,
+            $performedById,
+            $performedByLogin,
+            $ip,
+            $ua
+        ]);
+    } catch (\Throwable $e) {
+        error_log("Failed to write activity log: " . $e->getMessage());
+    }
+}
+

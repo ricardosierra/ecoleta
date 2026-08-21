@@ -12,7 +12,13 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $db = getDbConnection();
-$stmt = $db->prepare("SELECT id, login, email, role, force_password_change FROM users WHERE id = ?");
+$stmt = $db->prepare("
+    SELECT u.id, u.login, u.email, u.role, u.group_id, u.force_password_change,
+           g.name AS group_name, g.powerbi_url AS group_powerbi_url
+    FROM users u
+    LEFT JOIN `groups` g ON u.group_id = g.id
+    WHERE u.id = ?
+");
 $stmt->execute([$_SESSION['user_id']]);
 $user = $stmt->fetch();
 
@@ -26,10 +32,13 @@ if (!$user) {
 echo json_encode([
     'ok' => true,
     'user' => [
-        'id' => $user['id'],
+        'id' => (int)$user['id'],
         'login' => $user['login'],
         'email' => $user['email'],
         'role' => $user['role'],
+        'group_id' => $user['group_id'] ? (int)$user['group_id'] : null,
+        'group_name' => $user['group_name'] ?? null,
+        'group_powerbi_url' => $user['group_powerbi_url'] ?? null,
         'force_password_change' => (bool)$user['force_password_change']
     ]
 ]);
