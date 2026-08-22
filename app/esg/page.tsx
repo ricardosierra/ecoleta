@@ -8,16 +8,11 @@ import PageHero from "@/components/PageHero";
 import DonutChart from "@/components/DonutChart";
 import LeafDecor from "@/components/LeafDecor";
 import TiltCard from "@/components/TiltCard";
+import EsgIndicatorsList from "@/components/EsgIndicatorsList";
 import {
   ArrowRightIcon,
   ClipboardIcon,
   FileTextIcon,
-  ImpactCarbonIcon,
-  ImpactCarsIcon,
-  ImpactEnergyIcon,
-  ImpactPeopleIcon,
-  ImpactTreesIcon,
-  ImpactWaterIcon,
   LeafIcon,
   RecycleIcon,
   SeedlingIcon,
@@ -34,15 +29,6 @@ export const metadata: Metadata = {
     keywords: ["ESG ambiental", "relatório ESG", "indicadores ambientais", "compensação de carbono"],
   }),
 };
-
-const impactoIndicadores = [
-  { icon: ImpactPeopleIcon, value: "300 Mil", label: "Pessoas impactadas" },
-  { icon: ImpactCarbonIcon, value: "190 tCO₂e", label: "CO₂ evitado" },
-  { icon: ImpactEnergyIcon, value: "300 Mil kWh", label: "Energia economizada" },
-  { icon: ImpactTreesIcon, value: "1.300", label: "Árvores preservadas" },
-  { icon: ImpactCarsIcon, value: "120", label: "Carros fora de circulação" },
-  { icon: ImpactWaterIcon, value: "7 Mi", label: "Litros de água poupada" },
-];
 
 const pilares = [
   {
@@ -171,23 +157,7 @@ export default function EsgPage() {
             </h2>
           </header>
         </Reveal>
-        <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 md:gap-6 lg:gap-7">
-          {impactoIndicadores.map(({ icon: Icon, value, label }, i) => (
-            <Reveal key={label} as="li" delay={i * 80}>
-              <div className="flex min-h-[13.75rem] h-full flex-col items-center justify-center rounded-[10px] border border-(--color-border-dark) bg-(--color-bg-dark) px-6 py-7 text-center shadow-[var(--shadow-sm)] md:min-h-[14.5rem] md:px-8 md:py-8">
-                <span className="mb-5 flex size-24 items-center justify-center rounded-full border-2 border-white/15 bg-white/[0.06] text-(--color-accent) shadow-[0_0_0_8px_var(--color-accent-soft),0_0_28px_var(--color-accent-soft)] md:size-28">
-                  <Icon width={58} height={58} />
-                </span>
-                <p className="text-3xl font-bold leading-none tracking-normal text-white sm:text-[2.15rem] md:text-[2.55rem]">
-                  {value}
-                </p>
-                <p className="mt-4 text-xs font-medium uppercase tracking-[0.18em] text-white/60 md:text-sm">
-                  {label}
-                </p>
-              </div>
-            </Reveal>
-          ))}
-        </ul>
+        <EsgIndicatorsList />
       </Section>
 
       {/* Prova técnica */}
@@ -242,7 +212,7 @@ export default function EsgPage() {
             </p>
           </Reveal>
           <Reveal delay={150} className="flex justify-center">
-            <DonutChart value={92} label="carbono evitado" size={240} />
+            <DonutChart value={92} indicatorKey="esg_donut_carbono" label="carbono evitado" size={240} />
           </Reveal>
         </div>
       </Section>

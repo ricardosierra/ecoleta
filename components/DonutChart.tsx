@@ -9,14 +9,40 @@ type Props = {
   size?: number;
   /** Duração da animação de contagem em ms */
   duration?: number;
+  /** Chave do indicador no banco de dados (ex: "home_donut_desvio", "esg_donut_carbono") */
+  indicatorKey?: string;
 };
 
 export default function DonutChart({
-  value,
+  value: initialValue,
   label,
   size = 220,
   duration = 1500,
+  indicatorKey,
 }: Props) {
+  const [value, setValue] = useState(initialValue);
+
+  useEffect(() => {
+    if (!indicatorKey) return;
+    let isMounted = true;
+    fetch("/api/indicators/index.php")
+      .then((res) => res.json())
+      .then((data) => {
+        if (isMounted && data.ok && data.map && data.map[indicatorKey]) {
+          const item = data.map[indicatorKey];
+          const num = typeof item.numeric_value === "number" ? item.numeric_value : parseInt(item.value, 10);
+          if (!isNaN(num)) {
+            setValue(num);
+          }
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, [indicatorKey]);
+
   const stroke = 18;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -30,6 +56,7 @@ export default function DonutChart({
   const displayValue = reduceMotion ? value : animated;
 
   useEffect(() => {
+    startedRef.current = false;
     if (reduceMotion) return;
 
     const node = containerRef.current;

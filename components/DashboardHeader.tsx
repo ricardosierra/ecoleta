@@ -38,6 +38,9 @@ export function DashboardHeader({ onLogout, user }: DashboardHeaderProps) {
               <Link href="/dashboard/grupos" className="text-sm font-medium text-white hover:text-[var(--color-accent)] transition-colors ml-4">
                 Grupos
               </Link>
+              <Link href="/dashboard/indicadores" className="text-sm font-medium text-white hover:text-[var(--color-accent)] transition-colors ml-4">
+                Indicadores
+              </Link>
             </>
           )}
         </div>

@@ -4,7 +4,8 @@ import Card from "@/components/Card";
 import Button from "@/components/Button";
 import Reveal from "@/components/Reveal";
 import DonutChart from "@/components/DonutChart";
-import MetricCard from "@/components/MetricCard";
+import HomeHeroStats from "@/components/HomeHeroStats";
+import HomeResultadosList from "@/components/HomeResultadosList";
 import Typewriter from "@/components/Typewriter";
 import LetterReveal from "@/components/LetterReveal";
 import LeafDecor from "@/components/LeafDecor";
@@ -17,7 +18,6 @@ import {
   CheckIcon,
   ClipboardIcon,
   FileTextIcon,
-  ScaleIcon,
   SettingsIcon,
   ShieldIcon,
   UsersIcon,
@@ -71,14 +71,6 @@ const diferenciais = [
     title: "Conformidade e inovação ambiental",
     desc: "PNRS, ISO 14001 e soluções pioneiras. Gestão alinhada à legislação, incluindo atuação com resíduos têxteis.",
   },
-];
-
-const resultados = [
-  { symbol: "↓R$", label: "Redução de custo operacional" },
-  { symbol: "92%", label: "Menos envio ao aterro" },
-  { symbol: <CheckIcon width={36} height={36} />, label: "Operação organizada e documentada" },
-  { symbol: <ScaleIcon width={36} height={36} />, label: "Segurança jurídica e ambiental" },
-  { symbol: "ESG", label: "Valor e reputação para sua marca" },
 ];
 
 const clientes = [
@@ -170,12 +162,7 @@ export default function HomePage() {
 
             <Reveal delay={150}>
               <div className="relative rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-sm p-5 md:p-8">
-                <div className="grid grid-cols-2 gap-4">
-                  <Stat value="100%" label="rastreabilidade" />
-                  <Stat value="PNRS" label="conformidade" />
-                  <Stat value="MTR + CDF" label="documentação" />
-                  <Stat value="ESG" label="aplicado" />
-                </div>
+                <HomeHeroStats />
               </div>
             </Reveal>
           </div>
@@ -303,7 +290,7 @@ export default function HomePage() {
             </p>
           </Reveal>
           <Reveal delay={150} className="flex justify-center">
-            <DonutChart value={92} label="desvio de aterro" size={240} />
+            <DonutChart value={92} indicatorKey="home_donut_desvio" label="desvio de aterro" size={240} />
           </Reveal>
         </div>
       </Section>
@@ -316,13 +303,7 @@ export default function HomePage() {
             title="Resultados que aparecem na operação e na marca"
           />
         </Reveal>
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          {resultados.map((r, i) => (
-            <Reveal key={i} as="li" delay={i * 70}>
-              <MetricCard symbol={r.symbol} label={r.label} className="h-full" />
-            </Reveal>
-          ))}
-        </ul>
+        <HomeResultadosList />
       </Section>
 
       {/* CLIENTES */}
@@ -361,18 +342,5 @@ export default function HomePage() {
         </div>
       </section>
     </>
-  );
-}
-
-function Stat({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="rounded-[10px] bg-(--color-bg-dark) border border-(--color-border-dark) p-3 md:p-5">
-      <p className="text-lg md:text-[1.75rem] font-bold text-(--color-accent) leading-tight break-words min-w-0">
-        {value}
-      </p>
-      <p className="text-[0.65rem] md:text-xs uppercase tracking-widest text-white/50 mt-1.5 break-words min-w-0">
-        {label}
-      </p>
-    </div>
   );
 }
