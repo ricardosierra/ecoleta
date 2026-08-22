@@ -1,15 +1,46 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { cn } from "@/lib/cn";
 
 type Item = {
   name: string;
-  /** Caminho da logo em /public (ex: "/logos/heineken.png"). Se ausente, renderiza só o nome em texto. */
+  /** Caminho da logo em /public (ex: "/logos/heineken.png") ou URL remota. Se ausente, renderiza só o nome em texto. */
   src?: string;
 };
 
 type Props = { items: Item[]; className?: string };
 
-export default function LogoCarousel({ items, className }: Props) {
+export default function LogoCarousel({ items: initialItems, className }: Props) {
+  const [items, setItems] = useState<Item[]>(initialItems);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetch("/api/partners/index.php?public=1")
+      .then((res) => {
+        if (!res.ok) throw new Error("Falha ao carregar parceiros");
+        return res.json();
+      })
+      .then((data) => {
+        if (isMounted && data.ok && Array.isArray(data.partners) && data.partners.length > 0) {
+          setItems(
+            data.partners.map((p: { name: string; src: string }) => ({
+              name: p.name,
+              src: p.src,
+            }))
+          );
+        }
+      })
+      .catch(() => {
+        // Mantém fallback inicial em caso de erro de rede ou ambiente estático
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   if (items.length === 0) return null;
 
   return (

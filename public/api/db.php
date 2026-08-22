@@ -123,6 +123,58 @@ function ensureTablesExist(PDO $db): void {
                 INDEX idx_activity_action (action)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         ");
+        $db->exec("
+            CREATE TABLE IF NOT EXISTS partners (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(150) NOT NULL,
+                src VARCHAR(255) NOT NULL,
+                order_index INT NOT NULL DEFAULT 0,
+                is_active TINYINT(1) NOT NULL DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_partner_order (order_index),
+                INDEX idx_partner_active (is_active)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ");
+
+        // Seed dos parceiros padrão caso a tabela esteja vazia
+        try {
+            $countStmt = $db->query("SELECT COUNT(*) AS total FROM partners");
+            $totalPartners = $countStmt ? (int)$countStmt->fetchColumn() : 0;
+            if ($totalPartners === 0) {
+                $defaultPartners = [
+                    ['name' => 'Heineken', 'src' => '/logos/heineken.png'],
+                    ['name' => 'LIESA', 'src' => '/logos/liesa.png'],
+                    ['name' => 'VIBRA', 'src' => '/logos/vibra.png'],
+                    ['name' => 'GH Music', 'src' => '/logos/ghmusic.png'],
+                    ['name' => 'BrasilCap', 'src' => '/logos/brasilcap.png'],
+                    ['name' => 'CEDAE', 'src' => '/logos/cedae.png'],
+                    ['name' => 'Rio Carnaval', 'src' => '/logos/rio-carnaval.png'],
+                    ['name' => 'Levels', 'src' => '/logos/levels-correct.png'],
+                    ['name' => 'Bosque Bar', 'src' => '/logos/bosque-bar.png'],
+                    ['name' => 'Ferro & Brasa', 'src' => '/logos/ferro-e-brasa.png'],
+                    ['name' => 'WeMake', 'src' => '/logos/wemake.png'],
+                    ['name' => 'Virada Sustentável', 'src' => '/logos/virada-sustentavel.png'],
+                    ['name' => 'Rio FutSummit 26', 'src' => '/logos/rio-futsummit-26.png'],
+                    ['name' => 'Sacadura 154', 'src' => '/logos/sacadura-154.png'],
+                    ['name' => 'NMLSS', 'src' => '/logos/nmlss-correct.png'],
+                    ['name' => 'Subsea 7', 'src' => '/logos/subsea7.png'],
+                    ['name' => 'Café Preto Tattoo', 'src' => '/logos/cafe-preto-tattoo-correct.png'],
+                    ['name' => 'FuraTodo', 'src' => '/logos/fura-toblu.png'],
+                    ['name' => 'Salgueiro', 'src' => '/logos/salgueiro.png'],
+                    ['name' => 'Cidaddess', 'src' => '/logos/cidaddess.png'],
+                    ['name' => 'Silimed', 'src' => '/logos/silimed.png'],
+                    ['name' => 'Maltas', 'src' => '/logos/maltas.png'],
+                    ['name' => 'Grupo Onda', 'src' => '/logos/grupo-onda.png'],
+                ];
+                $insertPartner = $db->prepare("INSERT INTO partners (name, src, order_index, is_active) VALUES (?, ?, ?, 1)");
+                foreach ($defaultPartners as $idx => $p) {
+                    $insertPartner->execute([$p['name'], $p['src'], $idx]);
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log("Partner seeding notice: " . $e->getMessage());
+        }
     } catch (\Throwable $e) {
         // Table creation or verification error logged without crashing
         error_log("Database initialization notice: " . $e->getMessage());
