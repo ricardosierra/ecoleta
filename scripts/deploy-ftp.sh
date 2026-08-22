@@ -39,12 +39,8 @@ FTP_UPLOAD_PATH="${FTP_UPLOAD_PATH#/}"
 FTP_UPLOAD_PATH="${FTP_UPLOAD_PATH%/}"
 FTP_UPLOAD_PATH="${FTP_UPLOAD_PATH:-.}"
 
-echo "Gerando build de produção..."
-(cd "$ROOT_DIR" && npm run build)
-
-echo "Gerando out/api/env.php..."
-mkdir -p "$ROOT_DIR/out/api"
-cat <<EOF > "$ROOT_DIR/out/api/env.php"
+mkdir -p "$ROOT_DIR/public/api"
+cat <<EOF > "$ROOT_DIR/public/api/env.php"
 <?php
 define('DB_HOST', '${DB_HOST:-}');
 define('DB_NAME', '${DB_NAME:-}');
@@ -54,6 +50,13 @@ define('NEXT_PUBLIC_DASHBOARD_PASSWORD', '${NEXT_PUBLIC_DASHBOARD_PASSWORD:-}');
 define('NEXT_PUBLIC_DASHBOARD_USER', '${NEXT_PUBLIC_DASHBOARD_USER:-admin}');
 define('NEXT_PUBLIC_POWERBI_URL', '${NEXT_PUBLIC_POWERBI_URL:-}');
 EOF
+
+echo "Gerando build de produção..."
+(cd "$ROOT_DIR" && npm run build)
+
+echo "Gerando out/api/env.php..."
+mkdir -p "$ROOT_DIR/out/api"
+cp "$ROOT_DIR/public/api/env.php" "$ROOT_DIR/out/api/env.php"
 
 echo "Validando acesso FTP..."
 validation_url="$FTP_HOST/"
@@ -65,7 +68,10 @@ curl --fail --silent --show-error --ftp-pasv --connect-timeout 20 \
   "$validation_url" >/dev/null
 
 echo "Enviando arquivos para /$FTP_UPLOAD_PATH/..."
+total_files=$(find "$ROOT_DIR/out" -type f | wc -l | tr -d ' ')
+count=0
 find "$ROOT_DIR/out" -type f -print0 | while IFS= read -r -d '' file; do
+  count=$((count + 1))
   relative_path="${file#"$ROOT_DIR/out/"}"
   remote_dir="$(dirname "$relative_path")"
   remote_url="$FTP_HOST"
@@ -76,10 +82,12 @@ find "$ROOT_DIR/out" -type f -print0 | while IFS= read -r -d '' file; do
     remote_url="$remote_url/$remote_dir"
   fi
 
+  echo "[$count/$total_files] Upload: $relative_path"
   curl --fail --silent --show-error --ftp-pasv --ftp-create-dirs \
     --user "$FTP_USER:$FTP_PASSWORD" \
     --upload-file "$file" \
     "$remote_url/$(basename "$file")"
 done
 
-echo "Publicação concluída no destino FTP configurado."
+echo "Publicação concluída com sucesso no destino FTP configurado!"
+

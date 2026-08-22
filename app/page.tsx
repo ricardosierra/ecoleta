@@ -100,6 +100,11 @@ const clientes = [
   { name: "Subsea 7", src: "/logos/subsea7.png" },
   { name: "Café Preto Tattoo", src: "/logos/cafe-preto-tattoo-correct.png" },
   { name: "FuraTodo", src: "/logos/fura-toblu.png" },
+  { name: "Salgueiro", src: "/logos/salgueiro.png" },
+  { name: "Cidaddess", src: "/logos/cidaddess.png" },
+  { name: "Silimed", src: "/logos/silimed.png" },
+  { name: "Maltas", src: "/logos/maltas.png" },
+  { name: "Grupo Onda", src: "/logos/grupo-onda.png" },
 ];
 
 export default function HomePage() {
