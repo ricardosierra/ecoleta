@@ -1,9 +1,11 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../db.php';
-session_start();
 
-header('Content-Type: application/json; charset=utf-8');
+startSecureSession();
+apiRequireCsrfToken();
+
+apiSendJsonHeaders();
 
 if (!isset($_SESSION['user_id'])) {
     http_response_code(401);

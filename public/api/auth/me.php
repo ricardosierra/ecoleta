@@ -1,14 +1,16 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../db.php';
-session_start();
 
-header('Content-Type: application/json; charset=utf-8');
+startSecureSession();
+apiSendJsonHeaders();
+
+// Endpoint de leitura: é aqui que o token CSRF da sessão é emitido, inclusive
+// para quem ainda não fez login — o próprio POST de login precisa dele.
+$csrfToken = apiCsrfToken();
 
 if (!isset($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['error' => 'Não autenticado.']);
-    exit;
+    apiJsonResponse(401, ['error' => 'Não autenticado.', 'csrf_token' => $csrfToken]);
 }
 
 $db = getDbConnection();
@@ -23,22 +25,22 @@ $stmt->execute([$_SESSION['user_id']]);
 $user = $stmt->fetch();
 
 if (!$user) {
-    session_destroy();
-    http_response_code(401);
-    echo json_encode(['error' => 'Usuário não encontrado.']);
-    exit;
+    // Sessão apontando para um usuário que não existe mais: derruba tudo.
+    apiDestroySession();
+    apiJsonResponse(401, ['error' => 'Usuário não encontrado.']);
 }
 
-echo json_encode([
+apiJsonResponse(200, [
     'ok' => true,
+    'csrf_token' => $csrfToken,
     'user' => [
-        'id' => (int)$user['id'],
+        'id' => (int) $user['id'],
         'login' => $user['login'],
         'email' => $user['email'],
         'role' => $user['role'],
-        'group_id' => $user['group_id'] ? (int)$user['group_id'] : null,
+        'group_id' => $user['group_id'] ? (int) $user['group_id'] : null,
         'group_name' => $user['group_name'] ?? null,
         'group_powerbi_url' => $user['group_powerbi_url'] ?? null,
-        'force_password_change' => (bool)$user['force_password_change']
-    ]
+        'force_password_change' => (bool) $user['force_password_change'],
+    ],
 ]);

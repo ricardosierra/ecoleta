@@ -1,9 +1,11 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../db.php';
-session_start();
 
-header('Content-Type: application/json; charset=utf-8');
+startSecureSession();
+apiRequireCsrfToken();
+
+apiSendJsonHeaders();
 
 if (!isset($_SESSION['user_id'])) {
     http_response_code(401);
@@ -18,8 +20,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $raw = file_get_contents('php://input');
-$body = json_decode($raw, true);
-$newPassword = $body['new_password'] ?? '';
+$body = json_decode($raw ?: '', true) ?? [];
+$newPassword = (string) ($body['new_password'] ?? '');
 
 if (strlen($newPassword) < 6) {
     http_response_code(400);
@@ -33,6 +35,10 @@ $hash = password_hash($newPassword, PASSWORD_DEFAULT);
 $stmt = $db->prepare("UPDATE users SET password_hash = ?, force_password_change = 0 WHERE id = ?");
 $stmt->execute([$hash, $_SESSION['user_id']]);
 
+// Troca de senha é mudança de privilégio: novo ID de sessão e novo token CSRF.
+apiRegenerateSession();
+$csrfToken = apiRotateCsrfToken();
+
 // Grava no histórico de atividades
 logActivity(
     $db,
@@ -44,4 +50,4 @@ logActivity(
     $_SESSION['login'] ?? null
 );
 
-echo json_encode(['ok' => true]);
+apiJsonResponse(200, ['ok' => true, 'csrf_token' => $csrfToken]);
