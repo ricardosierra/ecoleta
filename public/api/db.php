@@ -1,17 +1,20 @@
 <?php
 declare(strict_types=1);
 
-// Carrega as variáveis de ambiente geradas pelo deploy
+require_once __DIR__ . '/security.php';
+
+// Carrega as variáveis de ambiente geradas pelo deploy (arquivo fora do Git).
 $envFile = __DIR__ . '/env.php';
 if (file_exists($envFile)) {
     require_once $envFile;
 } else {
-    // Fallback para desenvolvimento local caso as variáveis não existam no arquivo
+    // Sem env.php só restam as variáveis de ambiente do servidor. Nenhum segredo
+    // tem valor embutido: o que não estiver definido faz o recurso falhar fechado.
+    error_log('public/api/env.php ausente — usando apenas variáveis de ambiente do servidor.');
     if (!defined('DB_HOST')) define('DB_HOST', getenv('DB_HOST') ?: 'localhost');
     if (!defined('DB_NAME')) define('DB_NAME', getenv('DB_NAME') ?: 'ecoleta');
     if (!defined('DB_USER')) define('DB_USER', getenv('DB_USER') ?: 'root');
     if (!defined('DB_PASS')) define('DB_PASS', getenv('DB_PASS') ?: '');
-    if (!defined('NEXT_PUBLIC_DASHBOARD_PASSWORD')) define('NEXT_PUBLIC_DASHBOARD_PASSWORD', getenv('NEXT_PUBLIC_DASHBOARD_PASSWORD') ?: 'ecoleta2026');
 }
 
 function getDbConnection(): PDO {
@@ -27,9 +30,8 @@ function getDbConnection(): PDO {
         ensureTablesExist($db);
         return $db;
     } catch (PDOException $e) {
-        http_response_code(500);
-        echo json_encode(['error' => 'Falha na conexão com o banco de dados.']);
-        exit;
+        error_log('Falha na conexão com o banco de dados: ' . $e->getMessage());
+        apiJsonResponse(500, ['error' => 'Falha na conexão com o banco de dados.']);
     }
 }
 
@@ -107,6 +109,21 @@ function ensureTablesExist(PDO $db): void {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         ");
 
+        // Contador de tentativas de login por par (login, IP) — base do rate limit
+        $db->exec("
+            CREATE TABLE IF NOT EXISTS login_throttle (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                bucket CHAR(64) NOT NULL,
+                scope VARCHAR(16) NOT NULL,
+                failures INT UNSIGNED NOT NULL DEFAULT 0,
+                first_failure_at DATETIME NOT NULL,
+                last_failure_at DATETIME NOT NULL,
+                blocked_until DATETIME NULL,
+                UNIQUE KEY uniq_login_throttle_bucket (bucket),
+                INDEX idx_login_throttle_blocked (blocked_until)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ");
+
         $db->exec("
             CREATE TABLE IF NOT EXISTS activity_logs (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -143,12 +160,7 @@ function logActivity(
     try {
         ensureTablesExist($db);
 
-        $ip = $_SERVER['HTTP_CLIENT_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
-        if (str_contains($ip, ',')) {
-            $ip = trim(explode(',', $ip)[0]);
-        }
-        $ip = substr($ip, 0, 45);
-
+        $ip = apiClientIp();
         $ua = substr($_SERVER['HTTP_USER_AGENT'] ?? 'unknown', 0, 255);
 
         $stmt = $db->prepare("
