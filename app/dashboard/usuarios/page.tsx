@@ -2,8 +2,19 @@
 
 import { useEffect, useState, useCallback, FormEvent } from "react";
 import { DashboardGate, useDashboardAuth } from "@/components/DashboardGate";
+import { DashboardAccessDenied } from "@/components/DashboardAccessDenied";
 import Link from "next/link";
 import { apiPostJson } from "@/lib/dashboard-api";
+import {
+  ROLE_LABELS,
+  assignableRolesOnCreate,
+  assignableRolesOnEdit,
+  canDeleteUser,
+  canEditUser,
+  canGeneratePassword,
+  canManageUsers,
+  requiresGroup,
+} from "@/lib/authz";
 
 type Group = {
   id: number;
@@ -65,7 +76,15 @@ function UsuariosList() {
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const canManage = canManageUsers(currentUser);
+
   const fetchUsersAndGroups = useCallback(() => {
+    // Sem permissão a tela nem chega a pedir os dados: o 403 da API é a segunda
+    // linha de defesa, não a primeira.
+    if (!canManage) {
+      return;
+    }
+
     let isMounted = true;
     Promise.all([
       fetch("/api/users/index.php"),
@@ -100,7 +119,7 @@ function UsuariosList() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [canManage]);
 
   useEffect(() => {
     const cancel = fetchUsersAndGroups();
@@ -109,33 +128,15 @@ function UsuariosList() {
     };
   }, [fetchUsersAndGroups]);
 
-  const isRoot = currentUser?.role === "root";
-  const isMaster = currentUser?.role === "master";
-
-  const canEditUser = (target: User) => {
-    if (isRoot) return true;
-    if (isMaster) return target.role === "user";
-    return false;
-  };
-
-  const canGeneratePassword = (target: User) => {
-    if (isRoot) return true;
-    if (isMaster) return target.role === "user";
-    return false;
-  };
-
-  const canDeleteUser = (target: User) => {
-    if (isRoot) return target.id !== currentUser?.id;
-    if (isMaster) return target.role === "user";
-    return false;
-  };
+  const creatableRoles = assignableRolesOnCreate(currentUser);
+  const editableRoles = assignableRolesOnEdit(currentUser, editTarget ?? {});
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
     setSuccessMsg("");
 
-    if (role === "user" && !groupId) {
+    if (requiresGroup(role) && !groupId) {
       setError("Selecione um grupo obrigatório para o usuário padrão.");
       return;
     }
@@ -177,7 +178,7 @@ function UsuariosList() {
     e.preventDefault();
     if (!editTarget) return;
 
-    if (editRole === "user" && !editGroupId) {
+    if (requiresGroup(editRole) && !editGroupId) {
       setActionError("Selecione um grupo obrigatório para o usuário padrão.");
       return;
     }
@@ -266,6 +267,10 @@ function UsuariosList() {
     }
   };
 
+  if (!canManage) {
+    return <DashboardAccessDenied area="a gestão de usuários" />;
+  }
+
   if (loading) return <div className="p-8 text-white">Carregando usuários...</div>;
   if (error && !isCreating) return <div className="p-8 text-red-400">{error}</div>;
 
@@ -345,18 +350,21 @@ function UsuariosList() {
                 onChange={e => setRole(e.target.value)} 
                 className="mt-1 w-full rounded-xl border border-[var(--color-border-dark)] bg-black/30 px-3.5 py-2.5 text-white outline-none focus:border-[var(--color-accent)]"
               >
-                <option value="user" className="bg-[#0D1F0F] text-white">Usuário Padrão</option>
-                {isRoot && <option value="master" className="bg-[#0D1F0F] text-white">Master</option>}
+                {creatableRoles.map((option) => (
+                  <option key={option} value={option} className="bg-[#0D1F0F] text-white">
+                    {ROLE_LABELS[option]}
+                  </option>
+                ))}
               </select>
             </label>
             <label className="block text-sm text-[var(--color-text-on-dark)]">Grupo (Power BI)
               <select 
                 value={groupId} 
                 onChange={e => setGroupId(e.target.value ? Number(e.target.value) : "")}
-                required={role === "user"}
+                required={requiresGroup(role)}
                 className="mt-1 w-full rounded-xl border border-[var(--color-border-dark)] bg-black/30 px-3.5 py-2.5 text-white outline-none focus:border-[var(--color-accent)]"
               >
-                {role !== "user" && <option value="" className="bg-[#0D1F0F] text-white">Nenhum (Todos/Admin)</option>}
+                {!requiresGroup(role) && <option value="" className="bg-[#0D1F0F] text-white">Nenhum (Todos/Admin)</option>}
                 {groups.map((g) => (
                   <option key={g.id} value={g.id} className="bg-[#0D1F0F] text-white">
                     {g.name}
@@ -392,9 +400,9 @@ function UsuariosList() {
             </thead>
             <tbody className="divide-y divide-[var(--color-border-dark)]">
               {users.map(u => {
-                const canEdit = canEditUser(u);
-                const canGen = canGeneratePassword(u);
-                const canDel = canDeleteUser(u);
+                const canEdit = canEditUser(currentUser, u);
+                const canGen = canGeneratePassword(currentUser, u);
+                const canDel = canDeleteUser(currentUser, u);
 
                 return (
                   <tr key={u.id} className="hover:bg-white/5 transition-colors">
@@ -538,7 +546,7 @@ function UsuariosList() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {isRoot && (
+                {editableRoles.length > 1 && (
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--color-text-on-dark)] mb-1">
                       Nível de Acesso
@@ -548,24 +556,26 @@ function UsuariosList() {
                       onChange={(e) => setEditRole(e.target.value)}
                       className="w-full rounded-xl border border-[var(--color-border-dark)] bg-black/40 px-3.5 py-2.5 text-white outline-none focus:border-[var(--color-accent)]"
                     >
-                      <option value="user" className="bg-[#0D1F0F] text-white">Usuário Padrão</option>
-                      <option value="master" className="bg-[#0D1F0F] text-white">Master</option>
-                      <option value="root" className="bg-[#0D1F0F] text-white">Root</option>
+                      {editableRoles.map((option) => (
+                        <option key={option} value={option} className="bg-[#0D1F0F] text-white">
+                          {ROLE_LABELS[option]}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 )}
 
-                <div className={isRoot ? "" : "sm:col-span-2"}>
+                <div className={editableRoles.length > 1 ? "" : "sm:col-span-2"}>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--color-text-on-dark)] mb-1">
                     Grupo (Power BI)
                   </label>
                   <select
                     value={editGroupId}
                     onChange={(e) => setEditGroupId(e.target.value ? Number(e.target.value) : "")}
-                    required={editRole === "user"}
+                    required={requiresGroup(editRole)}
                     className="w-full rounded-xl border border-[var(--color-border-dark)] bg-black/40 px-3.5 py-2.5 text-white outline-none focus:border-[var(--color-accent)]"
                   >
-                    {editRole !== "user" && <option value="" className="bg-[#0D1F0F] text-white">Nenhum (Todos/Admin)</option>}
+                    {!requiresGroup(editRole) && <option value="" className="bg-[#0D1F0F] text-white">Nenhum (Todos/Admin)</option>}
                     {groups.map((g) => (
                       <option key={g.id} value={g.id} className="bg-[#0D1F0F] text-white">
                         {g.name}
@@ -575,7 +585,7 @@ function UsuariosList() {
                 </div>
               </div>
 
-              {canGeneratePassword(editTarget) && (
+              {canGeneratePassword(currentUser, editTarget) && (
                 <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-3">
                   <div>
                     <p className="text-xs font-semibold text-white">Redefinição de Acesso</p>
