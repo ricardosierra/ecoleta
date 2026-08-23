@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, FormEvent } from "react";
+import { useEffect, useState, useCallback, FormEvent } from "react";
 import { DashboardGate, useDashboardAuth } from "@/components/DashboardGate";
 import { DashboardAccessDenied } from "@/components/DashboardAccessDenied";
 import Link from "next/link";
@@ -48,7 +48,13 @@ function GruposList() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [actionError, setActionError] = useState("");
 
-  const fetchGroups = () => {
+  const canManage = canManageGroups(currentUser);
+
+  const fetchGroups = useCallback(() => {
+    // Sem permissão a tela nem chega a pedir os dados: o 403 da API é a segunda
+    // linha de defesa, não a primeira.
+    if (!canManage) return;
+
     fetch("/api/groups/index.php")
       .then((res) => {
         if (!res.ok) throw new Error("Acesso negado. Somente Root e Master podem gerenciar grupos.");
@@ -59,14 +65,14 @@ function GruposList() {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  };
+  }, [canManage]);
 
   useEffect(() => {
     fetchGroups();
-  }, []);
+  }, [fetchGroups]);
 
   // Bloqueio antes de qualquer render: não espera o 403 da API para esconder a tela.
-  if (!canManageGroups(currentUser)) {
+  if (!canManage) {
     return <DashboardAccessDenied area="a gestão de grupos" />;
   }
 
