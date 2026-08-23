@@ -8,12 +8,15 @@
 
 ### ✨ Novidades
 
+- [x] **Migrations versionadas** — o schema saiu do caminho da requisição. `db/migrations/*.sql` guarda o DDL e o seed numerados e idempotentes, `db/migrate.php` aplica os pendentes por SSH/CLI e `schema_migrations` registra versão, arquivo, checksum e duração de cada um.
 - [x] **Instalação única do root** — `api/install.php` cria o usuário `root` uma só vez, exige `DASHBOARD_INSTALL_TOKEN` pelo cabeçalho `X-Install-Token`, devolve a senha sorteada uma única vez e se autodesativa (`.install-lock`), respondendo 404 daí em diante.
 - [x] **Rate limit de login no servidor** — contadores em MySQL por `(login, IP)` e por IP, com janela de 15 minutos, bloqueio progressivo até o teto de 15 minutos e resposta `429` com `Retry-After`. O contador por IP pega o password spraying, que troca de login a cada tentativa e nunca chegaria ao limite do primeiro.
 - [x] **Token CSRF por sessão** — emitido por `api/auth/me.php`, inclusive antes do login, e exigido no cabeçalho `X-CSRF-Token` em todo endpoint que não seja GET.
 
 ### 🎨 Melhorias
 
+- [x] **Requisição sem DDL** — `getDbConnection()` só conecta. Antes, toda chamada autenticada rodava a criação das cinco tabelas, a inspeção das colunas de `users`, uma alteração condicional dessa tabela e duas consultas de seed: o guard `static` morria junto com o processo PHP, então o custo se repetia sempre. Sobrou uma leitura em `schema_migrations` por requisição.
+- [x] **503 em vez de auto-conserto** — banco atrás do código devolve `503 schema_out_of_date` com o motivo apenas no log do servidor, em vez de tentar se consertar com DDL sob concorrência. Banco à frente do código continua servindo: é o estado normal entre aplicar as migrations e subir os arquivos.
 - [x] **Cookie de sessão endurecido** — `HttpOnly`, `SameSite=Lax`, `Secure` sob HTTPS e escopo restrito a `/api/`, com `session.use_strict_mode` ligado e expiração por inatividade de 8 horas.
 - [x] **Respostas de login indistinguíveis** — usuário inexistente e senha errada devolvem a mesma mensagem e gastam o mesmo tempo de CPU, fechando a enumeração de logins tanto pelo conteúdo quanto pelo tempo de resposta.
 - [x] **Logout passou a ser POST com token** — antes, um `<img src="…/logout.php">` em qualquer página derrubava a sessão de quem a abrisse.
@@ -32,9 +35,17 @@
 - [x] `public/api/security.php` — sessão, CSRF, resposta JSON e leitura de segredos sem valor padrão, compartilhados por todos os endpoints.
 - [x] `public/api/rate_limit.php` — contadores de login persistidos em MySQL, com todo o cálculo de tempo feito pelo banco (`NOW()`, `TIMESTAMPDIFF`) para não depender de PHP e MySQL estarem no mesmo fuso.
 - [x] `lib/dashboard-api.ts` — cliente que guarda o token CSRF em memória, busca sozinho quando falta e refaz a requisição uma vez quando o servidor avisa que o token venceu. Todos os POST do dashboard passam por ele.
-- [x] Tabela `login_throttle` criada por `db.php`, com limpeza probabilística para não crescer sem fim; `.install-lock` adicionado ao `.gitignore`.
+- [x] Tabela `login_throttle` (migration `005`), com limpeza probabilística para não crescer sem fim; `.install-lock` adicionado ao `.gitignore`.
 - [x] `scripts/deploy-ftp.sh` gera o `env.php` com os novos nomes e avisa quando o token de instalação ainda está ativo no deploy.
 - [x] Nenhuma dependência nova e nenhum Composer: PHP 8 puro, como a hospedagem compartilhada exige.
+
+**Privilégio de banco:** o usuário MySQL da aplicação passa a precisar apenas de `SELECT/INSERT/UPDATE/DELETE`. O DDL é de um usuário separado (`DB_DDL_USER`), usado só pelo runner via SSH e nunca gravado em `public/api/env.php` — arquivo que fica dentro do webroot e que, exposto por engano, entregava junto a permissão de `DROP TABLE`.
+
+- [x] `public/api/schema.php` — `ECOLETA_SCHEMA_VERSION` declara a versão que o código exige; `db/migrate.php` compara com a última migration em disco e recusa terminar se divergirem, para a constante não ficar para trás em silêncio.
+- [x] Migration já aplicada é imutável: o checksum SHA-256 fica no registro e o runner para quando o arquivo muda depois de aplicado.
+- [x] `db/migrate.php` recusa rodar fora do CLI e `db/` não é publicado pelo deploy (só `out/` sobe por FTP).
+- [x] `scripts/deploy-ftp.sh` exige a confirmação de que as migrations já rodaram antes de compilar e publicar — interativamente ou com `MIGRATIONS_APPLIED=1` em CI.
+- [x] `docs/deploy.md` — ordem do deploy (migrations → arquivos), os dois `GRANT`, o procedimento de nova migration e o diagnóstico do 503.
 
 ## [v1.2.0 (2026-08-21)](https://github.com/ricardosierra/ecoleta/compare/v1.1.0...v1.2.0)
 
