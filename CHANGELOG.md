@@ -6,6 +6,36 @@
 
 ## [Unreleased](https://github.com/ricardosierra/ecoleta/compare/v1.2.0...master)
 
+### ✨ Novidades
+
+- [x] **Instalação única do root** — `api/install.php` cria o usuário `root` uma só vez, exige `DASHBOARD_INSTALL_TOKEN` pelo cabeçalho `X-Install-Token`, devolve a senha sorteada uma única vez e se autodesativa (`.install-lock`), respondendo 404 daí em diante.
+- [x] **Rate limit de login no servidor** — contadores em MySQL por `(login, IP)` e por IP, com janela de 15 minutos, bloqueio progressivo até o teto de 15 minutos e resposta `429` com `Retry-After`. O contador por IP pega o password spraying, que troca de login a cada tentativa e nunca chegaria ao limite do primeiro.
+- [x] **Token CSRF por sessão** — emitido por `api/auth/me.php`, inclusive antes do login, e exigido no cabeçalho `X-CSRF-Token` em todo endpoint que não seja GET.
+
+### 🎨 Melhorias
+
+- [x] **Cookie de sessão endurecido** — `HttpOnly`, `SameSite=Lax`, `Secure` sob HTTPS e escopo restrito a `/api/`, com `session.use_strict_mode` ligado e expiração por inatividade de 8 horas.
+- [x] **Respostas de login indistinguíveis** — usuário inexistente e senha errada devolvem a mesma mensagem e gastam o mesmo tempo de CPU, fechando a enumeração de logins tanto pelo conteúdo quanto pelo tempo de resposta.
+- [x] **Logout passou a ser POST com token** — antes, um `<img src="…/logout.php">` em qualquer página derrubava a sessão de quem a abrisse.
+- [x] Respostas JSON com `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` e `Referrer-Policy: same-origin`.
+
+### 🐛 Correções
+
+- [x] **Fixação de sessão** — `session_regenerate_id(true)` passou a rodar logo após o login e após a troca de senha; antes, o ID emitido antes da autenticação continuava válido depois dela.
+- [x] **Bootstrap implícito de root** — `auth/login.php` criava sozinho um usuário `root` quando o login `admin` não existia, bastando acertar a senha padrão. Removido em favor da instalação explícita.
+- [x] **Senha padrão embutida** — o fallback `'ecoleta2026'` saiu do `db.php`. Sem a variável definida o recurso falha fechado e registra o motivo no log, em vez de aceitar uma senha conhecida.
+
+### 🔧 Técnico
+
+**Segredos:** `NEXT_PUBLIC_DASHBOARD_USER` virou `DASHBOARD_ROOT_LOGIN` e `NEXT_PUBLIC_DASHBOARD_PASSWORD` deu lugar a `DASHBOARD_INSTALL_TOKEN`. O prefixo `NEXT_PUBLIC_` faz o Next.js embutir o valor no bundle servido ao navegador — nome errado para segredo de servidor. `NEXT_PUBLIC_POWERBI_URL` mantém o prefixo de propósito: é lida pelo `PowerBIViewer` e não é segredo.
+
+- [x] `public/api/security.php` — sessão, CSRF, resposta JSON e leitura de segredos sem valor padrão, compartilhados por todos os endpoints.
+- [x] `public/api/rate_limit.php` — contadores de login persistidos em MySQL, com todo o cálculo de tempo feito pelo banco (`NOW()`, `TIMESTAMPDIFF`) para não depender de PHP e MySQL estarem no mesmo fuso.
+- [x] `lib/dashboard-api.ts` — cliente que guarda o token CSRF em memória, busca sozinho quando falta e refaz a requisição uma vez quando o servidor avisa que o token venceu. Todos os POST do dashboard passam por ele.
+- [x] Tabela `login_throttle` criada por `db.php`, com limpeza probabilística para não crescer sem fim; `.install-lock` adicionado ao `.gitignore`.
+- [x] `scripts/deploy-ftp.sh` gera o `env.php` com os novos nomes e avisa quando o token de instalação ainda está ativo no deploy.
+- [x] Nenhuma dependência nova e nenhum Composer: PHP 8 puro, como a hospedagem compartilhada exige.
+
 ## [v1.2.0 (2026-08-21)](https://github.com/ricardosierra/ecoleta/compare/v1.1.0...v1.2.0)
 
 ### 🚀 Funcionalidades
