@@ -55,6 +55,44 @@ Banco MySQL criado na Hostinger para integrar funcionalidades futuras (ex: persi
 
 - Preencha `DB_HOST`, `DB_NAME`, `DB_USER` e `DB_PASS` apenas no arquivo `.env` local.
 
+### Dashboard (`/dashboard`)
+
+O backend do dashboard são os arquivos PHP em `public/api/`, publicados junto com o
+export estático. Não há Composer nem dependências externas: PHP 8 e MySQL.
+
+**Primeiro acesso — instalação única.** Não existe usuário nem senha padrão: sem
+`DASHBOARD_INSTALL_TOKEN` definido, `api/install.php` responde 404 e nenhum root é
+criado. Para instalar:
+
+```bash
+# 1. gere o token e coloque em DASHBOARD_INSTALL_TOKEN no .env (mínimo 24 caracteres)
+php -r "echo bin2hex(random_bytes(32));"
+
+# 2. publique (npm run deploy:ftp) e crie o root uma única vez
+curl -X POST https://SEU-DOMINIO/api/install.php \
+     -H "X-Install-Token: <o token gerado>" \
+     -H "Content-Type: application/json" \
+     -d '{"login":"admin","email":"admin@exemplo.com"}'
+
+# 3. guarde a senha devolvida, apague DASHBOARD_INSTALL_TOKEN do .env e republique
+```
+
+O endpoint grava `api/.install-lock` depois de rodar e passa a responder 404. A senha
+só é devolvida quando sorteada por ele, e precisa ser trocada no primeiro acesso.
+
+**Endurecimento aplicado.** Cookie de sessão `HttpOnly`, `SameSite=Lax`, `Secure` sob
+HTTPS e restrito a `/api/`; ID de sessão regenerado logo após o login e após a troca de
+senha; token CSRF por sessão emitido em `api/auth/me.php` e exigido no cabeçalho
+`X-CSRF-Token` em todo endpoint que não seja GET; rate limit de login em MySQL, por
+`(login, IP)` e por IP, com bloqueio progressivo e resposta `429` + `Retry-After`.
+Credenciais erradas e usuário inexistente devolvem exatamente a mesma resposta.
+
+**Segredos.** As variáveis do dashboard não usam o prefixo `NEXT_PUBLIC_`, que faria o
+Next.js embutir o valor no bundle do navegador. Elas chegam ao PHP por
+`public/api/env.php`, gerado pelo deploy e fora do Git — veja
+[`public/api/env.example.php`](./public/api/env.example.php). Constante ausente
+significa recurso desligado: nunca há senha padrão aceita.
+
 ### Publicação FTP
 
 Copie `.env.example` para `.env`, preencha `FTP_PASSWORD` e execute:
@@ -128,7 +166,8 @@ Detalhes em [`docs/identidade-visual.md`](./docs/identidade-visual.md).
 - [ ] Substituir Gallery placeholders por fotos reais da operação (OneDrive da cliente)
 - [ ] Publicar no servidor de produção via script FTP
 - [ ] Configurar DNS de `ecolevaeco.com` apontando para a hospedagem
-- [ ] Configurar banco de dados e rodar `setup_db.php` no servidor
+- [ ] Configurar banco de dados e criar o usuário root com `api/install.php` (ver *Dashboard*)
+- [ ] Apagar `DASHBOARD_INSTALL_TOKEN` do `.env` e republicar assim que o root existir
 
 ## Comandos
 
