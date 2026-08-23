@@ -165,6 +165,47 @@ check(
     migrateExpandPlaceholders($pdo, $config, ['filename' => 'x.sql', 'sql' => 'SELECT 1;'])
 );
 
+echo "\nmigrateConfig() — precedência\n";
+
+// Um checkout com env.php de um deploy antigo não pode sequestrar em silêncio
+// o --env-file apontado para outro banco.
+define('TESTE_PRECEDENCIA', 'valor-da-constante');
+
+check(
+    'arquivo explícito (--env-file) vence a constante do env.php',
+    'valor-do-arquivo',
+    migrateConfig(
+        ['file' => ['TESTE_PRECEDENCIA' => 'valor-do-arquivo'], 'sources' => [], 'explicit' => true],
+        'TESTE_PRECEDENCIA'
+    )
+);
+
+check(
+    '.env padrão (implícito) perde para a constante do env.php',
+    'valor-da-constante',
+    migrateConfig(
+        ['file' => ['TESTE_PRECEDENCIA' => 'valor-do-arquivo'], 'sources' => [], 'explicit' => false],
+        'TESTE_PRECEDENCIA'
+    )
+);
+
+putenv('TESTE_PRECEDENCIA=valor-do-ambiente');
+check(
+    'variável de ambiente real vence todo o resto',
+    'valor-do-ambiente',
+    migrateConfig(
+        ['file' => ['TESTE_PRECEDENCIA' => 'valor-do-arquivo'], 'sources' => [], 'explicit' => true],
+        'TESTE_PRECEDENCIA'
+    )
+);
+putenv('TESTE_PRECEDENCIA');
+
+check(
+    'chave ausente devolve o padrão',
+    'padrao',
+    migrateConfig(['file' => [], 'sources' => [], 'explicit' => true], 'TESTE_INEXISTENTE_XYZ', 'padrao')
+);
+
 echo "\nmigrateParseEnvFile()\n";
 
 $tmp = tempnam(sys_get_temp_dir(), 'ecoleta_env_');

@@ -18,8 +18,9 @@ declare(strict_types=1);
  * Configuração, em ordem de precedência:
  *
  *   1. variáveis de ambiente reais    (DB_HOST=... php db/migrate.php)
- *   2. public/api/env.php             (gerado pelo deploy)
- *   3. .env na raiz do repositório    (--env-file=CAMINHO para outro arquivo)
+ *   2. --env-file=CAMINHO             (explícito ganha de implícito)
+ *   3. public/api/env.php             (gerado pelo deploy, se estiver no checkout)
+ *   4. .env na raiz do repositório
  *
  * Credenciais: DB_DDL_USER / DB_DDL_PASS quando existirem — o usuário separado
  * que tem permissão de DDL. Sem eles o runner cai em DB_USER / DB_PASS e avisa,
@@ -137,15 +138,31 @@ function migrateLoadConfig(?string $envFileOverride): array
         migrateFail('arquivo de ambiente não encontrado: ' . $envFileOverride);
     }
 
-    return ['file' => $fromFile, 'sources' => $sources];
+    return [
+        'file' => $fromFile,
+        'sources' => $sources,
+        // --env-file apontado à mão vence as constantes de public/api/env.php.
+        'explicit' => $envFileOverride !== null,
+    ];
 }
 
-/** Valor de configuração: ambiente real > constante do env.php > .env. */
+/**
+ * Valor de configuração, na ordem: ambiente real > arquivo passado em
+ * --env-file > constante de public/api/env.php > .env padrão.
+ *
+ * O arquivo explícito vem antes das constantes de propósito. Sem isso, um
+ * checkout que ainda tenha o env.php de um deploy antigo sequestraria em
+ * silêncio um `--env-file` apontado para outro banco.
+ */
 function migrateConfig(array $config, string $name, string $default = ''): string
 {
     $fromEnv = getenv($name);
     if (is_string($fromEnv) && trim($fromEnv) !== '') {
         return trim($fromEnv);
+    }
+
+    if (!empty($config['explicit']) && isset($config['file'][$name]) && trim($config['file'][$name]) !== '') {
+        return trim($config['file'][$name]);
     }
 
     if (defined($name)) {
@@ -459,11 +476,11 @@ function migrateApplyOne(PDO $db, array $config, array $migration, bool $dryRun)
     }
 
     migrateOut(sprintf(
-        '  %s %s (%d instrução%s)',
+        '  %s %s (%d %s)',
         $dryRun ? '[dry-run]' : '→',
         $migration['filename'],
         count($statements),
-        count($statements) === 1 ? '' : 'ões'
+        count($statements) === 1 ? 'instrução' : 'instruções'
     ));
 
     if ($dryRun) {
