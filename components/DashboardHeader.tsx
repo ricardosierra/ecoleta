@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Logo from "@/components/Logo";
+import { dashboardNavLinks } from "@/lib/authz";
 
 type User = {
   id: number;
@@ -13,7 +14,7 @@ type DashboardHeaderProps = {
 };
 
 export function DashboardHeader({ onLogout, user }: DashboardHeaderProps) {
-  const canManageUsers = user && (user.role === 'root' || user.role === 'master');
+  const navLinks = dashboardNavLinks(user);
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 flex h-16 items-center justify-between border-b border-[var(--color-border-dark)] bg-[var(--color-bg-dark)]/95 px-4 backdrop-blur-md sm:px-8">
@@ -26,21 +27,17 @@ export function DashboardHeader({ onLogout, user }: DashboardHeaderProps) {
           Painel BI
         </span>
         <span className="hidden sm:inline-block h-4 w-px bg-[var(--color-border-dark)]" />
-        <div className="flex gap-2">
-          <Link href="/dashboard" className="text-sm font-medium text-white hover:text-[var(--color-accent)] transition-colors">
-            Painel
-          </Link>
-          {canManageUsers && (
-            <>
-              <Link href="/dashboard/usuarios" className="text-sm font-medium text-white hover:text-[var(--color-accent)] transition-colors ml-4">
-                Usuários
-              </Link>
-              <Link href="/dashboard/grupos" className="text-sm font-medium text-white hover:text-[var(--color-accent)] transition-colors ml-4">
-                Grupos
-              </Link>
-            </>
-          )}
-        </div>
+        <nav aria-label="Navegação do dashboard" className="flex gap-2">
+          {navLinks.map((link, index) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={`text-sm font-medium text-white hover:text-[var(--color-accent)] transition-colors${index > 0 ? " ml-4" : ""}`}
+            >
+              {link.label}
+            </Link>
+          ))}
+        </nav>
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3">

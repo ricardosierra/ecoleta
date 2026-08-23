@@ -2,8 +2,10 @@
 
 import { useEffect, useState, FormEvent } from "react";
 import { DashboardGate, useDashboardAuth } from "@/components/DashboardGate";
+import { DashboardAccessDenied } from "@/components/DashboardAccessDenied";
 import Link from "next/link";
 import { apiPostJson } from "@/lib/dashboard-api";
+import { canManageGroups } from "@/lib/authz";
 
 type Group = {
   id: number;
@@ -63,26 +65,9 @@ function GruposList() {
     fetchGroups();
   }, []);
 
-  const isAdmin = currentUser?.role === "root" || currentUser?.role === "master";
-
-  if (!loading && !isAdmin) {
-    return (
-      <div className="p-8 text-center text-white">
-        <div className="max-w-md mx-auto p-8 rounded-3xl bg-[rgba(255,255,255,0.03)] border border-red-500/30">
-          <p className="text-3xl mb-3">🔒</p>
-          <h2 className="text-xl font-bold text-white mb-2">Acesso Restrito</h2>
-          <p className="text-sm text-[var(--color-text-on-dark)] mb-6">
-            Apenas usuários com perfil <strong>Root</strong> ou <strong>Master</strong> têm permissão para acessar a gestão de grupos.
-          </p>
-          <Link
-            href="/dashboard"
-            className="inline-block bg-[var(--color-accent)] text-black px-6 py-2.5 rounded-full text-sm font-semibold hover:opacity-90"
-          >
-            Voltar ao Dashboard
-          </Link>
-        </div>
-      </div>
-    );
+  // Bloqueio antes de qualquer render: não espera o 403 da API para esconder a tela.
+  if (!canManageGroups(currentUser)) {
+    return <DashboardAccessDenied area="a gestão de grupos" />;
   }
 
   const handleCreateGroup = async (e: FormEvent) => {

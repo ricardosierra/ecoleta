@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { DashboardGate, useDashboardAuth } from "@/components/DashboardGate";
 import { PowerBIViewer } from "@/components/PowerBIViewer";
+import { canManageGroups, canSwitchGroupPanel } from "@/lib/authz";
 import Link from "next/link";
 
 type Group = {
@@ -24,11 +25,12 @@ function DashboardMain() {
   const { user } = useDashboardAuth();
   const [groups, setGroups] = useState<Group[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
-  const isAdmin = user?.role === "root" || user?.role === "master";
+  const isAdmin = canSwitchGroupPanel(user);
   const [loadingGroups, setLoadingGroups] = useState(isAdmin);
+  const userGroupId = user?.group_id ?? null;
 
   useEffect(() => {
-    if (user?.role !== "root" && user?.role !== "master") return;
+    if (!isAdmin) return;
     let isMounted = true;
     fetch("/api/groups/index.php")
       .then((res) => res.json())
@@ -38,8 +40,8 @@ function DashboardMain() {
           // Seleciona o grupo do usuário se houver, ou o primeiro da lista
           setSelectedGroupId((prev) => {
             if (prev !== null) return prev;
-            if (user?.group_id && data.groups.some((g: Group) => g.id === user.group_id)) {
-              return user.group_id;
+            if (userGroupId && data.groups.some((g: Group) => g.id === userGroupId)) {
+              return userGroupId;
             }
             return data.groups[0].id;
           });
@@ -53,7 +55,7 @@ function DashboardMain() {
     return () => {
       isMounted = false;
     };
-  }, [user?.role, user?.group_id]);
+  }, [isAdmin, userGroupId]);
 
   // Usuário padrão: visualiza diretamente o Power BI do seu grupo atribuído
   if (!isAdmin) {
@@ -109,14 +111,16 @@ function DashboardMain() {
           )}
         </div>
 
-        <div className="flex items-center gap-3">
-          <Link
-            href="/dashboard/grupos"
-            className="text-xs text-[var(--color-accent)] hover:underline flex items-center gap-1"
-          >
-            ⚙️ Gerenciar Grupos &rarr;
-          </Link>
-        </div>
+        {canManageGroups(user) && (
+          <div className="flex items-center gap-3">
+            <Link
+              href="/dashboard/grupos"
+              className="text-xs text-[var(--color-accent)] hover:underline flex items-center gap-1"
+            >
+              ⚙️ Gerenciar Grupos &rarr;
+            </Link>
+          </div>
+        )}
       </div>
 
       {/* Visualizador do Power BI */}
