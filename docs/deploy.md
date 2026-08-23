@@ -111,6 +111,16 @@ banco está em que versão" — para o runner e para a API.
 SELECT version, filename, applied_at FROM schema_migrations ORDER BY version;
 ```
 
+### Testes
+
+O separador de instruções do runner é a peça mais arriscada: um ponto e vírgula
+lido dentro de uma string quebraria a migration ao meio e aplicaria SQL cortado.
+Ele, a substituição de placeholder e o leitor de `.env` têm teste sem banco:
+
+```bash
+npm run test:migrations      # php db/tests/migrate_test.php
+```
+
 ### Idempotência
 
 MySQL faz commit implícito em cada DDL: **não existe rollback de migration**. Uma

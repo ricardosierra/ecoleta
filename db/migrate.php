@@ -678,45 +678,54 @@ function migrateCommandHelp(): int
 
 // ─── Entrada ─────────────────────────────────────────────────────────────────
 
-$command = 'migrate';
-$dryRun = false;
-$envFileOverride = null;
+function migrateMain(array $argv): int
+{
+    $command = 'migrate';
+    $dryRun = false;
+    $envFileOverride = null;
 
-foreach (array_slice($argv, 1) as $argument) {
-    if ($argument === '--dry-run') {
-        $dryRun = true;
-        continue;
+    foreach (array_slice($argv, 1) as $argument) {
+        if ($argument === '--dry-run') {
+            $dryRun = true;
+            continue;
+        }
+
+        if ($argument === '--help' || $argument === '-h' || $argument === 'help') {
+            return migrateCommandHelp();
+        }
+
+        if (str_starts_with($argument, '--env-file=')) {
+            $envFileOverride = substr($argument, strlen('--env-file='));
+            continue;
+        }
+
+        if ($argument === 'status' || $argument === 'migrate') {
+            $command = $argument;
+            continue;
+        }
+
+        migrateFail('argumento desconhecido: ' . $argument . ' (use --help)');
     }
 
-    if ($argument === '--help' || $argument === '-h' || $argument === 'help') {
-        exit(migrateCommandHelp());
+    $migrations = migrateDiscover();
+    migrateCheckVersionConstant($migrations);
+
+    $config = migrateLoadConfig($envFileOverride);
+    if ($config['sources'] !== []) {
+        migrateOut('Configuração lida de: ' . implode(', ', $config['sources']));
     }
 
-    if (str_starts_with($argument, '--env-file=')) {
-        $envFileOverride = substr($argument, strlen('--env-file='));
-        continue;
-    }
+    $db = migrateConnect($config);
+    migrateEnsureLedger($db);
+    $applied = migrateAppliedRows($db);
 
-    if ($argument === 'status' || $argument === 'migrate') {
-        $command = $argument;
-        continue;
-    }
-
-    migrateFail('argumento desconhecido: ' . $argument . ' (use --help)');
+    return $command === 'status'
+        ? migrateCommandStatus($migrations, $applied)
+        : migrateCommandMigrate($db, $config, $migrations, $applied, $dryRun);
 }
 
-$migrations = migrateDiscover();
-migrateCheckVersionConstant($migrations);
-
-$config = migrateLoadConfig($envFileOverride);
-if ($config['sources'] !== []) {
-    migrateOut('Configuração lida de: ' . implode(', ', $config['sources']));
+// Só roda quando o arquivo é chamado direto. Incluir migrate.php de outro script
+// (db/tests/) carrega as funções sem disparar nenhuma conexão.
+if (isset($argv[0]) && realpath($argv[0]) === realpath(__FILE__)) {
+    exit(migrateMain($argv));
 }
-
-$db = migrateConnect($config);
-migrateEnsureLedger($db);
-$applied = migrateAppliedRows($db);
-
-exit($command === 'status'
-    ? migrateCommandStatus($migrations, $applied)
-    : migrateCommandMigrate($db, $config, $migrations, $applied, $dryRun));

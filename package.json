@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "deploy:ftp": "bash scripts/deploy-ftp.sh"
+    "deploy:ftp": "bash scripts/deploy-ftp.sh",
+    "test:migrations": "php db/tests/migrate_test.php"
   },
   "dependencies": {
     "next": "16.2.4",
