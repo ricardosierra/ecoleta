@@ -1,17 +1,18 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../db.php';
+require_once __DIR__ . '/../authz.php';
 
 startSecureSession();
 apiRequireCsrfToken();
 
 apiSendJsonHeaders();
 
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['root', 'master'])) {
-    http_response_code(403);
-    echo json_encode(['error' => 'Acesso negado. Apenas administradores e masters podem gerenciar grupos.']);
-    exit;
-}
+// Papel exigido em um lugar só: public/api/authz.php. Recusa com 403 e encerra.
+$operator = apiRequireAdmin();
+$operatorId = $operator['id'];
+$operatorRole = $operator['role'];
+$operatorLogin = $operator['login'];
 
 $db = getDbConnection();
 
@@ -51,10 +52,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute([$name, $powerbiUrl ?: null]);
         $id = (int)$db->lastInsertId();
         
-        $operatorLogin = $_SESSION['login'] ?? 'admin';
-        $operatorRole = $_SESSION['role'];
-        $operatorId = (int)$_SESSION['user_id'];
-
         logActivity(
             $db,
             null,

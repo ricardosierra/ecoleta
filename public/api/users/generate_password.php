@@ -1,17 +1,18 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../db.php';
+require_once __DIR__ . '/../authz.php';
 
 startSecureSession();
 apiRequireCsrfToken();
 
 apiSendJsonHeaders();
 
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['root', 'master'])) {
-    http_response_code(403);
-    echo json_encode(['error' => 'Acesso negado.']);
-    exit;
-}
+// Papel exigido em um lugar só: public/api/authz.php. Recusa com 403 e encerra.
+$operator = apiRequireAdmin();
+$operatorId = $operator['id'];
+$operatorRole = $operator['role'];
+$operatorLogin = $operator['login'];
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -42,19 +43,11 @@ if (!$targetUser) {
     exit;
 }
 
-$operatorRole = $_SESSION['role'];
-$operatorId = (int)$_SESSION['user_id'];
-$operatorLogin = $_SESSION['login'] ?? 'admin';
-
-// Regras de permissão:
-// root: pode para todos
-// master: apenas para quem não for root nem master (ou seja, apenas 'user')
-if ($operatorRole === 'master') {
-    if ($targetUser['role'] === 'root' || $targetUser['role'] === 'master') {
-        http_response_code(403);
-        echo json_encode(['error' => 'Permissão negada. Usuários Master só podem gerar senhas para usuários comuns.']);
-        exit;
-    }
+// root gera senha para qualquer conta; master, apenas para contas 'user'.
+if (!apiRoleCanGeneratePassword($operatorRole, (string) $targetUser['role'])) {
+    http_response_code(403);
+    echo json_encode(['error' => 'Permissão negada. Usuários Master só podem gerar senhas para usuários comuns.']);
+    exit;
 }
 
 // Gera senha temporária de 10 caracteres

@@ -1,17 +1,18 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../db.php';
+require_once __DIR__ . '/../authz.php';
 
 startSecureSession();
 apiRequireCsrfToken();
 
 apiSendJsonHeaders();
 
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['root', 'master'])) {
-    http_response_code(403);
-    echo json_encode(['error' => 'Acesso negado.']);
-    exit;
-}
+// Papel exigido em um lugar só: public/api/authz.php. Recusa com 403 e encerra.
+$operator = apiRequireAdmin();
+$operatorId = $operator['id'];
+$operatorRole = $operator['role'];
+$operatorLogin = $operator['login'];
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -47,28 +48,19 @@ if (!$targetUser) {
     exit;
 }
 
-$operatorRole = $_SESSION['role'];
-$operatorId = (int)$_SESSION['user_id'];
-$operatorLogin = $_SESSION['login'] ?? 'admin';
-
 // Validação de permissões
-if ($operatorRole === 'master') {
-    if ($targetUser['role'] === 'root' || $targetUser['role'] === 'master') {
-        http_response_code(403);
-        echo json_encode(['error' => 'Permissão negada. Usuários Master só podem editar contas de Usuário Padrão.']);
-        exit;
-    }
-    // Master não pode promover ninguém a master ou root
-    $role = 'user';
-} else {
-    // Para root, se não passar role válido, mantém o atual
-    if (!in_array($role, ['root', 'master', 'user'])) {
-        $role = $targetUser['role'];
-    }
+if (!apiRoleCanEditUser($operatorRole, $targetUser['role'])) {
+    http_response_code(403);
+    echo json_encode(['error' => 'Permissão negada. Usuários Master só podem editar contas de Usuário Padrão.']);
+    exit;
 }
 
+// Master nunca promove ninguém: a gravação sai sempre como 'user'. Root grava o
+// papel pedido, ou mantém o atual quando o corpo manda algo que não é papel.
+$role = apiEffectiveRoleOnEdit($operatorRole, $role, (string) $targetUser['role']);
+
 // Se o papel for 'user', o grupo é obrigatório
-if ($role === 'user' && !$groupId) {
+if (apiRoleRequiresGroup($role) && !$groupId) {
     http_response_code(400);
     echo json_encode(['error' => 'Usuários com perfil padrão devem ser associados obrigatoriamente a um grupo.']);
     exit;

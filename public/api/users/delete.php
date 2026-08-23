@@ -1,17 +1,18 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../db.php';
+require_once __DIR__ . '/../authz.php';
 
 startSecureSession();
 apiRequireCsrfToken();
 
 apiSendJsonHeaders();
 
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['root', 'master'])) {
-    http_response_code(403);
-    echo json_encode(['error' => 'Acesso negado.']);
-    exit;
-}
+// Papel exigido em um lugar só: public/api/authz.php. Recusa com 403 e encerra.
+$operator = apiRequireAdmin();
+$operatorId = $operator['id'];
+$operatorRole = $operator['role'];
+$operatorLogin = $operator['login'];
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST' && $_SERVER['REQUEST_METHOD'] !== 'DELETE') {
     http_response_code(405);
@@ -28,10 +29,6 @@ if (!$targetUserId) {
     echo json_encode(['error' => 'ID do usuário é obrigatório.']);
     exit;
 }
-
-$operatorId = (int)$_SESSION['user_id'];
-$operatorRole = $_SESSION['role'];
-$operatorLogin = $_SESSION['login'] ?? 'admin';
 
 if ($targetUserId === $operatorId) {
     http_response_code(400);
@@ -52,15 +49,11 @@ if (!$targetUser) {
     exit;
 }
 
-// Regras de permissão:
-// root: pode excluir todos (exceto a si próprio)
-// master: pode excluir apenas quem não for root nem master (ou seja, apenas 'user')
-if ($operatorRole === 'master') {
-    if ($targetUser['role'] === 'root' || $targetUser['role'] === 'master') {
-        http_response_code(403);
-        echo json_encode(['error' => 'Permissão negada. Usuários Master só podem excluir usuários comuns.']);
-        exit;
-    }
+// root exclui qualquer conta menos a própria; master, apenas contas 'user'.
+if (!apiRoleCanDeleteUser($operatorRole, $operatorId, (string) $targetUser['role'], $targetUserId)) {
+    http_response_code(403);
+    echo json_encode(['error' => 'Permissão negada. Usuários Master só podem excluir usuários comuns.']);
+    exit;
 }
 
 // Exclui o usuário

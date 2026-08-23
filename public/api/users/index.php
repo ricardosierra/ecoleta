@@ -1,17 +1,18 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../db.php';
+require_once __DIR__ . '/../authz.php';
 
 startSecureSession();
 apiRequireCsrfToken();
 
 apiSendJsonHeaders();
 
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['root', 'master'])) {
-    http_response_code(403);
-    echo json_encode(['error' => 'Acesso negado.']);
-    exit;
-}
+// Papel exigido em um lugar só: public/api/authz.php. Recusa com 403 e encerra.
+$operator = apiRequireAdmin();
+$operatorId = $operator['id'];
+$operatorRole = $operator['role'];
+$operatorLogin = $operator['login'];
 
 $db = getDbConnection();
 
@@ -41,21 +42,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
     
-    if (!in_array($role, ['master', 'user'])) {
+    // 'root' não é atribuível pela API: essa conta nasce em install.php.
+    if (!in_array($role, [API_ROLE_MASTER, API_ROLE_USER], true)) {
         http_response_code(400);
         echo json_encode(['error' => 'Nível de acesso inválido.']);
         exit;
     }
 
     // Usuário comum deve obrigatoriamente ter um grupo
-    if ($role === 'user' && !$groupId) {
+    if (apiRoleRequiresGroup($role) && !$groupId) {
         http_response_code(400);
         echo json_encode(['error' => 'Usuários com perfil padrão devem ser associados obrigatoriamente a um grupo.']);
         exit;
     }
 
     // Se o operador for master, só pode criar usuário comum
-    if ($_SESSION['role'] === 'master' && $role !== 'user') {
+    if (!apiRoleCanAssignOnCreate($operatorRole, $role)) {
         http_response_code(403);
         echo json_encode(['error' => 'Usuários Master só podem criar contas de Usuário Padrão.']);
         exit;
@@ -90,10 +92,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute([$login, $email, $hash, $role, $groupId]);
         $id = (int)$db->lastInsertId();
         
-        $operatorLogin = $_SESSION['login'] ?? 'admin';
-        $operatorRole = $_SESSION['role'];
-        $operatorId = (int)$_SESSION['user_id'];
-
         $groupDesc = $groupName ? " no grupo '{$groupName}'" : "";
         logActivity(
             $db,

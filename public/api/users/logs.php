@@ -1,27 +1,22 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../db.php';
+require_once __DIR__ . '/../authz.php';
 
 startSecureSession();
 apiRequireCsrfToken();
 
 apiSendJsonHeaders();
 
-if (!isset($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['error' => 'Não autenticado.']);
-    exit;
-}
+$actor = apiRequireAuthenticated();
 
 $userId = (int)($_GET['user_id'] ?? 0);
 
-// Somente root/master podem ver logs de outros, usuário comum só vê o próprio
-if ($_SESSION['role'] !== 'root' && $_SESSION['role'] !== 'master') {
-    if ($userId !== (int)$_SESSION['user_id']) {
-        http_response_code(403);
-        echo json_encode(['error' => 'Acesso negado.']);
-        exit;
-    }
+// Somente root/master podem ver logs de outros; usuário comum só vê o próprio.
+if (!apiRoleCanViewUserLogs($actor['role'], $actor['id'], $userId)) {
+    http_response_code(403);
+    echo json_encode(['error' => API_ACCESS_DENIED]);
+    exit;
 }
 
 if (!$userId) {
