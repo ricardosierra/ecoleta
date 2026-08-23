@@ -3,6 +3,7 @@
 import { useEffect, useState, FormEvent } from "react";
 import { DashboardGate, useDashboardAuth } from "@/components/DashboardGate";
 import Link from "next/link";
+import { apiPostJson } from "@/lib/dashboard-api";
 
 type Group = {
   id: number;
@@ -91,11 +92,7 @@ function GruposList() {
     setIsSubmittingCreate(true);
 
     try {
-      const res = await fetch("/api/groups/index.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, powerbi_url: powerbiUrl }),
-      });
+      const res = await apiPostJson("/api/groups/index.php", { name, powerbi_url: powerbiUrl });
       const data = await res.json();
 
       if (res.ok && data.ok) {
@@ -129,14 +126,10 @@ function GruposList() {
     setActionError("");
 
     try {
-      const res = await fetch("/api/groups/edit.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          group_id: editTarget.id,
-          name: editName,
-          powerbi_url: editPowerbiUrl,
-        }),
+      const res = await apiPostJson("/api/groups/edit.php", {
+        group_id: editTarget.id,
+        name: editName,
+        powerbi_url: editPowerbiUrl,
       });
       const data = await res.json();
 
@@ -161,11 +154,7 @@ function GruposList() {
     setActionError("");
 
     try {
-      const res = await fetch("/api/groups/delete.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ group_id: deleteTarget.id }),
-      });
+      const res = await apiPostJson("/api/groups/delete.php", { group_id: deleteTarget.id });
       const data = await res.json();
 
       if (res.ok && data.ok) {

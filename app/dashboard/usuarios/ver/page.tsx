@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, Suspense, FormEvent } from "react";
 import { DashboardGate, useDashboardAuth } from "@/components/DashboardGate";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { apiPostJson } from "@/lib/dashboard-api";
 
 type Group = {
   id: number;
@@ -144,16 +145,12 @@ function UsuarioDetails() {
     setActionError("");
 
     try {
-      const res = await fetch("/api/users/edit.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: user.id,
-          login: editLogin,
-          email: editEmail,
-          role: editRole,
-          group_id: editGroupId ? Number(editGroupId) : null,
-        }),
+      const res = await apiPostJson("/api/users/edit.php", {
+        user_id: user.id,
+        login: editLogin,
+        email: editEmail,
+        role: editRole,
+        group_id: editGroupId ? Number(editGroupId) : null,
       });
       const data = await res.json();
 
@@ -176,11 +173,7 @@ function UsuarioDetails() {
     setActionError("");
 
     try {
-      const res = await fetch("/api/users/generate_password.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: user.id }),
-      });
+      const res = await apiPostJson("/api/users/generate_password.php", { user_id: user.id });
       const data = await res.json();
 
       if (res.ok && data.ok) {
@@ -211,11 +204,7 @@ function UsuarioDetails() {
     setActionError("");
 
     try {
-      const res = await fetch("/api/users/delete.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: user.id }),
-      });
+      const res = await apiPostJson("/api/users/delete.php", { user_id: user.id });
       const data = await res.json();
 
       if (res.ok && data.ok) {

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, FormEvent } from "react";
 import { DashboardGate, useDashboardAuth } from "@/components/DashboardGate";
 import Link from "next/link";
+import { apiPostJson } from "@/lib/dashboard-api";
 
 type Group = {
   id: number;
@@ -140,15 +141,11 @@ function UsuariosList() {
     }
     
     try {
-      const res = await fetch("/api/users/index.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          login, 
-          email, 
-          role,
-          group_id: groupId ? Number(groupId) : null
-        }),
+      const res = await apiPostJson("/api/users/index.php", {
+        login, 
+        email, 
+        role,
+        group_id: groupId ? Number(groupId) : null
       });
       const data = await res.json();
       if (res.ok && data.ok) {
@@ -189,16 +186,12 @@ function UsuariosList() {
     setActionError("");
 
     try {
-      const res = await fetch("/api/users/edit.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: editTarget.id,
-          login: editLogin,
-          email: editEmail,
-          role: editRole,
-          group_id: editGroupId ? Number(editGroupId) : null,
-        }),
+      const res = await apiPostJson("/api/users/edit.php", {
+        user_id: editTarget.id,
+        login: editLogin,
+        email: editEmail,
+        role: editRole,
+        group_id: editGroupId ? Number(editGroupId) : null,
       });
       const data = await res.json();
 
@@ -222,11 +215,7 @@ function UsuariosList() {
     setActionError("");
 
     try {
-      const res = await fetch("/api/users/generate_password.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: genTarget.id }),
-      });
+      const res = await apiPostJson("/api/users/generate_password.php", { user_id: genTarget.id });
       const data = await res.json();
 
       if (res.ok && data.ok) {
@@ -260,11 +249,7 @@ function UsuariosList() {
     setActionError("");
 
     try {
-      const res = await fetch("/api/users/delete.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: deleteTarget.id }),
-      });
+      const res = await apiPostJson("/api/users/delete.php", { user_id: deleteTarget.id });
       const data = await res.json();
 
       if (res.ok && data.ok) {

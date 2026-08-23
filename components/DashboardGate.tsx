@@ -3,6 +3,7 @@
 import { createContext, FormEvent, useContext, useEffect, useState } from "react";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { PowerBIViewer } from "@/components/PowerBIViewer";
+import { apiFetch, apiPostJson, clearCsrfToken, setCsrfToken } from "@/lib/dashboard-api";
 
 export type DashboardUser = {
   id: number;
@@ -46,6 +47,8 @@ export function DashboardGate({ children }: { children?: React.ReactNode }) {
     try {
       const res = await fetch("/api/auth/me.php");
       const data = await res.json();
+      // me.php emite o token CSRF da sessão inclusive antes do login.
+      setCsrfToken(data?.csrf_token);
       if (res.ok && data.ok && data.user) {
         setUser(data.user);
       } else {
@@ -61,6 +64,7 @@ export function DashboardGate({ children }: { children?: React.ReactNode }) {
     fetch("/api/auth/me.php")
       .then((res) => res.json())
       .then((data) => {
+        setCsrfToken(data?.csrf_token);
         if (isMounted) {
           if (data.ok && data.user) {
             setUser(data.user);
@@ -87,14 +91,12 @@ export function DashboardGate({ children }: { children?: React.ReactNode }) {
     setIsSubmitting(true);
 
     try {
-      const res = await fetch("/api/auth/login.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
+      const res = await apiPostJson("/api/auth/login.php", { username, password });
       const data = await res.json();
-      
+
       if (res.ok && data.ok && data.user) {
+        // O login regenera a sessão e emite um token novo.
+        setCsrfToken(data.csrf_token);
         setUser(data.user);
       } else {
         setError(data.error || "Erro ao fazer login.");
@@ -116,14 +118,12 @@ export function DashboardGate({ children }: { children?: React.ReactNode }) {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch("/api/auth/change_password.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ new_password: newPassword }),
-      });
+      const res = await apiPostJson("/api/auth/change_password.php", { new_password: newPassword });
       const data = await res.json();
-      
+
       if (res.ok && data.ok) {
+        // Trocar a senha também regenera a sessão.
+        setCsrfToken(data.csrf_token);
         setUser((prev) => prev ? { ...prev, force_password_change: false } : null);
         setNewPassword("");
       } else {
@@ -137,7 +137,12 @@ export function DashboardGate({ children }: { children?: React.ReactNode }) {
   };
 
   const handleLogout = async () => {
-    await fetch("/api/auth/logout.php");
+    try {
+      await apiFetch("/api/auth/logout.php", { method: "POST" });
+    } catch {
+      // Mesmo sem resposta do servidor, a sessão local é descartada.
+    }
+    clearCsrfToken();
     setUser(null);
     window.location.href = "/dashboard";
   };
