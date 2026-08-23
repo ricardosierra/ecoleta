@@ -45,3 +45,7 @@ next-env.d.ts
 public/api/env.php
 out/api/env.php
 
+# trava de instalação única gerada em runtime por public/api/install.php
+public/api/.install-lock
+out/api/.install-lock
+
