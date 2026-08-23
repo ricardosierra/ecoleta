@@ -6,13 +6,6 @@ require_once __DIR__ . '/../rate_limit.php';
 startSecureSession();
 apiRequireCsrfToken();
 
-/**
- * Hash descartável usado só para gastar o mesmo tempo de CPU quando o login
- * não existe. Sem ele, a diferença de tempo entre "usuário inexistente" e
- * "senha errada" já entrega quais logins são válidos.
- */
-const LOGIN_DECOY_HASH = '$2y$12$sjULG/Le8MN5X93yGQdlcuTfN/W8HBBzEnzKHNSyBge1kzqfrM2mK';
-
 // Resposta única para qualquer falha de credencial — nunca revela se o login existe.
 const LOGIN_GENERIC_ERROR = 'Credenciais inválidas.';
 
@@ -70,8 +63,17 @@ $stmt = $db->prepare("SELECT id, login, password_hash, role FROM users WHERE log
 $stmt->execute([$login, $login]);
 $user = $stmt->fetch();
 
-// Verificação sempre executada: usuário inexistente gasta o mesmo tempo do usuário real.
-$passwordOk = password_verify($password, is_array($user) ? (string) $user['password_hash'] : LOGIN_DECOY_HASH);
+if ($user) {
+    $passwordOk = password_verify($password, (string) $user['password_hash']);
+} else {
+    // Login inexistente gasta o mesmo tempo de CPU de uma verificação real: um
+    // bcrypt com o custo padrão do servidor. Sem isso a diferença de tempo entre
+    // "usuário não existe" e "senha errada" já entrega quais logins são válidos.
+    // Custo derivado de PASSWORD_DEFAULT, e não fixo, para acompanhar o mesmo
+    // custo com que os hashes desta instalação foram gerados.
+    password_hash('decoy-nunca-utilizada', PASSWORD_DEFAULT);
+    $passwordOk = false;
+}
 
 if (!$user || !$passwordOk) {
     $blockedFor = loginThrottleRegisterFailure($db, $login, $throttleIp);
