@@ -1,7 +1,18 @@
 #!/usr/bin/env bash
 
 # Compila o site estático e publica o conteúdo de out/ via FTP.
+#
+# ORDEM OBRIGATÓRIA DO DEPLOY:
+#   1. php db/migrate.php migrate    (por SSH, com o usuário de DDL)
+#   2. npm run deploy:ftp            (este script)
+#
+# Nesta ordem o banco fica à frente do código por alguns minutos, o que a API
+# tolera. Na ordem inversa os arquivos novos consultam colunas que ainda não
+# existem e o dashboard responde 503 até alguém rodar a migration. Ver
+# docs/deploy.md.
+#
 # Uso: npm run deploy:ftp
+#      MIGRATIONS_APPLIED=1 npm run deploy:ftp    (CI / não interativo)
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -34,6 +45,40 @@ for required in FTP_HOST FTP_USER FTP_PASSWORD FTP_UPLOAD_PATH; do
   fi
 done
 
+# ─── As migrations já rodaram? ───────────────────────────────────────────────
+# O script não consegue conferir sozinho: a hospedagem compartilhada não aceita
+# conexão MySQL de fora, então quem responde é quem está rodando o deploy.
+REQUIRED_SCHEMA_VERSION="$(
+  sed -n 's/.*ECOLETA_SCHEMA_VERSION[[:space:]]*=[[:space:]]*\([0-9]\{1,\}\).*/\1/p' \
+    "$ROOT_DIR/public/api/schema.php" 2>/dev/null | head -1
+)"
+REQUIRED_SCHEMA_VERSION="${REQUIRED_SCHEMA_VERSION:-?}"
+
+if [[ "${MIGRATIONS_APPLIED:-}" != "1" ]]; then
+  echo
+  echo "Esta build exige o schema na versão ${REQUIRED_SCHEMA_VERSION}."
+  echo "Antes de publicar os arquivos, aplique as migrations no servidor:"
+  echo
+  echo "    ssh <conta>@<host>"
+  echo "    cd <checkout do repositório> && php db/migrate.php status"
+  echo "    php db/migrate.php migrate"
+  echo
+
+  if [[ -t 0 ]]; then
+    read -r -p "As migrations já foram aplicadas? [s/N] " answer
+    case "$answer" in
+      s|S|sim|SIM|y|Y|yes|YES) ;;
+      *)
+        echo "Deploy cancelado. Rode as migrations e tente de novo." >&2
+        exit 1
+        ;;
+    esac
+  else
+    echo "Execução não interativa: defina MIGRATIONS_APPLIED=1 para confirmar." >&2
+    exit 1
+  fi
+fi
+
 FTP_HOST="${FTP_HOST%/}"
 FTP_UPLOAD_PATH="${FTP_UPLOAD_PATH#/}"
 FTP_UPLOAD_PATH="${FTP_UPLOAD_PATH%/}"
@@ -42,6 +87,10 @@ FTP_UPLOAD_PATH="${FTP_UPLOAD_PATH:-.}"
 mkdir -p "$ROOT_DIR/public/api"
 # Segredos do dashboard NÃO usam o prefixo NEXT_PUBLIC_: esse prefixo faz o
 # Next.js embutir o valor no bundle servido ao navegador.
+#
+# DB_DDL_USER/DB_DDL_PASS ficam de fora de propósito. Este arquivo vai para
+# dentro do webroot; quem tem permissão de DDL só precisa dela no CLI, e o
+# usuário aqui embaixo só faz SELECT/INSERT/UPDATE/DELETE.
 cat <<EOF > "$ROOT_DIR/public/api/env.php"
 <?php
 define('DB_HOST', '${DB_HOST:-}');

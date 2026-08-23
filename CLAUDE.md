@@ -52,7 +52,12 @@ lib/                       Utilitários e configuração
   rate-limit.ts            Rate limit em memória (5 req/min/IP)
   cn.ts                    Helper para classes condicionais
 
+db/                        Schema do banco (nunca publicado pelo deploy)
+  migrate.php              Runner CLI das migrations
+  migrations/*.sql         DDL e seed versionados
+
 docs/                      Documentação do projeto (NÃO MEXER nos arquivos da cliente)
+  deploy.md                Ordem do deploy e usuários MySQL (doc técnico, editável)
   briefing.md              Briefing original
   estrutura-site.md         Estrutura das 5 abas
   identidade-visual.md      Tokens consolidados
@@ -90,6 +95,18 @@ Tipografia: **Montserrat** apenas (400/500/600/700). Não introduzir outras font
 - **Botões** sempre via `<Button>` (5 variantes, 3 tamanhos). Mantém o radius pílula consistente.
 - **Eyebrows** (rótulos pequenos acima do título) seguem o utilitário `.eyebrow` ou `<Eyebrow>`. Sempre uppercase com tracking ampliado.
 - **Animações** via `<Reveal>` — degradação progressiva (renderiza visível por padrão, anima só com JS+IO+sem reduced-motion).
+
+### Banco de dados
+
+- **Nenhum DDL no caminho do request.** `getDbConnection()` só conecta. Tabelas
+  e seed vivem em `db/migrations/`, aplicadas por `php db/migrate.php` via
+  SSH/CLI antes do deploy dos arquivos.
+- Ao adicionar uma migration, subir `ECOLETA_SCHEMA_VERSION` em
+  `public/api/schema.php` junto — o runner recusa terminar se divergirem.
+- Migration já aplicada é imutável (checksum registrado). Para mudar o schema,
+  criar a próxima.
+- O usuário MySQL da aplicação tem só `SELECT/INSERT/UPDATE/DELETE`. DDL usa
+  `DB_DDL_USER`, que nunca entra em `public/api/env.php`. Ver `docs/deploy.md`.
 
 ### Formulário e e-mail
 

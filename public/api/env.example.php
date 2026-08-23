@@ -15,7 +15,13 @@ if (isset($_SERVER['SCRIPT_FILENAME']) && realpath((string) $_SERVER['SCRIPT_FIL
     exit;
 }
 
-// Banco de dados MySQL da hospedagem
+// Banco de dados MySQL da hospedagem — usuário DA APLICAÇÃO.
+//
+// Este usuário só precisa de SELECT/INSERT/UPDATE/DELETE. O schema é criado e
+// alterado por `php db/migrate.php`, que roda por SSH com um usuário separado
+// (DB_DDL_USER/DB_DDL_PASS) e cujas credenciais NÃO entram neste arquivo: ele
+// fica dentro do webroot, e uma configuração errada de servidor que o exponha
+// entregaria junto a permissão de DROP TABLE.
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'exemplo_banco');
 define('DB_USER', 'exemplo_usuario');
