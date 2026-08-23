@@ -40,16 +40,23 @@ FTP_UPLOAD_PATH="${FTP_UPLOAD_PATH%/}"
 FTP_UPLOAD_PATH="${FTP_UPLOAD_PATH:-.}"
 
 mkdir -p "$ROOT_DIR/public/api"
+# Segredos do dashboard NÃO usam o prefixo NEXT_PUBLIC_: esse prefixo faz o
+# Next.js embutir o valor no bundle servido ao navegador.
 cat <<EOF > "$ROOT_DIR/public/api/env.php"
 <?php
 define('DB_HOST', '${DB_HOST:-}');
 define('DB_NAME', '${DB_NAME:-}');
 define('DB_USER', '${DB_USER:-}');
 define('DB_PASS', '${DB_PASS:-}');
-define('NEXT_PUBLIC_DASHBOARD_PASSWORD', '${NEXT_PUBLIC_DASHBOARD_PASSWORD:-}');
-define('NEXT_PUBLIC_DASHBOARD_USER', '${NEXT_PUBLIC_DASHBOARD_USER:-admin}');
+define('DASHBOARD_ROOT_LOGIN', '${DASHBOARD_ROOT_LOGIN:-admin}');
+define('DASHBOARD_INSTALL_TOKEN', '${DASHBOARD_INSTALL_TOKEN:-}');
 define('NEXT_PUBLIC_POWERBI_URL', '${NEXT_PUBLIC_POWERBI_URL:-}');
 EOF
+
+if [[ -n "${DASHBOARD_INSTALL_TOKEN:-}" ]]; then
+  echo "Atenção: DASHBOARD_INSTALL_TOKEN está definido — api/install.php ficará acessível neste deploy."
+  echo "         Crie o usuário root e remova o token do .env antes do próximo deploy."
+fi
 
 echo "Gerando build de produção..."
 (cd "$ROOT_DIR" && npm run build)
