@@ -61,7 +61,7 @@
 - [x] `scripts/deploy-ftp.sh` exige a confirmação de que as migrations já rodaram antes de compilar e publicar — interativamente ou com `MIGRATIONS_APPLIED=1` em CI.
 - [x] `docs/deploy.md` — ordem do deploy (migrations → arquivos), os dois `GRANT`, o procedimento de nova migration e o diagnóstico do 503.
 
-## [v1.2.0 (2026-08-21)](https://github.com/ricardosierra/ecoleta/compare/v1.1.0...v1.2.0)
+## [v1.2.0 (2026-08-21)](https://github.com/ricardosierra/ecoleta/compare/v1.0.4...v1.2.0)
 
 ### ✨ Novidades
 
@@ -71,6 +71,11 @@
 - [x] **Associação Obrigatória a Grupos**: Usuários comuns (`user`) são obrigatoriamente vinculados a um grupo.
 - [x] **Dashboard Dinâmico por Grupo (`/dashboard/`)**: Exibição dinâmica do Power BI correspondente ao grupo do usuário logado; administradores (`root` e `master`) contam com seletor rápido para alternar entre os grupos.
 - [x] **Controle de Acesso**: Acesso a visualização e gestão de grupos restrito exclusivamente a `root` e `master`.
+- [x] Geração e redefinição de senhas temporárias com controle de permissões por perfil (`root` para todos, `master` apenas para usuários padrão)
+- [x] Exclusão segura de usuários com confirmação em modal e regras de autorização (`root` para todos exceto a si próprio, `master` para usuários comuns)
+- [x] Sistema completo de auditoria e histórico de logs de atividades (`activity_logs`) registrando logins, logouts, cadastros, alterações e exclusões
+- [x] Nova visualização detalhada de histórico do usuário com badges visuais temáticos, executor, IP e identificação do dispositivo
+- [x] Cópia em um clique da senha gerada diretamente na interface com feedback visual
 
 ### 🔧 Técnico
 
@@ -80,19 +85,6 @@
 - [x] Endpoints criados: `/api/groups/index.php`, `/api/groups/edit.php`, `/api/groups/delete.php` e `/api/users/edit.php`.
 - [x] Componente `PowerBIViewer` parametrizado dinamicamente para aceitar URL de grupo com estado vazio amigável.
 - [x] Build estático validado com sucesso com `npm run build` e `npm run lint`.
-
-## [v1.1.0 (2026-08-17)](https://github.com/ricardosierra/ecoleta/compare/v1.0.4...v1.1.0)
-
-### ✨ Novidades
-
-- [x] Geração e redefinição de senhas temporárias com controle de permissões por perfil (`root` para todos, `master` apenas para usuários padrão)
-- [x] Exclusão segura de usuários com confirmação em modal e regras de autorização (`root` para todos exceto a si próprio, `master` para usuários comuns)
-- [x] Sistema completo de auditoria e histórico de logs de atividades (`activity_logs`) registrando logins, logouts, cadastros, alterações e exclusões
-- [x] Nova visualização detalhada de histórico do usuário com badges visuais temáticos, executor, IP e identificação do dispositivo
-- [x] Cópia em um clique da senha gerada diretamente na interface com feedback visual
-
-### 🔧 Técnico
-
 - [x] Criação e validação automática das tabelas `users`, `access_logs` e `activity_logs` via `db.php`
 - [x] Exigência mandatória de troca de senha no primeiro login (`force_password_change`)
 - [x] Validação dupla de perfis e permissões no backend (PHP) e no frontend (React)
