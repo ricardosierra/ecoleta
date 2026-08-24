@@ -63,7 +63,7 @@
 
 ## [v1.2.0 (2026-08-21)](https://github.com/ricardosierra/ecoleta/compare/v1.1.0...v1.2.0)
 
-### 🚀 Funcionalidades
+### ✨ Novidades
 
 - [x] **Gestão de Grupos (`/dashboard/grupos/`)**: Tela exclusiva para `root` e `master` com cadastro, edição (nome e código/link de Power BI embed) e exclusão segura com validação de usuários vinculados.
 - [x] **Grupos Pré-criados**: Grupos `Coleta` (com Power BI padrão) e `Infectantes` (pronto para cadastro de código/URL de incorporação) criados automaticamente via banco de dados.
@@ -72,21 +72,18 @@
 - [x] **Dashboard Dinâmico por Grupo (`/dashboard/`)**: Exibição dinâmica do Power BI correspondente ao grupo do usuário logado; administradores (`root` e `master`) contam com seletor rápido para alternar entre os grupos.
 - [x] **Controle de Acesso**: Acesso a visualização e gestão de grupos restrito exclusivamente a `root` e `master`.
 
-### 🔒 Segurança e Banco de Dados
+### 🔧 Técnico
 
 - [x] Tabela `groups` criada e migração automática de `users.group_id`.
 - [x] Sanitização e extração automática de URL a partir de tags `<iframe>` do Power BI coladas por administradores.
 - [x] Registro de auditoria em `activity_logs` para operações de grupos (`create_group`, `edit_group`, `delete_group`) e edição de usuários (`edit_user`).
-
-### 🔧 Técnico
-
 - [x] Endpoints criados: `/api/groups/index.php`, `/api/groups/edit.php`, `/api/groups/delete.php` e `/api/users/edit.php`.
 - [x] Componente `PowerBIViewer` parametrizado dinamicamente para aceitar URL de grupo com estado vazio amigável.
 - [x] Build estático validado com sucesso com `npm run build` e `npm run lint`.
 
 ## [v1.1.0 (2026-08-17)](https://github.com/ricardosierra/ecoleta/compare/v1.0.4...v1.1.0)
 
-### 🚀 Funcionalidades
+### ✨ Novidades
 
 - [x] Geração e redefinição de senhas temporárias com controle de permissões por perfil (`root` para todos, `master` apenas para usuários padrão)
 - [x] Exclusão segura de usuários com confirmação em modal e regras de autorização (`root` para todos exceto a si próprio, `master` para usuários comuns)
@@ -94,14 +91,11 @@
 - [x] Nova visualização detalhada de histórico do usuário com badges visuais temáticos, executor, IP e identificação do dispositivo
 - [x] Cópia em um clique da senha gerada diretamente na interface com feedback visual
 
-### 🔒 Segurança e Banco de Dados
+### 🔧 Técnico
 
 - [x] Criação e validação automática das tabelas `users`, `access_logs` e `activity_logs` via `db.php`
 - [x] Exigência mandatória de troca de senha no primeiro login (`force_password_change`)
 - [x] Validação dupla de perfis e permissões no backend (PHP) e no frontend (React)
-
-### 🔧 Técnico
-
 - [x] Endpoints criados: `/api/users/generate_password.php` e `/api/users/delete.php`
 - [x] Endpoints atualizados para auditoria: `login.php`, `logout.php`, `change_password.php`, `users/index.php` e `users/logs.php`
 - [x] Build estático regenerado e empacotado em `ecoleta-out.zip`
@@ -116,13 +110,13 @@
 - [x] Indicadores ESG, logos de clientes e imagem da página Sobre atualizados para a identidade Ecoleva
 - [x] Grade de clientes simplificada para melhorar leitura, responsividade e acessibilidade
 
-### 🔒 Segurança
+### 🐛 Correções
 
 - [x] Autenticação simulada do dashboard removida: senhas e variáveis `NEXT_PUBLIC_*` não são usadas no client
-- [x] Configurações de banco e FTP mantidas como placeholders em `.env.example`, sem identificadores ou credenciais reais
 
 ### 🔧 Técnico
 
+- [x] Configurações de banco e FTP mantidas como placeholders em `.env.example`, sem identificadores ou credenciais reais
 - [x] Script `npm run deploy:ftp` adicionado para publicação com credenciais lidas exclusivamente do `.env` local
 - [x] `robots.txt` configurado para não indexar `/dashboard/`
 - [x] Build estático regenerado e empacotado em `ecoleta-out.zip`
