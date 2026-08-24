@@ -19,6 +19,28 @@ if (file_exists($envFile)) {
 }
 
 /**
+ * DSN do PDO.
+ *
+ * O padrão é o MySQL da hospedagem, montado a partir de DB_HOST/DB_NAME. Um
+ * `DB_DSN` definido — constante em env.php ou variável de ambiente — vence e é
+ * usado como está: é o escape para o que não cabe no molde padrão (socket Unix,
+ * porta fora da 3306, outro driver). DB_USER e DB_PASS continuam valendo, e
+ * drivers sem autenticação simplesmente os ignoram.
+ *
+ * A suíte de `tests/php/` usa esse mesmo caminho para apontar os endpoints a um
+ * SQLite descartável, sem precisar de um MySQL de pé.
+ */
+function apiDatabaseDsn(): string
+{
+    $dsn = apiSecret('DB_DSN');
+    if ($dsn !== '') {
+        return $dsn;
+    }
+
+    return 'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4';
+}
+
+/**
  * Abre a conexão com o banco — e só isso.
  *
  * Até a versão anterior esta função também rodava, em TODA requisição, a criação
@@ -38,7 +60,7 @@ if (file_exists($envFile)) {
  *                                   sabidamente defasado.
  */
 function getDbConnection(bool $requireCurrentSchema = true): PDO {
-    $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8mb4";
+    $dsn = apiDatabaseDsn();
     $options = [
         PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,

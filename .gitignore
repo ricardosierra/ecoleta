@@ -49,3 +49,5 @@ out/api/env.php
 public/api/.install-lock
 out/api/.install-lock
 
+# phpunit.phar baixado por scripts/phpunit.sh e cache do phpunit
+/tools

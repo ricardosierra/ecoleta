@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/11.5/phpunit.xsd"
+         bootstrap="tests/php/bootstrap.php"
+         cacheDirectory="tools/.phpunit.cache"
+         colors="true"
+         failOnWarning="true"
+         failOnNotice="true"
+         failOnDeprecation="true"
+         beStrictAboutOutputDuringTests="true"
+         displayDetailsOnTestsThatTriggerWarnings="true"
+         displayDetailsOnTestsThatTriggerErrors="true">
+  <testsuites>
+    <!-- Unit: só funções, sem tocar em disco nem em rede. -->
+    <testsuite name="unit">
+      <directory>tests/php/Unit</directory>
+    </testsuite>
+    <!-- Endpoint: roda os scripts de public/api/ em um processo PHP de verdade,
+         contra um SQLite descartável. Ver tests/php/Support/Endpoint.php. -->
+    <testsuite name="endpoint">
+      <directory>tests/php/Endpoint</directory>
+    </testsuite>
+  </testsuites>
+  <source>
+    <include>
+      <directory suffix=".php">public/api</directory>
+      <directory suffix=".php">db</directory>
+    </include>
+  </source>
+</phpunit>

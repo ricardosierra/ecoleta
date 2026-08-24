@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:php": "bash scripts/phpunit.sh",
     "deploy:ftp": "bash scripts/deploy-ftp.sh",
     "test:migrations": "php db/tests/migrate_test.php"
   },

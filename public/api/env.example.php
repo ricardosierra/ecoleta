@@ -27,6 +27,11 @@ define('DB_NAME', 'exemplo_banco');
 define('DB_USER', 'exemplo_usuario');
 define('DB_PASS', 'DEFINA_NO_ENV');
 
+// Opcional. Definido, substitui o DSN montado a partir de DB_HOST/DB_NAME —
+// para socket Unix, porta fora da 3306 ou outro driver. Deixe fora do arquivo
+// para usar o padrão MySQL da hospedagem.
+// define('DB_DSN', 'mysql:unix_socket=/tmp/mysql.sock;dbname=exemplo_banco;charset=utf8mb4');
+
 // Login do usuário root criado por api/install.php (padrão: admin)
 define('DASHBOARD_ROOT_LOGIN', 'admin');
 
