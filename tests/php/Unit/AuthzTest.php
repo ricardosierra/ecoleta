@@ -192,6 +192,25 @@ final class AuthzTest extends TestCase
         self::assertSame('root', apiEffectiveRoleOnEdit('root', 'root', 'user'));
     }
 
+    /**
+     * A outra metade da trava da própria conta. apiRoleCanDeleteUser() já
+     * impedia apagar a si próprio; sem esta, a mesma perda acontecia pela porta
+     * do lado — o único root se rebaixava a 'user' e a instalação ficava sem
+     * nenhum root, com install.php já autodesativado.
+     */
+    public function testNinguemMudaOProprioPapel(): void
+    {
+        self::assertSame('root', apiEffectiveRoleOnEdit('root', 'user', 'root', true));
+        self::assertSame('root', apiEffectiveRoleOnEdit('root', 'master', 'root', true));
+        self::assertSame('master', apiEffectiveRoleOnEdit('master', 'root', 'master', true));
+    }
+
+    public function testATravaValeSoParaAPropriaConta(): void
+    {
+        self::assertSame('user', apiEffectiveRoleOnEdit('root', 'user', 'root', false));
+        self::assertSame('user', apiEffectiveRoleOnEdit('root', 'user', 'root'));
+    }
+
     public function testPedidoInvalidoMantemOPapelAtual(): void
     {
         self::assertSame('master', apiEffectiveRoleOnEdit('root', 'Root', 'master'));

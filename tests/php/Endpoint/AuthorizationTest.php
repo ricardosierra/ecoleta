@@ -288,6 +288,70 @@ final class AuthorizationTest extends TestCase
         self::assertSame('user', $this->userById($this->userId)['role']);
     }
 
+    /**
+     * `users/delete.php` já recusava apagar a própria conta, mas
+     * `users/edit.php` aceitava rebaixá-la: o único root virava 'user', a
+     * instalação ficava com zero root e `install.php` — autodesativado pelo
+     * `.install-lock` assim que criou a conta — responde 404 desde então. Não
+     * era escalada de privilégio, era perda irreversível de administrador.
+     */
+    public function testRootNaoSeRebaixaPelaEdicao(): void
+    {
+        $resposta = $this->call('users/edit.php', $this->comoRoot(), [
+            'body' => [
+                'user_id' => $this->rootId,
+                'login' => 'admin',
+                'email' => 'admin@ricasolucoes.com.br',
+                'role' => 'user',
+                'group_id' => $this->grupoId,
+            ],
+        ]);
+
+        self::assertSame(200, $resposta->status);
+        self::assertSame('root', $resposta->json()['user']['role'], 'a resposta anunciou o rebaixamento');
+        self::assertSame('root', $this->userById($this->rootId)['role'], 'o papel foi rebaixado no banco');
+        self::assertSame(1, $this->contarRoots(), 'a instalação ficou sem nenhum root');
+    }
+
+    /**
+     * Master não se promove porque nem chega à regra de papel: master só age
+     * sobre contas 'user', e a própria conta não é uma delas. A recusa vem do
+     * guard de edição, antes de qualquer coisa.
+     */
+    public function testMasterNaoSePromovePelaEdicao(): void
+    {
+        $resposta = $this->call('users/edit.php', $this->comoMaster(), [
+            'body' => [
+                'user_id' => $this->masterId,
+                'login' => 'chefe',
+                'email' => 'chefe@ricasolucoes.com.br',
+                'role' => 'root',
+            ],
+        ]);
+
+        self::assertSame(403, $resposta->status);
+        self::assertSame('master', $this->userById($this->masterId)['role']);
+    }
+
+    /** A trava é só do papel: o resto da própria conta continua editável. */
+    public function testRootEditaOsProprioDadosMenosOPapel(): void
+    {
+        $resposta = $this->call('users/edit.php', $this->comoRoot(), [
+            'body' => [
+                'user_id' => $this->rootId,
+                'login' => 'admin',
+                'email' => 'novo-email@ricasolucoes.com.br',
+                'role' => 'root',
+            ],
+        ]);
+
+        self::assertSame(200, $resposta->status);
+
+        $atualizado = $this->userById($this->rootId);
+        self::assertSame('novo-email@ricasolucoes.com.br', $atualizado['email']);
+        self::assertSame('root', $atualizado['role']);
+    }
+
     public function testNinguemExcluiAPropriaConta(): void
     {
         $resposta = $this->call('users/delete.php', $this->comoRoot(), ['body' => ['user_id' => $this->rootId]]);
@@ -340,6 +404,13 @@ final class AuthorizationTest extends TestCase
 
         self::assertSame(400, $resposta->status);
         self::assertSame(1, $this->db->count('groups'));
+    }
+
+    private function contarRoots(): int
+    {
+        $row = $this->db->pdo()->query("SELECT COUNT(*) AS total FROM users WHERE role = 'root'")->fetch();
+
+        return (int) ($row['total'] ?? 0);
     }
 
     /** @return array<string,mixed>|null */

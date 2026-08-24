@@ -210,6 +210,43 @@ describe("papéis oferecidos nos formulários", () => {
     expect(assignableRolesOnEdit(master, root)).toEqual([]);
     expect(assignableRolesOnEdit(comum, outroComum)).toEqual([]);
   });
+
+  /**
+   * Editando a própria conta sobra só o papel atual — e as telas escondem o
+   * seletor quando a lista tem um item só. Sem isso, o único root podia se
+   * rebaixar a `user` e deixar a instalação sem nenhum root: `install.php` se
+   * autodesativa depois de criar a conta e responde 404 desde então, então a
+   * volta só existiria por acesso direto ao banco.
+   */
+  it("ninguém muda o próprio papel", () => {
+    expect(assignableRolesOnEdit(root, root)).toEqual(["root"]);
+    expect(assignableRolesOnEdit(master, master)).toEqual([]);
+  });
+
+  it("o mesmo root editando outra conta continua com as três opções", () => {
+    expect(assignableRolesOnEdit(root, { id: 99, role: "root" })).toEqual([
+      "user",
+      "master",
+      "root",
+    ]);
+  });
+});
+
+describe("trava da própria conta", () => {
+  /**
+   * As duas metades da mesma regra: apagar a própria conta e rebaixar o
+   * próprio papel levam ao mesmo lugar — uma instalação sem administrador.
+   * Antes só a primeira estava fechada.
+   */
+  it("nem apagar nem rebaixar a si próprio", () => {
+    expect(canDeleteUser(root, root)).toBe(false);
+    expect(assignableRolesOnEdit(root, root)).toEqual(["root"]);
+  });
+
+  it("editar a própria conta continua permitido — o que trava é só o papel", () => {
+    expect(canEditUser(root, root)).toBe(true);
+    expect(canGeneratePassword(root, root)).toBe(true);
+  });
 });
 
 describe("requiresGroup", () => {

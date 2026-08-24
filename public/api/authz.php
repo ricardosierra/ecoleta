@@ -132,9 +132,23 @@ function apiRoleCanAssignOnCreate(?string $actorRole, $requestedRole): bool
  * `master` nunca promove ninguém: o resultado é sempre `user`, mesmo que o
  * corpo peça outra coisa. `root` grava o que pediu, e o papel atual quando o
  * pedido não é um papel conhecido.
+ *
+ * Ninguém muda o próprio papel. `apiRoleCanDeleteUser()` já impede apagar a
+ * própria conta, e sem esta trava a mesma perda acontecia pela porta do lado:
+ * o único `root` se rebaixava a `user`, a instalação ficava com zero root e
+ * `install.php` — autodesativado pelo `.install-lock` — responde 404 desde a
+ * criação da conta. A volta só existiria por acesso direto ao banco.
  */
-function apiEffectiveRoleOnEdit(?string $actorRole, $requestedRole, string $currentRole): string
-{
+function apiEffectiveRoleOnEdit(
+    ?string $actorRole,
+    $requestedRole,
+    string $currentRole,
+    bool $editingSelf = false
+): string {
+    if ($editingSelf) {
+        return $currentRole;
+    }
+
     if (apiNormalizeRole($actorRole) === API_ROLE_MASTER) {
         return API_ROLE_USER;
     }

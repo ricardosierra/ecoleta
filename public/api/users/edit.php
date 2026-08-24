@@ -57,7 +57,8 @@ if (!apiRoleCanEditUser($operatorRole, $targetUser['role'])) {
 
 // Master nunca promove ninguém: a gravação sai sempre como 'user'. Root grava o
 // papel pedido, ou mantém o atual quando o corpo manda algo que não é papel.
-$role = apiEffectiveRoleOnEdit($operatorRole, $role, (string) $targetUser['role']);
+// Editando a própria conta, o papel atual é mantido: ver apiEffectiveRoleOnEdit().
+$role = apiEffectiveRoleOnEdit($operatorRole, $role, (string) $targetUser['role'], $targetUserId === $operatorId);
 
 // Se o papel for 'user', o grupo é obrigatório
 if (apiRoleRequiresGroup($role) && !$groupId) {

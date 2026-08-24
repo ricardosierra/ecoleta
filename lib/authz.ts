@@ -110,6 +110,14 @@ function canActOnTarget(actor: Actor, target: TargetUser): boolean {
   return false;
 }
 
+/** Mesma conta dos dois lados da edição. */
+function isSelf(actor: Actor, target: TargetUser): boolean {
+  const actorId = actor?.id;
+  const targetId = target.id;
+
+  return typeof actorId === "number" && typeof targetId === "number" && actorId === targetId;
+}
+
 export function canEditUser(actor: Actor, target: TargetUser): boolean {
   return canActOnTarget(actor, target);
 }
@@ -127,10 +135,7 @@ export function canDeleteUser(actor: Actor, target: TargetUser): boolean {
     return false;
   }
 
-  const actorId = actor?.id;
-  const targetId = target.id;
-
-  return !(typeof actorId === "number" && typeof targetId === "number" && actorId === targetId);
+  return !isSelf(actor, target);
 }
 
 /**
@@ -178,10 +183,21 @@ export function assignableRolesOnCreate(actor: Actor): DashboardRole[] {
 /**
  * Papéis oferecidos ao editar uma conta existente. `root` só entra aqui — um
  * root pode promover outra conta a root, mas isso não é oferecido na criação.
+ *
+ * Editando a própria conta sobra só o papel atual, e as telas escondem o
+ * seletor quando a lista tem um item. É o espelho da trava de
+ * `apiEffectiveRoleOnEdit()`: o único root que se rebaixasse a `user` deixaria
+ * a instalação sem nenhum root, e `install.php` já respondeu 404 pela última
+ * vez quando criou a conta.
  */
 export function assignableRolesOnEdit(actor: Actor, target: TargetUser): DashboardRole[] {
   if (!canEditUser(actor, target)) {
     return [];
+  }
+  if (isSelf(actor, target)) {
+    const current = normalizeRole(target.role);
+
+    return current ? [current] : [];
   }
   if (isRoot(actor)) {
     return ["user", "master", "root"];
