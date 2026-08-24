@@ -23,6 +23,7 @@
 - [x] **Respostas de login indistinguíveis** — usuário inexistente e senha errada devolvem a mesma mensagem e gastam o mesmo tempo de CPU, fechando a enumeração de logins tanto pelo conteúdo quanto pelo tempo de resposta.
 - [x] **Logout passou a ser POST com token** — antes, um `<img src="…/logout.php">` em qualquer página derrubava a sessão de quem a abrisse.
 - [x] Respostas JSON com `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` e `Referrer-Policy: same-origin`.
+- [x] **Build empacotado fora do versionamento** — `ecoleta-out.zip` respondia por 143 MB do histórico, em três blobs: 78% de tudo que o repositório carrega, contra 4,8 MB de todo o código do projeto somado. É o export estático que `npm run build` regera em `out/`, conferido entrada por entrada contra uma build limpa — nenhuma das 501 existia só ali, e o pacote ainda estava velho o bastante para derrubar o dashboard se alguém publicasse a partir dele. Saiu do rastreamento; os blobs seguem no histórico até a reescrita proposta em `docs/peso-do-repositorio.md`.
 
 ### 🐛 Correções
 
@@ -60,6 +61,10 @@
 - [x] `db/migrate.php` recusa rodar fora do CLI e `db/` não é publicado pelo deploy (só `out/` sobe por FTP).
 - [x] `scripts/deploy-ftp.sh` exige a confirmação de que as migrations já rodaram antes de compilar e publicar — interativamente ou com `MIGRATIONS_APPLIED=1` em CI.
 - [x] `docs/deploy.md` — ordem do deploy (migrations → arquivos), os dois `GRANT`, o procedimento de nova migration e o diagnóstico do 503.
+- [x] `.gitignore` passou a cobrir `*.zip` e os demais formatos de pacote, além de `/graphify-out/`. Até aqui a proteção vinha do `~/.gitignore_global` do dono, que existe só na máquina dele: em outro clone, ou num runner de CI, um `git add .` recolocaria os 76 MB no commit.
+- [x] `docs/peso-do-repositorio.md` — inventário medido sobre o histórico inteiro (não só sobre o diretório de trabalho), o trade-off dos vídeos do hero e a proposta de reescrita. Os números vêm de clones descartáveis: 185 MB caem para 41 MB removendo só o zip, 14 MB removendo também os vídeos. A reescrita fica **proposta, não executada** — o peso está em `origin`, e reescrever só localmente deixaria o clone divergente para sempre sem tirar um byte do GitHub.
+- [x] Duas armadilhas medidas para quem for executar a reescrita: quatro refs `refs/codex/turn-diffs/checkpoints/*` apontam para objetos *tree*, que o `git-filter-repo` pula — e uma delas segura sozinha 36 MB do zip, deixando o resultado em 77 MB em vez de 41 MB; e o `git-filter-repo` 2.47.0 quebra ao ler os aliases multilinha do `.gitconfig` global, contornado com `GIT_CONFIG_GLOBAL=/dev/null`.
+- [x] Os três zips do histórico foram conferidos e **nenhum contém `out/api/env.php`**, que o deploy gera com as credenciais de produção em texto puro. O arquivo é ignorado pela regra `/out/`, mas um zip de `out/` não era — e foi um zip de `out/` que entrou no histórico três vezes.
 
 ## [v1.2.0 (2026-08-21)](https://github.com/ricardosierra/ecoleta/compare/v1.0.4...v1.2.0)
 
