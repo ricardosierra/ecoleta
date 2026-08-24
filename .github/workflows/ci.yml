@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# Push seguido de push na mesma referência cancela a execução anterior: o que
+# interessa é o veredito do último commit.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: Front (typecheck, lint, testes, build de export)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Testes de front
+        run: npm test
+
+      # O site é `output: export`: o build é o único lugar onde um erro de
+      # geração estática aparece antes do deploy por FTP. Roda depois dos
+      # testes de propósito — um teste vermelho é mais barato de ler do que
+      # um build vermelho.
+      #
+      # Sem .env no runner: toda variável NEXT_PUBLIC_ lida em lib/site.config.ts
+      # e em PowerBIViewer tem valor de queda, então o export compila igual.
+      - name: Build de export estático
+        run: npm run build
+
+  api:
+    name: Backend PHP (phpunit, migrations)
+    runs-on: ubuntu-latest
+
+    env:
+      # Alinhe com a versão de PHP da hospedagem quando ela for confirmada.
+      # 8.4 é a versão em que a suíte foi escrita e verificada; PHPUnit 11
+      # exige 8.2 ou mais.
+      PHP_VERSION: '8.4'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          # pdo_sqlite é o banco descartável da suíte; pdo_mysql é o de
+          # produção e entra aqui só para o `php -l` e os require valerem
+          # alguma coisa sobre o código que roda de verdade.
+          extensions: pdo_sqlite, sqlite3, pdo_mysql, json, mbstring
+          coverage: none
+          tools: none
+
+      - name: Sintaxe de todo o PHP versionado
+        run: git ls-files '*.php' | xargs -r -n1 -P4 php -l
+
+      # Baixa o phpunit.phar e confere o SHA-256 antes de executar. Chamado
+      # direto, e não por `npm run test:php`: este job não instala Node.
+      - name: Testes de backend
+        run: bash scripts/phpunit.sh
+
+      # Suíte própria do runner de migrations, anterior ao PHPUnit e mantida
+      # como está: cobre o separador de instruções e a leitura de .env.
+      - name: Testes do runner de migrations
+        run: php db/tests/migrate_test.php
