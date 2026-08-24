@@ -156,6 +156,7 @@ Detalhes em [`docs/identidade-visual.md`](./docs/identidade-visual.md).
 | [`docs/visual-references/`](./docs/visual-references/) | 6 prints aprovados pela cliente. |
 | [`docs/transcricoes/`](./docs/transcricoes/) | Transcrições de áudios. |
 | [`docs/PORTFOLIO ECOLETA.pdf`](./docs/PORTFOLIO%20ECOLETA.pdf) | Portfólio (logos para o carrossel). |
+| [`docs/versionamento.md`](./docs/versionamento.md) | Por que a série de tags continua em v1.x. |
 
 ## Antes do go-live
 
