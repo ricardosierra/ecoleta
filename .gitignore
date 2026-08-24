@@ -20,6 +20,22 @@
 # production
 /build
 
+# pacotes de build
+# O site é publicado por FTP a partir de out/, arquivo por arquivo: nunca por zip.
+# ecoleta-out.zip chegou a ser versionado por engano e ainda pesa 143 MB no
+# histórico, em três blobs. Ver docs/peso-do-repositorio.md.
+# Até aqui a proteção vinha do ~/.gitignore_global do dono, que só existe na
+# máquina dele: em qualquer outro clone um "git add ." recolocaria o zip.
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+
+# saída de ferramentas auxiliares
+/graphify-out/
+
 # misc
 .DS_Store
 *.pem
