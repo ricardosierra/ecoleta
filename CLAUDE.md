@@ -20,11 +20,21 @@ Referência visual oficial da cliente: <https://impactacomvoce.com.br/>.
 ## Comandos
 
 ```bash
-npm run dev      # http://localhost:3000
-npm run build    # produção (deve passar limpo)
-npm run lint     # ESLint (deve passar limpo)
-npm start        # servir build
+npm run dev            # http://localhost:3000
+npm run build          # produção (deve passar limpo)
+npm run lint           # ESLint (deve passar limpo)
+npm run typecheck      # tsc --noEmit (deve passar limpo)
+npm test               # Vitest — front
+npm run test:php       # PHPUnit — public/api/, com SQLite descartável
+npm run test:migrations # partes puras de db/migrate.php
+npm start              # servir build
 ```
+
+Regra de papel (`root`/`master`/`user`) mora em dois módulos espelhados:
+`lib/authz.ts` no cliente, só para escolher o que desenhar, e
+`public/api/authz.php` no servidor, que é o lado que decide. Mexeu em um,
+mexa no outro — e nos dois arquivos de teste, que exercitam a mesma tabela
+de casos de propósito.
 
 ## Estrutura
 

@@ -8,6 +8,8 @@
 
 ### ✨ Novidades
 
+- [x] **Primeira suíte de testes** — 205 casos, nenhum antes. No front, Vitest e Testing Library sobre `lib/contact-schema.ts`, `lib/rate-limit.ts`, `lib/dashboard-api.ts`, o módulo de papéis e as telas de gestão. No backend, PHPUnit sobre as regras de papel, a trilha de auditoria e os endpoints rodando de verdade.
+- [x] **Integração contínua** — `.github/workflows/ci.yml` roda em todo push e pull request: typecheck, lint, testes de front, `php -l`, PHPUnit, a suíte do runner de migrations e o build de export estático. Dois jobs em paralelo, sem serviço de banco no runner.
 - [x] **Migrations versionadas** — o schema saiu do caminho da requisição. `db/migrations/*.sql` guarda o DDL e o seed numerados e idempotentes, `db/migrate.php` aplica os pendentes por SSH/CLI e `schema_migrations` registra versão, arquivo, checksum e duração de cada um.
 - [x] **Instalação única do root** — `api/install.php` cria o usuário `root` uma só vez, exige `DASHBOARD_INSTALL_TOKEN` pelo cabeçalho `X-Install-Token`, devolve a senha sorteada uma única vez e se autodesativa (`.install-lock`), respondendo 404 daí em diante.
 - [x] **Rate limit de login no servidor** — contadores em MySQL por `(login, IP)` e por IP, com janela de 15 minutos, bloqueio progressivo até o teto de 15 minutos e resposta `429` com `Retry-After`. O contador por IP pega o password spraying, que troca de login a cada tentativa e nunca chegaria ao limite do primeiro.
@@ -24,11 +26,21 @@
 
 ### 🐛 Correções
 
+- [x] **Gestão de usuários aberta a qualquer sessão** — `/dashboard/usuarios` e `/dashboard/usuarios/ver` montavam a tela inteira de administração de contas para qualquer sessão autenticada, e só dependiam do 403 da API para não exibir dados. Na listagem isso parava no erro de carregamento; em `/ver` não parava, porque `users/logs.php` libera o próprio histórico para qualquer papel — um `user` abrindo `?id=<o próprio id>` recebia 200 e via a tela de administração montada sobre os próprios dados. Os botões já ficavam escondidos e o backend recusaria cada chamada: o que vazava era a superfície, não o poder. As duas telas passaram a usar o mesmo bloqueio de `/dashboard/grupos` e nem chegam a pedir os dados.
 - [x] **Fixação de sessão** — `session_regenerate_id(true)` passou a rodar logo após o login e após a troca de senha; antes, o ID emitido antes da autenticação continuava válido depois dela.
 - [x] **Bootstrap implícito de root** — `auth/login.php` criava sozinho um usuário `root` quando o login `admin` não existia, bastando acertar a senha padrão. Removido em favor da instalação explícita.
 - [x] **Senha padrão embutida** — o fallback `'ecoleta2026'` saiu do `db.php`. Sem a variável definida o recurso falha fechado e registra o motivo no log, em vez de aceitar uma senha conhecida.
 
 ### 🔧 Técnico
+
+**Regra de papel em dois módulos, um por lado:** `lib/authz.ts` e `public/api/authz.php` guardam a mesma tabela de decisões — quem é administrador, sobre quem cada papel age, qual papel uma edição realmente grava, quem enxerga o histórico de quem. Antes ela estava copiada dentro das telas de 767, 689 e 490 linhas e repetida em sete endpoints, cada um decidindo por conta própria o que `master` pode fazer sobre `root`; `groups/index.php` já respondia com uma mensagem de recusa diferente das outras seis. O servidor é o lado que decide: o cliente só escolhe o que desenhar, e o ator sai sempre da sessão, nunca do corpo da requisição.
+
+- [x] `tests/php/Support/` — Endpoint::call() roda cada script de `public/api/` em um processo PHP novo, com $_SERVER, sessão e `php://input` montados (o SAPI de linha de comando não preenche o corpo sozinho). Devolve status, corpo, `error_log` e a sessão como o endpoint a deixou.
+- [x] Banco de teste em SQLite descartável, um por caso, apontado por `DB_DSN`. `apiDatabaseDsn()` é a única mudança em código de produção: aceita um DSN explícito e cai no MySQL montado de `DB_HOST`/`DB_NAME` quando não há — o escape que faltava para socket Unix ou porta fora da 3306.
+- [x] O rate limit não é portável para SQLite de propósito (`NOW()`, `TIMESTAMPDIFF`, `ON DUPLICATE KEY`), e é isso que prova a falha aberta: com o throttle fora do ar o login continua atendendo e registra o motivo, como faria em produção.
+- [x] `SchemaMirrorTest` lê `db/migrations/*.sql` e compara com o espelho SQLite; `testEnumeraTodosOsEndpointsDeAdministracao()` compara a lista coberta com o que existe em `users/` e `groups/`. Endpoint novo ou coluna nova falham a suíte até serem considerados.
+- [x] PHPUnit entra como `.phar` baixado por `scripts/phpunit.sh`, com SHA-256 conferido a cada execução. Continua valendo o "sem Composer": um `composer.json` na raiz sugere um autoloader que este backend não tem, e a hospedagem compartilhada não roda `composer install`.
+- [x] `npm run typecheck`, `npm test`, `npm run test:php` — os dois primeiros não existiam; o `package.json` tinha só `lint`.
 
 **Segredos:** `NEXT_PUBLIC_DASHBOARD_USER` virou `DASHBOARD_ROOT_LOGIN` e `NEXT_PUBLIC_DASHBOARD_PASSWORD` deu lugar a `DASHBOARD_INSTALL_TOKEN`. O prefixo `NEXT_PUBLIC_` faz o Next.js embutir o valor no bundle servido ao navegador — nome errado para segredo de servidor. `NEXT_PUBLIC_POWERBI_URL` mantém o prefixo de propósito: é lida pelo `PowerBIViewer` e não é segredo.
 

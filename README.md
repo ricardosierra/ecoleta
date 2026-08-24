@@ -172,8 +172,16 @@ Detalhes em [`docs/identidade-visual.md`](./docs/identidade-visual.md).
 ## Comandos
 
 ```bash
-npm run dev      # desenvolvimento
-npm run build    # build de produção
-npm start        # servir build
-npm run lint     # ESLint
+npm run dev            # desenvolvimento
+npm run build          # build de produção (export estático)
+npm start              # servir build
+npm run lint           # ESLint
+npm run typecheck      # tsc --noEmit
+npm test               # Vitest — front (lib/ e telas do dashboard)
+npm run test:php       # PHPUnit — public/api/ (baixa o phpunit.phar em tools/)
+npm run test:migrations # partes puras de db/migrate.php
 ```
+
+Os testes de backend não precisam de banco nenhum: cada caso cria um SQLite
+descartável e roda o endpoint em um processo PHP de verdade. O mesmo conjunto
+roda em todo push e pull request pelo [`ci.yml`](.github/workflows/ci.yml).
