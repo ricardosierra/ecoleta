@@ -22,6 +22,8 @@ import {
   ShieldIcon,
   UsersIcon,
 } from "@/components/icons";
+import { DynamicResults } from "@/components/DynamicResults";
+import { DynamicClients } from "@/components/DynamicClients";
 
 const problems = [
   { title: "Mistura de resíduos", desc: "Frações sobrepostas comprometem o reaproveitamento e geram custo extra." },
@@ -73,39 +75,6 @@ const diferenciais = [
   },
 ];
 
-const resultados = [
-  { symbol: "↓R$", label: "Redução de custo operacional" },
-  { symbol: "92%", label: "Menos envio ao aterro" },
-  { symbol: <CheckIcon width={36} height={36} />, label: "Operação organizada e documentada" },
-  { symbol: <ScaleIcon width={36} height={36} />, label: "Segurança jurídica e ambiental" },
-  { symbol: "ESG", label: "Valor e reputação para sua marca" },
-];
-
-const clientes = [
-  { name: "Heineken", src: "/logos/heineken.png" },
-  { name: "LIESA", src: "/logos/liesa.png" },
-  { name: "VIBRA", src: "/logos/vibra.png" },
-  { name: "GH Music", src: "/logos/ghmusic.png" },
-  { name: "BrasilCap", src: "/logos/brasilcap.png" },
-  { name: "CEDAE", src: "/logos/cedae.png" },
-  { name: "Rio Carnaval", src: "/logos/rio-carnaval.png" },
-  { name: "Levels", src: "/logos/levels-correct.png" },
-  { name: "Bosque Bar", src: "/logos/bosque-bar.png" },
-  { name: "Ferro & Brasa", src: "/logos/ferro-e-brasa.png" },
-  { name: "WeMake", src: "/logos/wemake.png" },
-  { name: "Virada Sustentável", src: "/logos/virada-sustentavel.png" },
-  { name: "Rio FutSummit 26", src: "/logos/rio-futsummit-26.png" },
-  { name: "Sacadura 154", src: "/logos/sacadura-154.png" },
-  { name: "NMLSS", src: "/logos/nmlss-correct.png" },
-  { name: "Subsea 7", src: "/logos/subsea7.png" },
-  { name: "Café Preto Tattoo", src: "/logos/cafe-preto-tattoo-correct.png" },
-  { name: "FuraTodo", src: "/logos/fura-toblu.png" },
-  { name: "Salgueiro", src: "/logos/salgueiro.png" },
-  { name: "Cidaddess", src: "/logos/cidaddess.png" },
-  { name: "Silimed", src: "/logos/silimed.png" },
-  { name: "Maltas", src: "/logos/maltas.png" },
-  { name: "Grupo Onda", src: "/logos/grupo-onda.png" },
-];
 
 export default function HomePage() {
   return (
@@ -316,13 +285,7 @@ export default function HomePage() {
             title="Resultados que aparecem na operação e na marca"
           />
         </Reveal>
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          {resultados.map((r, i) => (
-            <Reveal key={i} as="li" delay={i * 70}>
-              <MetricCard symbol={r.symbol} label={r.label} className="h-full" />
-            </Reveal>
-          ))}
-        </ul>
+        <DynamicResults />
       </Section>
 
       {/* CLIENTES */}
@@ -336,7 +299,7 @@ export default function HomePage() {
           />
         </Reveal>
         <Reveal delay={120}>
-          <LogoCarousel items={clientes} />
+          <DynamicClients />
         </Reveal>
       </Section>
 
