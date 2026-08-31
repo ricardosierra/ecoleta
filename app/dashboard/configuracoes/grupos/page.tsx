@@ -44,6 +44,11 @@ function GruposList() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [actionError, setActionError] = useState("");
 
+  // Edição inline do nome (direto na tabela)
+  const [inlineEditId, setInlineEditId] = useState<number | null>(null);
+  const [inlineEditName, setInlineEditName] = useState("");
+  const [isSubmittingInline, setIsSubmittingInline] = useState(false);
+
   const canManage = canManageGroups(currentUser);
 
   const fetchGroups = useCallback(() => {
@@ -76,6 +81,20 @@ function GruposList() {
     e.preventDefault();
     setError("");
     setSuccessMsg("");
+
+    // Verifica se já existe grupo com nome igual ou parecido — guia o usuário
+    // para "Editar" em vez de criar um duplicado.
+    const trimmedName = name.trim();
+    const existingGroup = groups.find(
+      (g) => g.name.toLowerCase() === trimmedName.toLowerCase()
+    );
+    if (existingGroup) {
+      setError(
+        `Já existe o grupo "${existingGroup.name}". Para renomear, clique no nome dele na tabela abaixo ou use o botão ✏️ Editar.`
+      );
+      return;
+    }
+
     setIsSubmittingCreate(true);
 
     try {
@@ -103,6 +122,50 @@ function GruposList() {
     setEditName(group.name);
     setEditPowerbiUrl(group.powerbi_url || "");
     setActionError("");
+  };
+
+  const startInlineEdit = (group: Group) => {
+    setInlineEditId(group.id);
+    setInlineEditName(group.name);
+  };
+
+  const cancelInlineEdit = () => {
+    setInlineEditId(null);
+    setInlineEditName("");
+  };
+
+  const handleInlineRename = async (group: Group) => {
+    const trimmed = inlineEditName.trim();
+    if (!trimmed || trimmed === group.name) {
+      cancelInlineEdit();
+      return;
+    }
+
+    setIsSubmittingInline(true);
+    setError("");
+
+    try {
+      const res = await apiPostJson("/api/groups/edit.php", {
+        group_id: group.id,
+        name: trimmed,
+        powerbi_url: group.powerbi_url || "",
+      });
+      const data = await res.json();
+
+      if (res.ok && data.ok) {
+        setSuccessMsg(`Grupo renomeado para "${trimmed}" com sucesso!`);
+        cancelInlineEdit();
+        fetchGroups();
+      } else {
+        setError(data.error || "Erro ao renomear grupo.");
+        cancelInlineEdit();
+      }
+    } catch {
+      setError("Erro de conexão ao renomear grupo.");
+      cancelInlineEdit();
+    } finally {
+      setIsSubmittingInline(false);
+    }
   };
 
   const handleConfirmEdit = async (e: FormEvent) => {
@@ -214,7 +277,10 @@ function GruposList() {
       {/* Formulário: Criar Novo Grupo */}
       {isCreating && (
         <form onSubmit={handleCreateGroup} className="mb-8 p-6 bg-[rgba(255,255,255,0.04)] border border-[var(--color-border-dark)] rounded-2xl shadow-xl animate-in fade-in duration-200">
-          <h2 className="text-lg font-semibold text-white mb-4">Cadastrar Novo Grupo</h2>
+          <h2 className="text-lg font-semibold text-white mb-1">Cadastrar Novo Grupo</h2>
+          <p className="text-xs text-amber-300/80 mb-4">
+            💡 Para renomear um grupo existente, clique diretamente no nome dele na tabela abaixo ou use o botão ✏️ Editar.
+          </p>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--color-text-on-dark)] mb-1">
@@ -279,8 +345,35 @@ function GruposList() {
                   <tr key={g.id} className="hover:bg-white/5 transition-colors">
                     <td className="px-6 py-4 font-bold text-white">
                       <div className="flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-[var(--color-accent)]" />
-                        <span>{g.name}</span>
+                        <span className="h-2 w-2 rounded-full bg-[var(--color-accent)] shrink-0" />
+                        {inlineEditId === g.id ? (
+                          <input
+                            autoFocus
+                            value={inlineEditName}
+                            onChange={(e) => setInlineEditName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleInlineRename(g);
+                              } else if (e.key === "Escape") {
+                                cancelInlineEdit();
+                              }
+                            }}
+                            onBlur={() => handleInlineRename(g)}
+                            disabled={isSubmittingInline}
+                            className="bg-black/40 border border-[var(--color-accent)] rounded-lg px-2 py-1 text-white outline-none text-sm w-full max-w-[200px]"
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => startInlineEdit(g)}
+                            title="Clique para renomear este grupo"
+                            className="text-left hover:text-[var(--color-accent)] transition-colors cursor-pointer group/name"
+                          >
+                            <span>{g.name}</span>
+                            <span className="ml-1.5 text-white/30 group-hover/name:text-[var(--color-accent)] text-xs">✎</span>
+                          </button>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4">
