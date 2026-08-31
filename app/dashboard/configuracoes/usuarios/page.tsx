@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, FormEvent } from "react";
-import { DashboardGate, useDashboardAuth } from "@/components/DashboardGate";
+import { useDashboardAuth } from "@/components/DashboardGate";
 import { DashboardAccessDenied } from "@/components/DashboardAccessDenied";
 import Link from "next/link";
 import { apiPostJson } from "@/lib/dashboard-api";
@@ -35,11 +35,7 @@ type User = {
 };
 
 export default function UsuariosPage() {
-  return (
-    <DashboardGate>
-      <UsuariosList />
-    </DashboardGate>
-  );
+  return <UsuariosList />;
 }
 
 function UsuariosList() {
@@ -285,7 +281,7 @@ function UsuariosList() {
         </div>
         <div className="flex items-center gap-3">
           <Link
-            href="/dashboard/grupos"
+            href="/dashboard/configuracoes/grupos"
             className="px-4 py-2.5 rounded-full text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors border border-white/15"
           >
             📊 Ver Grupos
@@ -489,7 +485,7 @@ function UsuariosList() {
                         )}
 
                         <Link 
-                          href={`/dashboard/usuarios/ver?id=${u.id}`} 
+                          href={`/dashboard/configuracoes/usuarios/ver?id=${u.id}`} 
                           className="text-xs font-semibold text-[var(--color-accent)] hover:underline px-2 py-1.5"
                         >
                           Histórico &rarr;

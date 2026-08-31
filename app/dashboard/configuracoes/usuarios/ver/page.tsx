@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, Suspense, FormEvent } from "react";
-import { DashboardGate, useDashboardAuth } from "@/components/DashboardGate";
+import { useDashboardAuth } from "@/components/DashboardGate";
 import { DashboardAccessDenied } from "@/components/DashboardAccessDenied";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -47,11 +47,9 @@ type ActivityLog = {
 
 export default function ViewUsuarioPage() {
   return (
-    <DashboardGate>
-      <Suspense fallback={<div className="p-8 text-white">Carregando...</div>}>
-        <UsuarioDetails />
-      </Suspense>
-    </DashboardGate>
+    <Suspense fallback={<div className="p-8 text-white">Carregando...</div>}>
+      <UsuarioDetails />
+    </Suspense>
   );
 }
 
@@ -214,7 +212,7 @@ function UsuarioDetails() {
       const data = await res.json();
 
       if (res.ok && data.ok) {
-        router.push("/dashboard/usuarios");
+        router.push("/dashboard/configuracoes/usuarios");
       } else {
         setActionError(data.error || "Erro ao excluir usuário.");
       }
@@ -297,7 +295,7 @@ function UsuarioDetails() {
     <div className="p-4 sm:p-8 max-w-6xl mx-auto h-full overflow-y-auto">
       {/* Botão voltar */}
       <Link 
-        href="/dashboard/usuarios" 
+        href="/dashboard/configuracoes/usuarios" 
         className="text-[var(--color-accent)] text-sm font-medium hover:underline inline-flex items-center gap-2 mb-6"
       >
         &larr; Voltar para Usuários

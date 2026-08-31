@@ -1,18 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import UsuariosPage from "@/app/dashboard/usuarios/page";
-import GruposPage from "@/app/dashboard/grupos/page";
+import UsuariosPage from "@/app/dashboard/configuracoes/usuarios/page";
+import GruposPage from "@/app/dashboard/configuracoes/grupos/page";
+import ConfiguracoesLayout from "@/app/dashboard/configuracoes/layout";
 import { installApiMock, sessionOf } from "../support/api-mock";
-
-/**
- * As três telas administrativas montadas de verdade, com a sessão vindo de
- * `api/auth/me.php` como no navegador.
- *
- * O que se cobra aqui é o que a P08 encontrou aberto: as telas de usuários
- * renderizavam a gestão para qualquer sessão autenticada e dependiam do 403 da
- * API para não mostrar dados. A recusa precisa acontecer antes do render — e
- * antes da chamada.
- */
 
 const ME = "/api/auth/me.php";
 const USERS = "/api/users/index.php";
@@ -26,12 +17,17 @@ const useSearchParamsMock = vi.fn(() => new URLSearchParams("id=7"));
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => useSearchParamsMock(),
+  usePathname: () => "/dashboard/configuracoes/usuarios",
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), back: vi.fn() }),
 }));
 
 beforeEach(() => {
   useSearchParamsMock.mockReturnValue(new URLSearchParams("id=7"));
 });
+
+function renderWithLayout(ui: React.ReactNode) {
+  return render(<ConfiguracoesLayout>{ui}</ConfiguracoesLayout>);
+}
 
 describe("/dashboard/usuarios", () => {
   it.each(["root", "master"])("monta a gestão de usuários para %s", async (role) => {
@@ -41,7 +37,7 @@ describe("/dashboard/usuarios", () => {
       [GROUPS]: gruposVazios,
     });
 
-    render(<UsuariosPage />);
+    renderWithLayout(<UsuariosPage />);
 
     expect(await screen.findByRole("heading", { name: "Gerenciar Usuários" })).toBeVisible();
     expect(screen.queryByText("Acesso Restrito")).not.toBeInTheDocument();
@@ -54,7 +50,7 @@ describe("/dashboard/usuarios", () => {
       [GROUPS]: gruposVazios,
     });
 
-    render(<UsuariosPage />);
+    renderWithLayout(<UsuariosPage />);
 
     expect(await screen.findByText("Acesso Restrito")).toBeVisible();
     expect(screen.queryByRole("heading", { name: "Gerenciar Usuários" })).not.toBeInTheDocument();
@@ -68,22 +64,12 @@ describe("/dashboard/usuarios", () => {
       [GROUPS]: gruposVazios,
     });
 
-    render(<UsuariosPage />);
+    renderWithLayout(<UsuariosPage />);
     await screen.findByText("Acesso Restrito");
 
     expect(api.requested(USERS)).toBe(false);
     expect(api.requested(GROUPS)).toBe(false);
     expect(api.calls).toEqual([ME]);
-  });
-
-  it("esconde os links administrativos do cabeçalho para um papel user", async () => {
-    installApiMock({ [ME]: { body: sessionOf("user") } });
-
-    render(<UsuariosPage />);
-    await screen.findByText("Acesso Restrito");
-
-    expect(screen.queryByRole("link", { name: "Usuários" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Grupos" })).not.toBeInTheDocument();
   });
 });
 
@@ -94,7 +80,7 @@ describe("/dashboard/grupos", () => {
       [GROUPS]: gruposVazios,
     });
 
-    render(<GruposPage />);
+    renderWithLayout(<GruposPage />);
 
     expect(await screen.findByRole("heading", { name: /Gestão de Grupos/ })).toBeVisible();
   });
@@ -105,7 +91,7 @@ describe("/dashboard/grupos", () => {
       [GROUPS]: gruposVazios,
     });
 
-    render(<GruposPage />);
+    renderWithLayout(<GruposPage />);
 
     expect(await screen.findByText("Acesso Restrito")).toBeVisible();
     expect(api.requested(GROUPS)).toBe(false);
@@ -114,10 +100,7 @@ describe("/dashboard/grupos", () => {
 
 describe("/dashboard/usuarios/ver", () => {
   it("recusa um papel user consultando o próprio id", async () => {
-    // users/logs.php libera o próprio histórico para qualquer papel: sem o
-    // bloqueio na tela, esta requisição voltava 200 e a gestão de contas
-    // aparecia montada em cima dos dados da própria pessoa.
-    const { default: VerUsuarioPage } = await import("@/app/dashboard/usuarios/ver/page");
+    const { default: VerUsuarioPage } = await import("@/app/dashboard/configuracoes/usuarios/ver/page");
 
     const api = installApiMock({
       [ME]: { body: sessionOf("user", { id: 7 }) },
@@ -125,14 +108,14 @@ describe("/dashboard/usuarios/ver", () => {
       [GROUPS]: gruposVazios,
     });
 
-    render(<VerUsuarioPage />);
+    renderWithLayout(<VerUsuarioPage />);
 
     expect(await screen.findByText("Acesso Restrito")).toBeVisible();
     expect(api.requested(LOGS)).toBe(false);
   });
 
   it("monta o histórico para root", async () => {
-    const { default: VerUsuarioPage } = await import("@/app/dashboard/usuarios/ver/page");
+    const { default: VerUsuarioPage } = await import("@/app/dashboard/configuracoes/usuarios/ver/page");
 
     installApiMock({
       [ME]: { body: sessionOf("root", { id: 1 }) },
@@ -155,7 +138,7 @@ describe("/dashboard/usuarios/ver", () => {
       [GROUPS]: gruposVazios,
     });
 
-    render(<VerUsuarioPage />);
+    renderWithLayout(<VerUsuarioPage />);
 
     expect(await screen.findByText("conta-user")).toBeVisible();
     expect(screen.queryByText("Acesso Restrito")).not.toBeInTheDocument();

@@ -114,7 +114,7 @@ function DashboardMain() {
         {canManageGroups(user) && (
           <div className="flex items-center gap-3">
             <Link
-              href="/dashboard/grupos"
+              href="/dashboard/configuracoes/grupos"
               className="text-xs text-[var(--color-accent)] hover:underline flex items-center gap-1"
             >
               ⚙️ Gerenciar Grupos &rarr;

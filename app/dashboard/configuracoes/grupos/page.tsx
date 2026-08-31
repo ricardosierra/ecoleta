@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, FormEvent } from "react";
-import { DashboardGate, useDashboardAuth } from "@/components/DashboardGate";
+import { useDashboardAuth } from "@/components/DashboardGate";
 import { DashboardAccessDenied } from "@/components/DashboardAccessDenied";
 import Link from "next/link";
 import { apiPostJson } from "@/lib/dashboard-api";
@@ -17,11 +17,7 @@ type Group = {
 };
 
 export default function GruposPage() {
-  return (
-    <DashboardGate>
-      <GruposList />
-    </DashboardGate>
-  );
+  return <GruposList />;
 }
 
 function GruposList() {
@@ -176,7 +172,7 @@ function GruposList() {
         </div>
         <div className="flex items-center gap-3">
           <Link
-            href="/dashboard/usuarios"
+            href="/dashboard/configuracoes/usuarios"
             className="px-4 py-2.5 rounded-full text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors border border-white/15"
           >
             👥 Gerenciar Usuários
