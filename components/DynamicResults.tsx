@@ -14,7 +14,7 @@ const fallbackResultados = [
 ];
 
 export function DynamicResults() {
-  const [resultados, setResultados] = useState<any[]>([]);
+  const [resultados, setResultados] = useState<{symbol: React.ReactNode, label: string}[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -22,8 +22,8 @@ export function DynamicResults() {
       .then(res => res.json())
       .then(data => {
         if (data.ok && data.indicators && data.indicators.length > 0) {
-          const map = data.indicators.map((ind: any) => {
-            let symbol: any = ind.value;
+          const map = data.indicators.map((ind: {value: string, label: string, symbol_type: string, symbol_value: string}) => {
+            let symbol: React.ReactNode = ind.value;
             if (ind.symbol_type === 'icon') {
               if (ind.symbol_value === 'CheckIcon') symbol = <CheckIcon width={36} height={36} />;
               if (ind.symbol_value === 'ScaleIcon') symbol = <ScaleIcon width={36} height={36} />;

@@ -9,7 +9,7 @@ const fallbackClientes = [
 ];
 
 export function DynamicClients() {
-  const [clientes, setClientes] = useState<any[]>([]);
+  const [clientes, setClientes] = useState<{name: string, src: string}[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -17,8 +17,8 @@ export function DynamicClients() {
       .then(res => res.json())
       .then(data => {
         if (data.ok && data.companies && data.companies.length > 0) {
-          const active = data.companies.filter((c: any) => c.is_active);
-          setClientes(active.map((c: any) => ({ name: c.name, src: c.logo_url })));
+          const active = data.companies.filter((c: {is_active: number, name: string, logo_url: string}) => c.is_active);
+          setClientes(active.map((c: {is_active: number, name: string, logo_url: string}) => ({ name: c.name, src: c.logo_url })));
         } else {
           setClientes(fallbackClientes);
         }

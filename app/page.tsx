@@ -1,10 +1,8 @@
 import Section, { Eyebrow, SectionHeader } from "@/components/Section";
-import LogoCarousel from "@/components/LogoCarousel";
 import Card from "@/components/Card";
 import Button from "@/components/Button";
 import Reveal from "@/components/Reveal";
 import DonutChart from "@/components/DonutChart";
-import MetricCard from "@/components/MetricCard";
 import Typewriter from "@/components/Typewriter";
 import LetterReveal from "@/components/LetterReveal";
 import LeafDecor from "@/components/LeafDecor";
@@ -17,7 +15,6 @@ import {
   CheckIcon,
   ClipboardIcon,
   FileTextIcon,
-  ScaleIcon,
   SettingsIcon,
   ShieldIcon,
   UsersIcon,

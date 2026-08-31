@@ -28,7 +28,7 @@ export default function EmpresasPage() {
         const data = await res.json();
         if (data.ok) setCompanies(data.companies);
       }
-    } catch (e) {
+    } catch {
       setError("Erro ao carregar empresas.");
     } finally {
       setLoading(false);
@@ -36,6 +36,7 @@ export default function EmpresasPage() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData();
   }, []);
 
