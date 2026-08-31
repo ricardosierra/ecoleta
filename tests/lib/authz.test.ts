@@ -95,18 +95,21 @@ describe("acesso às áreas administrativas", () => {
 });
 
 describe("dashboardNavLinks", () => {
-  it("mostra Painel, Usuários e Grupos para root e master", () => {
-    for (const ator of [root, master]) {
-      expect(dashboardNavLinks(ator).map((l) => l.label)).toEqual([
-        "Painel",
-        "Usuários",
-        "Grupos",
-      ]);
-    }
-  });
-
-  it("mostra só o Painel para user", () => {
-    expect(dashboardNavLinks(comum).map((l) => l.href)).toEqual(["/dashboard"]);
+  it("mostra Painel e Configurações para root e master", () => {
+    expect(dashboardNavLinks({ role: "root" })).toEqual([
+      { href: "/dashboard", label: "Painel" },
+      { href: "/dashboard/clientes", label: "Clientes" },
+      { href: "/dashboard/faturas", label: "Faturas" },
+      { href: "/dashboard/os", label: "OS Eletrônica" },
+      { href: "/dashboard/configuracoes", label: "Configurações" },
+    ]);
+    expect(dashboardNavLinks({ role: "master" })).toEqual([
+      { href: "/dashboard", label: "Painel" },
+      { href: "/dashboard/clientes", label: "Clientes" },
+      { href: "/dashboard/faturas", label: "Faturas" },
+      { href: "/dashboard/os", label: "OS Eletrônica" },
+      { href: "/dashboard/configuracoes", label: "Configurações" },
+    ]);
   });
 
   it("mostra só o Painel para sessão sem papel conhecido", () => {

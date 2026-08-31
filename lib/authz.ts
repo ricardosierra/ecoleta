@@ -211,15 +211,14 @@ export function requiresGroup(role: unknown): boolean {
   return normalizeRole(role) === "user";
 }
 
-/** Itens de navegação do cabeçalho, na ordem em que aparecem. */
 export function dashboardNavLinks(actor: Actor): NavLink[] {
   const links: NavLink[] = [{ href: "/dashboard", label: "Painel" }];
 
-  if (canManageUsers(actor)) {
-    links.push({ href: "/dashboard/usuarios", label: "Usuários" });
-  }
-  if (canManageGroups(actor)) {
-    links.push({ href: "/dashboard/grupos", label: "Grupos" });
+  if (isAdmin(actor)) {
+    links.push({ href: "/dashboard/clientes", label: "Clientes" });
+    links.push({ href: "/dashboard/faturas", label: "Faturas" });
+    links.push({ href: "/dashboard/os", label: "OS Eletrônica" });
+    links.push({ href: "/dashboard/configuracoes", label: "Configurações" });
   }
 
   return links;
