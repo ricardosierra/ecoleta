@@ -8,6 +8,8 @@
 
 ### ✨ Novidades
 
+- [x] **E-mail opcional no cadastro de usuário** — a criação passa a exigir só o login; o e-mail em branco é pedido no primeiro acesso, junto da definição de senha (`auth/change_password.php` aceita e valida o e-mail quando a conta ainda não tem um). Login continua funcionando por login **ou** e-mail.
+- [x] **Coluna de último login** — a gestão de usuários mostra o último acesso de cada conta (via `access_logs`), com "Nunca acessou" para quem ainda não entrou.
 - [x] **Vencimento e status de cobrança por cliente** — cada cliente ganhou dia de vencimento (`due_day`, padrão 10) e status ativo/inativo (migration 011). A fatura mensal passa a vencer no dia configurado de cada cliente, ajustado para meses curtos, e o cron de cobrança só fatura cliente **ativo** com **valor mensal positivo**. Novo `api/clients/edit.php` atualiza valor, vencimento e status; o dashboard de clientes exibe as duas colunas e alterna o status direto na tabela.
 - [x] **Primeira suíte de testes** — 224 casos, nenhum antes. No front, Vitest e Testing Library sobre `lib/contact-schema.ts`, `lib/rate-limit.ts`, `lib/dashboard-api.ts`, o módulo de papéis e as telas de gestão. No backend, PHPUnit sobre as regras de papel, a trilha de auditoria e os endpoints rodando de verdade.
 - [x] **Integração contínua** — `.github/workflows/ci.yml` roda em todo push e pull request: typecheck, lint, testes de front, `php -l`, PHPUnit, a suíte do runner de migrations e o build de export estático. Dois jobs em paralelo, sem serviço de banco no runner.

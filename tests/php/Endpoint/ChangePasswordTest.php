@@ -159,6 +159,64 @@ final class ChangePasswordTest extends TestCase
         self::assertSame('joao', $auditoria[0]['performed_by_login']);
     }
 
+    /** Conta criada sem e-mail: o primeiro acesso exige informar um. */
+    public function testPrimeiroAcessoSemEmailExigeEmail(): void
+    {
+        $this->db->pdo()->exec("UPDATE users SET email = NULL, force_password_change = 1 WHERE id = {$this->joaoId}");
+
+        $resposta = $this->call($this->comoJoao(), ['new_password' => 'senha-nova-456']);
+
+        self::assertSame(400, $resposta->status, $resposta->body);
+        $stmt = $this->db->pdo()->prepare('SELECT force_password_change FROM users WHERE id = ?');
+        $stmt->execute([$this->joaoId]);
+        self::assertSame(1, (int) $stmt->fetch()['force_password_change'], 'sem e-mail o primeiro acesso não conclui');
+    }
+
+    /** Com o e-mail informado, o primeiro acesso grava e conclui. */
+    public function testPrimeiroAcessoGravaEmailInformado(): void
+    {
+        $this->db->pdo()->exec("UPDATE users SET email = NULL, force_password_change = 1 WHERE id = {$this->joaoId}");
+
+        $resposta = $this->call($this->comoJoao(), [
+            'new_password' => 'senha-nova-456',
+            'email' => 'joao.novo@empresa.com',
+        ]);
+
+        self::assertSame(200, $resposta->status, $resposta->body);
+        $stmt = $this->db->pdo()->prepare('SELECT email, force_password_change FROM users WHERE id = ?');
+        $stmt->execute([$this->joaoId]);
+        $row = $stmt->fetch();
+        self::assertSame('joao.novo@empresa.com', $row['email']);
+        self::assertSame(0, (int) $row['force_password_change']);
+    }
+
+    /** E-mail já usado por outra conta é recusado no primeiro acesso. */
+    public function testEmailDuplicadoNoPrimeiroAcessoEhRecusado(): void
+    {
+        $this->db->pdo()->exec("UPDATE users SET email = NULL, force_password_change = 1 WHERE id = {$this->joaoId}");
+
+        $resposta = $this->call($this->comoJoao(), [
+            'new_password' => 'senha-nova-456',
+            'email' => 'admin@exemplo.com.br', // já é o e-mail do root semeado
+        ]);
+
+        self::assertSame(400, $resposta->status, $resposta->body);
+    }
+
+    /** Conta que já tem e-mail ignora o campo: a troca não o altera. */
+    public function testContaComEmailIgnoraOCampoEmail(): void
+    {
+        $resposta = $this->call($this->comoJoao(), [
+            'new_password' => 'senha-nova-456',
+            'email' => 'tentativa@outro.com',
+        ]);
+
+        self::assertSame(200, $resposta->status, $resposta->body);
+        $stmt = $this->db->pdo()->prepare('SELECT email FROM users WHERE id = ?');
+        $stmt->execute([$this->joaoId]);
+        self::assertSame('joao@exemplo.com.br', $stmt->fetch()['email'], 'e-mail existente não muda por aqui');
+    }
+
     /** A senha nova é a que passa a valer no login. */
     public function testSenhaNovaAutenticaEAAntigaNao(): void
     {

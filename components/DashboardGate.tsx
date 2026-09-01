@@ -40,6 +40,7 @@ export function DashboardGate({ children }: { children?: React.ReactNode }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [firstAccessEmail, setFirstAccessEmail] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -116,16 +117,31 @@ export function DashboardGate({ children }: { children?: React.ReactNode }) {
       return;
     }
 
+    // Contas criadas sem e-mail informam um agora, no primeiro acesso.
+    const needsEmail = !user?.email;
+    if (needsEmail && !firstAccessEmail.trim()) {
+      setError("Informe um e-mail para concluir o primeiro acesso.");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      const res = await apiPostJson("/api/auth/change_password.php", { new_password: newPassword });
+      const payload: { new_password: string; email?: string } = { new_password: newPassword };
+      if (needsEmail) payload.email = firstAccessEmail.trim();
+
+      const res = await apiPostJson("/api/auth/change_password.php", payload);
       const data = await res.json();
 
       if (res.ok && data.ok) {
         // Trocar a senha também regenera a sessão.
         setCsrfToken(data.csrf_token);
-        setUser((prev) => prev ? { ...prev, force_password_change: false } : null);
+        setUser((prev) => prev ? {
+          ...prev,
+          force_password_change: false,
+          email: needsEmail ? firstAccessEmail.trim() : prev.email,
+        } : null);
         setNewPassword("");
+        setFirstAccessEmail("");
       } else {
         setError(data.error || "Erro ao trocar senha.");
       }
@@ -180,6 +196,12 @@ export function DashboardGate({ children }: { children?: React.ReactNode }) {
           <h1 className="text-2xl font-bold">Definir Nova Senha</h1>
           <p className="mt-2 text-sm text-[var(--color-text-on-dark)]">Por segurança, é obrigatório cadastrar uma nova senha no seu primeiro acesso.</p>
           <div className="mt-7 space-y-4">
+            {!user.email && (
+              <label className="block text-sm font-medium" htmlFor="first-access-email">E-mail
+                <input id="first-access-email" type="email" autoComplete="email" value={firstAccessEmail} onChange={(e) => setFirstAccessEmail(e.target.value)} placeholder="seu@email.com" className="mt-2 w-full rounded-xl border border-[var(--color-border-dark)] bg-black/20 px-4 py-3 text-white outline-none focus:border-[var(--color-accent)]" required />
+                <span className="mt-1 block text-xs text-white/50">Confirme seu e-mail para concluir o primeiro acesso.</span>
+              </label>
+            )}
             <label className="block text-sm font-medium" htmlFor="new-password">Nova Senha
               <input id="new-password" type="password" minLength={6} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="mt-2 w-full rounded-xl border border-[var(--color-border-dark)] bg-black/20 px-4 py-3 text-white outline-none focus:border-[var(--color-accent)]" required />
             </label>

@@ -32,6 +32,7 @@ type User = {
   group_name: string | null;
   force_password_change: boolean;
   created_at: string;
+  last_login: string | null;
 };
 
 export default function UsuariosPage() {
@@ -330,14 +331,13 @@ function UsuariosList() {
                 className="mt-1 w-full rounded-xl border border-[var(--color-border-dark)] bg-black/30 px-3.5 py-2.5 text-white outline-none focus:border-[var(--color-accent)]" 
               />
             </label>
-            <label className="block text-sm text-[var(--color-text-on-dark)]">E-mail
-              <input 
-                type="email" 
-                value={email} 
-                onChange={e => setEmail(e.target.value)} 
-                placeholder="Ex: joao@empresa.com"
-                required 
-                className="mt-1 w-full rounded-xl border border-[var(--color-border-dark)] bg-black/30 px-3.5 py-2.5 text-white outline-none focus:border-[var(--color-accent)]" 
+            <label className="block text-sm text-[var(--color-text-on-dark)]">E-mail <span className="text-white/40">(opcional)</span>
+              <input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="Pedido no 1º acesso se vazio"
+                className="mt-1 w-full rounded-xl border border-[var(--color-border-dark)] bg-black/30 px-3.5 py-2.5 text-white outline-none focus:border-[var(--color-accent)]"
               />
             </label>
             <label className="block text-sm text-[var(--color-text-on-dark)]">Nível de Acesso
@@ -391,6 +391,7 @@ function UsuariosList() {
                 <th className="px-6 py-4 font-semibold">Nível</th>
                 <th className="px-6 py-4 font-semibold">Grupo</th>
                 <th className="px-6 py-4 font-semibold">Status</th>
+                <th className="px-6 py-4 font-semibold">Último login</th>
                 <th className="px-6 py-4 font-semibold text-right">Ações</th>
               </tr>
             </thead>
@@ -445,6 +446,11 @@ function UsuariosList() {
                         </span>
                       )}
                     </td>
+                    <td className="px-6 py-4 text-white/70 text-xs whitespace-nowrap">
+                      {u.last_login
+                        ? new Date(u.last_login.replace(" ", "T")).toLocaleString("pt-BR")
+                        : <span className="text-white/40">Nunca acessou</span>}
+                    </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-1.5 flex-wrap">
                         {canEdit && (
@@ -496,7 +502,7 @@ function UsuariosList() {
                 );
               })}
               {users.length === 0 && (
-                <tr><td colSpan={6} className="px-6 py-8 text-center text-white/60">Nenhum usuário cadastrado.</td></tr>
+                <tr><td colSpan={7} className="px-6 py-8 text-center text-white/60">Nenhum usuário cadastrado.</td></tr>
               )}
             </tbody>
           </table>

@@ -18,9 +18,10 @@ $db = getDbConnection();
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $stmt = $db->query("
-        SELECT u.id, u.login, u.email, u.role, u.group_id, g.name AS group_name, u.force_password_change, u.created_at 
-        FROM users u 
-        LEFT JOIN `groups` g ON u.group_id = g.id 
+        SELECT u.id, u.login, u.email, u.role, u.group_id, g.name AS group_name, u.force_password_change, u.created_at,
+               (SELECT MAX(a.logged_at) FROM access_logs a WHERE a.user_id = u.id) AS last_login
+        FROM users u
+        LEFT JOIN `groups` g ON u.group_id = g.id
         ORDER BY u.id DESC
     ");
     echo json_encode(['ok' => true, 'users' => $stmt->fetchAll()]);
@@ -35,10 +36,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($body['email'] ?? '');
     $role = $body['role'] ?? 'user';
     $groupId = isset($body['group_id']) && $body['group_id'] !== '' ? (int)$body['group_id'] : null;
-    
-    if (!$login || !$email) {
+
+    if (!$login) {
         http_response_code(400);
-        echo json_encode(['error' => 'Login e email são obrigatórios.']);
+        echo json_encode(['error' => 'Login é obrigatório.']);
+        exit;
+    }
+
+    // E-mail é opcional na criação: fica em branco e é pedido no primeiro login
+    // (auth/change_password.php). Vazio grava NULL — sem colisão em coluna sem
+    // índice único e sem casar com quem tenta logar por e-mail vazio.
+    $email = $email !== '' ? $email : null;
+
+    if ($email !== null && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'E-mail inválido.']);
         exit;
     }
     
