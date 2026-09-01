@@ -6,7 +6,7 @@ require_once __DIR__ . '/../authz.php';
 startSecureSession();
 apiRequireCsrfToken();
 apiSendJsonHeaders();
-$operator = apiRequireUser();
+$operator = apiRequireAuthenticated();
 
 $db = getDbConnection();
 

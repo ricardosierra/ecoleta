@@ -6,7 +6,7 @@ require_once __DIR__ . '/../authz.php';
 startSecureSession();
 apiRequireCsrfToken();
 apiSendJsonHeaders();
-$operator = apiRequireUser();
+$operator = apiRequireAuthenticated();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);

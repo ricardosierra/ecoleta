@@ -7,7 +7,7 @@ require_once __DIR__ . '/../asaas_lib.php';
 startSecureSession();
 apiRequireCsrfToken();
 apiSendJsonHeaders();
-$operator = apiRequireUser(); // Only requires user or higher
+$operator = apiRequireAuthenticated(); // Qualquer papel logado; o front restringe a tela a admin
 
 $db = getDbConnection();
 
