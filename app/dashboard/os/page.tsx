@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { DashboardGate, useDashboardAuth } from "@/components/DashboardGate";
 import { isAdmin } from "@/lib/authz";
+import { apiPostJson } from "@/lib/dashboard-api";
 import Logo from "@/components/Logo";
 
 type Client = { id: number; name: string };
@@ -61,11 +62,7 @@ function OSMain() {
     };
     
     try {
-      const res = await fetch("/api/os/index.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
+      const res = await apiPostJson("/api/os/index.php", payload);
       const data = await res.json();
       if (res.ok && data.ok) {
         // Find client name

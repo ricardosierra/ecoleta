@@ -53,11 +53,6 @@ export function DashboardHeader({ onLogout, user }: DashboardHeaderProps) {
         >
           Sair
         </button>
-
-        <div className="hidden items-center gap-2 border-l border-[var(--color-border-dark)] pl-2 sm:flex">
-          <span className="inline-block h-2 w-2 rounded-full bg-[var(--color-accent)]" />
-          <span className="text-xs font-semibold text-white">Painel ao vivo</span>
-        </div>
       </div>
     </header>
   );
