@@ -27,7 +27,7 @@ final class TestDatabase
      * Versão de schema que este espelho reproduz. Precisa acompanhar
      * ECOLETA_SCHEMA_VERSION — SchemaMirrorTest garante isso.
      */
-    public const MIRRORED_VERSION = 11;
+    public const MIRRORED_VERSION = 12;
 
     private string $path;
 

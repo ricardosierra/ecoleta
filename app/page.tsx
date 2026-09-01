@@ -15,12 +15,21 @@ import {
   CheckIcon,
   ClipboardIcon,
   FileTextIcon,
+  ScaleIcon,
   SettingsIcon,
   ShieldIcon,
   UsersIcon,
 } from "@/components/icons";
-import { DynamicResults } from "@/components/DynamicResults";
+import MetricCard from "@/components/MetricCard";
 import { DynamicClients } from "@/components/DynamicClients";
+
+const resultados = [
+  { symbol: "↓R$", label: "Redução de custo operacional" },
+  { symbol: "92%", label: "Menos envio ao aterro" },
+  { symbol: <CheckIcon width={36} height={36} />, label: "Operação organizada e documentada" },
+  { symbol: <ScaleIcon width={36} height={36} />, label: "Segurança jurídica e ambiental" },
+  { symbol: "ESG", label: "Valor e reputação para sua marca" },
+];
 
 const problems = [
   { title: "Mistura de resíduos", desc: "Frações sobrepostas comprometem o reaproveitamento e geram custo extra." },
@@ -282,7 +291,13 @@ export default function HomePage() {
             title="Resultados que aparecem na operação e na marca"
           />
         </Reveal>
-        <DynamicResults />
+        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          {resultados.map((r, i) => (
+            <Reveal key={r.label} as="li" delay={i * 70}>
+              <MetricCard symbol={r.symbol} label={r.label} className="h-full" />
+            </Reveal>
+          ))}
+        </ul>
       </Section>
 
       {/* CLIENTES */}

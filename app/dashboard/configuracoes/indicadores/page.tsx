@@ -100,7 +100,7 @@ export default function IndicadoresPage() {
     <div className="p-4 sm:p-8 max-w-6xl mx-auto h-full overflow-y-auto">
       <h1 className="text-2xl font-bold text-white mb-2">Indicadores do Site</h1>
       <p className="text-sm text-[var(--color-text-on-dark)] mb-8">
-        Altere os valores que aparecem na home page. O histórico mantém um registro de todas as mudanças.
+        Altere os números reais da operação exibidos na página ESG. O histórico mantém um registro de todas as mudanças.
       </p>
 
       {successMsg && (

@@ -24,7 +24,7 @@ require_once __DIR__ . '/security.php';
  * dois no fim de cada execução e recusa passar se divergirem, então o valor não
  * fica para trás em silêncio.
  */
-const ECOLETA_SCHEMA_VERSION = 11;
+const ECOLETA_SCHEMA_VERSION = 12;
 
 /** Nome da tabela-registro escrita por db/migrate.php. */
 const ECOLETA_SCHEMA_TABLE = 'schema_migrations';
