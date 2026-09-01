@@ -107,6 +107,20 @@ final class TestDatabase
         return (int) $this->pdo()->lastInsertId();
     }
 
+    public function seedClient(
+        string $name,
+        float $monthlyValue = 0.0,
+        int $dueDay = 10,
+        string $status = 'active'
+    ): int {
+        $stmt = $this->pdo()->prepare(
+            'INSERT INTO clients (name, monthly_value, due_day, status) VALUES (?, ?, ?, ?)'
+        );
+        $stmt->execute([$name, $monthlyValue, $dueDay, $status]);
+
+        return (int) $this->pdo()->lastInsertId();
+    }
+
     /** @return list<array<string,mixed>> */
     public function rows(string $table, string $orderBy = 'id'): array
     {
