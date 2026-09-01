@@ -27,7 +27,7 @@ final class TestDatabase
      * Versão de schema que este espelho reproduz. Precisa acompanhar
      * ECOLETA_SCHEMA_VERSION — SchemaMirrorTest garante isso.
      */
-    public const MIRRORED_VERSION = 5;
+    public const MIRRORED_VERSION = 11;
 
     private string $path;
 
@@ -199,6 +199,80 @@ final class TestDatabase
             first_failure_at TEXT NOT NULL,
             last_failure_at TEXT NOT NULL,
             blocked_until TEXT NULL
+        )');
+
+        // 006_create_clients.sql + 011_client_billing_fields.sql
+        $pdo->exec('CREATE TABLE clients (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            email TEXT NULL,
+            whatsapp TEXT NULL,
+            document TEXT NULL UNIQUE,
+            monthly_value REAL NOT NULL DEFAULT 0,
+            due_day INTEGER NOT NULL DEFAULT 10,
+            status TEXT NOT NULL DEFAULT \'active\',
+            asaas_customer_id TEXT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )');
+
+        // 007_create_invoices.sql
+        $pdo->exec('CREATE TABLE invoices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_id INTEGER NOT NULL,
+            asaas_payment_id TEXT NOT NULL UNIQUE,
+            value REAL NOT NULL,
+            due_date TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT \'PENDING\',
+            invoice_url TEXT NULL,
+            pix_qrcode_text TEXT NULL,
+            pix_qrcode_url TEXT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )');
+
+        // 008_create_service_orders.sql
+        $pdo->exec('CREATE TABLE service_orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_id INTEGER NOT NULL,
+            weight TEXT NULL,
+            collection_date TEXT NULL,
+            bags_count INTEGER NULL,
+            containers_count INTEGER NULL,
+            responsible TEXT NULL,
+            signature_text TEXT NOT NULL DEFAULT \'Responsável Técnica - ECOLEVA\',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )');
+
+        // 009_create_site_content.sql — 004 e 010 são só seed, sem DDL novo.
+        $pdo->exec('CREATE TABLE site_clients (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            logo_url TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )');
+
+        $pdo->exec('CREATE TABLE site_indicators (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            indicator_key TEXT NOT NULL UNIQUE,
+            value TEXT NOT NULL,
+            label TEXT NOT NULL,
+            symbol_type TEXT NOT NULL DEFAULT \'text\',
+            symbol_value TEXT NOT NULL,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )');
+
+        $pdo->exec('CREATE TABLE site_indicator_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            indicator_key TEXT NOT NULL,
+            old_value TEXT NOT NULL,
+            new_value TEXT NOT NULL,
+            changed_by_id INTEGER NULL,
+            changed_by_login TEXT NULL,
+            ip_address TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )');
 
         // Registro que public/api/schema.php lê a cada requisição. Sem ele todo

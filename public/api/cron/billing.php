@@ -22,16 +22,21 @@ $isLastDayOfMonth = $day === (int)$today->format('t'); // Handle February
 
 // Day 30 (or last day of month) - Generate new invoices
 if ($day === 30 || $isLastDayOfMonth) {
-    $clients = $db->query("SELECT * FROM clients WHERE monthly_value > 0 AND asaas_customer_id IS NOT NULL")->fetchAll();
-    
-    // Due date is 10th of next month
-    $dueDate = clone $today;
-    $dueDate->modify('+1 month');
-    $dueDate->setDate((int)$dueDate->format('Y'), (int)$dueDate->format('m'), 10);
-    $dueDateStr = $dueDate->format('Y-m-d');
-    
+    // Only active clients with a positive monthly value get billed.
+    $clients = $db->query("SELECT * FROM clients WHERE monthly_value > 0 AND status = 'active' AND asaas_customer_id IS NOT NULL")->fetchAll();
+
+    // Due date is next month, on each client's configured due day.
+    $nextMonth = clone $today;
+    $nextMonth->modify('first day of next month');
+    $nextMonthYear = (int)$nextMonth->format('Y');
+    $nextMonthNum = (int)$nextMonth->format('m');
+    $lastDayOfNextMonth = (int)$nextMonth->format('t');
+
     foreach ($clients as $client) {
         try {
+            $dueDay = min(max((int)($client['due_day'] ?? 10), 1), $lastDayOfNextMonth);
+            $dueDateStr = sprintf('%04d-%02d-%02d', $nextMonthYear, $nextMonthNum, $dueDay);
+
             $payment = asaasCreatePayment($client['asaas_customer_id'], (float)$client['monthly_value'], $dueDateStr);
             $qrCode = asaasGetPixQrCode($payment['id']);
             
@@ -56,13 +61,12 @@ if ($day === 30 || $isLastDayOfMonth) {
 
 // Day 03 or 07 - Resend notifications for PENDING invoices
 if ($day === 3 || $day === 7) {
-    // Current month's due date is the 10th
-    $dueDate = clone $today;
-    $dueDate->setDate((int)$dueDate->format('Y'), (int)$dueDate->format('m'), 10);
-    $dueDateStr = $dueDate->format('Y-m-d');
-    
-    $stmt = $db->prepare("SELECT i.*, c.email, c.name FROM invoices i JOIN clients c ON i.client_id = c.id WHERE i.status = 'PENDING' AND i.due_date = ?");
-    $stmt->execute([$dueDateStr]);
+    // Due dates vary per client now, so remind about anything still pending this month.
+    $monthStart = $today->format('Y-m-01');
+    $monthEnd = $today->format('Y-m-t');
+
+    $stmt = $db->prepare("SELECT i.*, c.email, c.name FROM invoices i JOIN clients c ON i.client_id = c.id WHERE i.status = 'PENDING' AND i.due_date BETWEEN ? AND ?");
+    $stmt->execute([$monthStart, $monthEnd]);
     $pendingInvoices = $stmt->fetchAll();
     
     foreach ($pendingInvoices as $inv) {
