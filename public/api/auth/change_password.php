@@ -34,8 +34,8 @@ if (strlen($newPassword) < 6) {
 $db = getDbConnection();
 
 // E-mail é pedido no primeiro acesso de quem foi criado sem um. Se a conta já
-// tem e-mail, o campo é ignorado — a troca por aqui é do próprio usuário, e a
-// alteração de e-mail é feita na gestão de usuários.
+// tem e-mail, tentativas de alterá-lo por aqui são rejeitadas — a troca é do
+// próprio usuário, e a alteração de e-mail é feita na gestão de usuários.
 $stmtCurrent = $db->prepare("SELECT email FROM users WHERE id = ? LIMIT 1");
 $stmtCurrent->execute([$actor['id']]);
 $currentEmail = $stmtCurrent->fetchColumn();
@@ -63,6 +63,12 @@ if ($missingEmail) {
     }
 
     $emailToStore = $emailInput;
+} else {
+    if ($emailInput !== '' && $emailInput !== (string) $currentEmail) {
+        http_response_code(400);
+        echo json_encode(['error' => 'A alteração de e-mail deve ser feita pela gestão de usuários.']);
+        exit;
+    }
 }
 
 $hash = password_hash($newPassword, PASSWORD_DEFAULT);

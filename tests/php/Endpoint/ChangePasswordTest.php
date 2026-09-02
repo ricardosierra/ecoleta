@@ -203,18 +203,49 @@ final class ChangePasswordTest extends TestCase
         self::assertSame(400, $resposta->status, $resposta->body);
     }
 
-    /** Conta que já tem e-mail ignora o campo: a troca não o altera. */
-    public function testContaComEmailIgnoraOCampoEmail(): void
+    /** Conta que já tem e-mail recusa tentativa de alterá-lo pela troca de senha. */
+    public function testContaComEmailRecusaTentativaDeAlterarEmail(): void
     {
+        $antes = $this->hashDe($this->joaoId);
+
         $resposta = $this->call($this->comoJoao(), [
             'new_password' => 'senha-nova-456',
             'email' => 'tentativa@outro.com',
         ]);
 
-        self::assertSame(200, $resposta->status, $resposta->body);
+        self::assertSame(400, $resposta->status, $resposta->body);
+        self::assertSame(
+            'A alteração de e-mail deve ser feita pela gestão de usuários.',
+            $resposta->json()['error'] ?? null
+        );
         $stmt = $this->db->pdo()->prepare('SELECT email FROM users WHERE id = ?');
         $stmt->execute([$this->joaoId]);
         self::assertSame('joao@exemplo.com.br', $stmt->fetch()['email'], 'e-mail existente não muda por aqui');
+        self::assertSame($antes, $this->hashDe($this->joaoId), 'senha não deve ser alterada quando a requisição é inválida');
+    }
+
+    /** Conta que já tem e-mail aceita envio redundante do mesmo e-mail. */
+    public function testContaComEmailAceitaMesmoEmail(): void
+    {
+        $resposta = $this->call($this->comoJoao(), [
+            'new_password' => 'senha-nova-456',
+            'email' => 'joao@exemplo.com.br',
+        ]);
+
+        self::assertSame(200, $resposta->status, $resposta->body);
+        self::assertTrue(password_verify('senha-nova-456', $this->hashDe($this->joaoId)));
+    }
+
+    /** Conta que já tem e-mail aceita envio com campo de e-mail vazio ou em branco. */
+    public function testContaComEmailAceitaEmailEmBranco(): void
+    {
+        $resposta = $this->call($this->comoJoao(), [
+            'new_password' => 'senha-nova-456',
+            'email' => '   ',
+        ]);
+
+        self::assertSame(200, $resposta->status, $resposta->body);
+        self::assertTrue(password_verify('senha-nova-456', $this->hashDe($this->joaoId)));
     }
 
     /** A senha nova é a que passa a valer no login. */
