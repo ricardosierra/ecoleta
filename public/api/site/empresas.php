@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../authz.php';
+require_once __DIR__ . '/logo_lib.php';
 
 startSecureSession();
 apiRequireCsrfToken();
@@ -17,50 +18,166 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 }
 
 $operator = apiRequireAdmin();
+$operatorId = (int) $operator['id'];
+$operatorLogin = (string) $operator['login'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $raw = file_get_contents('php://input');
-    $body = json_decode($raw, true) ?? [];
-    
-    $action = $body['action'] ?? '';
-    
+    // create com arquivo chega como multipart/form-data ($_POST + $_FILES);
+    // as demais ações seguem no corpo JSON de sempre.
+    $isMultipart = str_starts_with($_SERVER['CONTENT_TYPE'] ?? '', 'multipart/form-data');
+    $body = $isMultipart
+        ? $_POST
+        : (json_decode((string) file_get_contents('php://input'), true) ?? []);
+
+    $action = (string) ($body['action'] ?? '');
+
     if ($action === 'create') {
-        $name = trim($body['name'] ?? '');
-        $logo_url = trim($body['logo_url'] ?? '');
-        
-        if (!$name || !$logo_url) {
+        $name = trim((string) ($body['name'] ?? ''));
+        $logoUrl = trim((string) ($body['logo_url'] ?? ''));
+        $file = $isMultipart ? ($_FILES['logo'] ?? null) : null;
+        $hasFile = is_array($file) && (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
+
+        if ($name === '') {
             http_response_code(400);
-            echo json_encode(['error' => 'Nome e logo são obrigatórios.']);
+            echo json_encode(['error' => 'Nome é obrigatório.']);
             exit;
         }
-        
-        $stmt = $db->prepare("INSERT INTO site_clients (name, logo_url, is_active) VALUES (?, ?, 1)");
-        $stmt->execute([$name, $logo_url]);
-        
-        echo json_encode(['ok' => true, 'id' => $db->lastInsertId()]);
+
+        if (!$hasFile && $logoUrl === '') {
+            http_response_code(400);
+            echo json_encode(['error' => 'Envie a imagem da logo ou informe um caminho.']);
+            exit;
+        }
+
+        // A UNIQUE em name (migration 013) já barraria no INSERT; conferir
+        // antes devolve uma mensagem clara em vez de um erro de banco.
+        $stmt = $db->prepare("SELECT id FROM site_clients WHERE name = ?");
+        $stmt->execute([$name]);
+        if ($stmt->fetch()) {
+            http_response_code(409);
+            echo json_encode(['error' => 'Já existe uma empresa com esse nome.']);
+            exit;
+        }
+
+        if ($hasFile) {
+            $uploadError = ecoletaLogoValidateUpload($file);
+            if ($uploadError === null && !ecoletaLogoIsUploadedFile((string) $file['tmp_name'])) {
+                $uploadError = 'Falha no envio da imagem. Tente de novo.';
+            }
+            if ($uploadError !== null) {
+                http_response_code(400);
+                echo json_encode(['error' => $uploadError]);
+                exit;
+            }
+
+            $processed = ecoletaLogoProcess((string) $file['tmp_name'], ecoletaLogoUploadsDir(), $name);
+            if (!$processed['ok']) {
+                http_response_code(422);
+                echo json_encode(['error' => $processed['error']]);
+                exit;
+            }
+
+            $logoUrl = ECOLETA_LOGO_PUBLIC_PREFIX . $processed['filename'];
+        } elseif (!str_starts_with($logoUrl, '/') && !preg_match('#^https?://#i', $logoUrl)) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Caminho da logo inválido — use /logos/... ou uma URL completa.']);
+            exit;
+        }
+
+        try {
+            $stmt = $db->prepare("INSERT INTO site_clients (name, logo_url, is_active) VALUES (?, ?, 1)");
+            $stmt->execute([$name, $logoUrl]);
+        } catch (PDOException $e) {
+            ecoletaLogoDeleteByUrl($logoUrl);
+            if ($e->getCode() === '23000') {
+                http_response_code(409);
+                echo json_encode(['error' => 'Já existe uma empresa com esse nome.']);
+            } else {
+                http_response_code(500);
+                echo json_encode(['error' => 'Erro interno ao salvar empresa.']);
+            }
+            exit;
+        }
+
+        $id = (int) $db->lastInsertId();
+
+        logActivity(
+            $db,
+            null,
+            'site_client_create',
+            "Empresa parceira '{$name}' cadastrada por {$operatorLogin}",
+            $operatorId,
+            $operatorLogin
+        );
+
+        echo json_encode(['ok' => true, 'id' => $id, 'logo_url' => $logoUrl]);
         exit;
     }
-    
+
     if ($action === 'toggle_active') {
-        $id = (int)($body['id'] ?? 0);
-        $is_active = (int)($body['is_active'] ?? 1);
-        
+        $id = (int) ($body['id'] ?? 0);
+        $isActive = (int) ($body['is_active'] ?? 1) === 1 ? 1 : 0;
+
+        $stmt = $db->prepare("SELECT name FROM site_clients WHERE id = ?");
+        $stmt->execute([$id]);
+        $company = $stmt->fetch();
+        if (!$company) {
+            http_response_code(404);
+            echo json_encode(['error' => 'Empresa não encontrada.']);
+            exit;
+        }
+
         $stmt = $db->prepare("UPDATE site_clients SET is_active = ? WHERE id = ?");
-        $stmt->execute([$is_active, $id]);
-        
-        echo json_encode(['ok' => true]);
+        $stmt->execute([$isActive, $id]);
+
+        logActivity(
+            $db,
+            null,
+            'site_client_toggle',
+            sprintf(
+                "Empresa parceira '%s' %s por %s",
+                $company['name'],
+                $isActive === 1 ? 'ativada' : 'desativada',
+                $operatorLogin
+            ),
+            $operatorId,
+            $operatorLogin
+        );
+
+        echo json_encode(['ok' => true, 'id' => $id, 'is_active' => $isActive]);
         exit;
     }
-    
+
     if ($action === 'delete') {
-        $id = (int)($body['id'] ?? 0);
+        $id = (int) ($body['id'] ?? 0);
+
+        $stmt = $db->prepare("SELECT name, logo_url FROM site_clients WHERE id = ?");
+        $stmt->execute([$id]);
+        $company = $stmt->fetch();
+        if (!$company) {
+            http_response_code(404);
+            echo json_encode(['error' => 'Empresa não encontrada.']);
+            exit;
+        }
+
         $stmt = $db->prepare("DELETE FROM site_clients WHERE id = ?");
         $stmt->execute([$id]);
-        
+
+        ecoletaLogoDeleteByUrl((string) $company['logo_url']);
+
+        logActivity(
+            $db,
+            null,
+            'site_client_delete',
+            "Empresa parceira '{$company['name']}' excluída por {$operatorLogin}",
+            $operatorId,
+            $operatorLogin
+        );
+
         echo json_encode(['ok' => true]);
         exit;
     }
-    
+
     http_response_code(400);
     echo json_encode(['error' => 'Ação inválida.']);
     exit;
