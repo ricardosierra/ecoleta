@@ -3,6 +3,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../authz.php';
 require_once __DIR__ . '/../asaas_lib.php';
+require_once __DIR__ . '/phone_lib.php';
 
 startSecureSession();
 apiRequireCsrfToken();
@@ -23,7 +24,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     $name = trim($body['name'] ?? '');
     $email = trim($body['email'] ?? '');
-    $whatsapp = trim($body['whatsapp'] ?? '');
+    $whatsapp = normalizePhone($body['whatsapp'] ?? '');
     $document = trim($body['document'] ?? '');
     $monthlyValue = (float)($body['monthly_value'] ?? 0);
     $dueDay = (int)($body['due_day'] ?? 10);

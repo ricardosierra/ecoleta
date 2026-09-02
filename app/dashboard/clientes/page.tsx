@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { DashboardGate, useDashboardAuth } from "@/components/DashboardGate";
 import { isAdmin } from "@/lib/authz";
 import { apiPostJson } from "@/lib/dashboard-api";
+import { normalizePhone } from "@/lib/phone";
 
 type Client = {
   id: number;
@@ -65,7 +66,10 @@ function ClientesMain() {
     
     try {
       const res = await apiPostJson("/api/clients/index.php", {
-        name, email, whatsapp, document,
+        name,
+        email,
+        whatsapp: normalizePhone(whatsapp),
+        document,
         monthly_value: parseFloat(monthlyValue),
         due_day: parseInt(dueDay, 10) || 10
       });
