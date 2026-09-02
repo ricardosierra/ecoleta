@@ -27,7 +27,7 @@ final class TestDatabase
      * Versão de schema que este espelho reproduz. Precisa acompanhar
      * ECOLETA_SCHEMA_VERSION — SchemaMirrorTest garante isso.
      */
-    public const MIRRORED_VERSION = 12;
+    public const MIRRORED_VERSION = 13;
 
     private string $path;
 
@@ -259,9 +259,10 @@ final class TestDatabase
         )');
 
         // 009_create_site_content.sql — 004 e 010 são só seed, sem DDL novo.
+        // A UNIQUE em name vem da 013_dedup_site_clients.sql.
         $pdo->exec('CREATE TABLE site_clients (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
+            name TEXT NOT NULL UNIQUE,
             logo_url TEXT NOT NULL,
             is_active INTEGER NOT NULL DEFAULT 1,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,

@@ -161,8 +161,11 @@ if (!is_array($context)) {
 
 $_SERVER = array_merge($_SERVER, $context['server']);
 $_GET = $context['query'];
-$_POST = [];
-$_REQUEST = $_GET;
+// Requisições multipart chegam ao endpoint por $_POST/$_FILES, não pelo corpo
+// bruto — o CLI nunca os preencheria sozinho, então vêm prontos do contexto.
+$_POST = is_array($context['post'] ?? null) ? $context['post'] : [];
+$_FILES = is_array($context['files'] ?? null) ? $context['files'] : [];
+$_REQUEST = array_merge($_GET, $_POST);
 
 EcoletaTestPhpStream::$input = (string) $context['body'];
 stream_wrapper_unregister('php');

@@ -26,8 +26,15 @@ final class Endpoint
      *     csrf?: string|bool,
      *     dsn?: string|null,
      *     remote_addr?: string,
-     *     server?: array<string,string>
+     *     server?: array<string,string>,
+     *     post?: array<string,string>,
+     *     files?: array<string,array<string,mixed>>,
+     *     env?: array<string,string>
      * } $options
+     *
+     * `post`/`files` simulam uma requisição multipart: o CONTENT_TYPE passa a
+     * multipart/form-data e o harness injeta os dois superglobais no processo
+     * filho. `env` acrescenta variáveis de ambiente (ex.: ECOLETA_UPLOADS_DIR).
      */
     public static function call(string $script, array $options = []): EndpointResponse
     {
@@ -51,6 +58,8 @@ final class Endpoint
         $session['csrf_token'] = $sessionToken;
         $session['last_activity'] = time();
 
+        $isMultipart = isset($options['post']) || isset($options['files']);
+
         $server = [
             'REQUEST_METHOD' => $method,
             'SCRIPT_NAME' => '/api/' . ltrim($script, '/'),
@@ -60,7 +69,9 @@ final class Endpoint
             'HTTP_USER_AGENT' => 'EcoletaTestes/1.0',
             'HTTP_HOST' => 'localhost',
             'SERVER_PORT' => '80',
-            'CONTENT_TYPE' => 'application/json',
+            'CONTENT_TYPE' => $isMultipart
+                ? 'multipart/form-data; boundary=ecoletatest'
+                : 'application/json',
             'CONTENT_LENGTH' => (string) strlen($rawBody),
         ];
 
@@ -76,6 +87,8 @@ final class Endpoint
             'query' => array_map('strval', $options['query'] ?? []),
             'session' => $session,
             'body' => $rawBody,
+            'post' => array_map('strval', $options['post'] ?? []),
+            'files' => $options['files'] ?? [],
             'session_id' => 'ecoletatest' . bin2hex(random_bytes(8)),
             'session_dir' => $workDir . '/sessions',
             'error_log_file' => $workDir . '/error.log',
@@ -91,6 +104,7 @@ final class Endpoint
             'ECOLETA_TEST_CONTEXT' => $contextFile,
             'PATH' => getenv('PATH') ?: '/usr/bin:/bin',
         ];
+        $env = array_merge($env, $options['env'] ?? []);
         if (array_key_exists('dsn', $options)) {
             if ($options['dsn'] !== null) {
                 $env['DB_DSN'] = $options['dsn'];
