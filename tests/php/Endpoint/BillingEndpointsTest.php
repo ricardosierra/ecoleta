@@ -129,4 +129,68 @@ final class BillingEndpointsTest extends TestCase
         self::assertSame(400, $res->status, $res->body);
         self::assertSame('active', $this->db->rows('clients')[0]['status']);
     }
+
+    public function testEdicaoAtualizaWhatsappLocalmenteQuandoClienteNaoPossuiAsaasId(): void
+    {
+        $clientId = $this->db->seedClient('Cliente Local', 150.0, 10, 'active', '5511999999999', null);
+
+        $res = Endpoint::call('clients/edit.php', [
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoLogada(),
+            'body' => ['client_id' => $clientId, 'whatsapp' => '5511888888888'],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(200, $res->status, $res->body);
+        self::assertSame('5511888888888', $res->json()['client']['whatsapp'] ?? null);
+
+        $rows = $this->db->rows('clients');
+        self::assertSame('5511888888888', $rows[0]['whatsapp']);
+    }
+
+    public function testEdicaoNaoChamaAsaasSeWhatsappNaoFoiAlterado(): void
+    {
+        $clientId = $this->db->seedClient('Cliente Asaas', 150.0, 10, 'active', '5511999999999', 'cus_test123');
+
+        $res = Endpoint::call('clients/edit.php', [
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoLogada(),
+            'body' => ['client_id' => $clientId, 'whatsapp' => '5511999999999'],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(200, $res->status, $res->body);
+        self::assertSame('5511999999999', $res->json()['client']['whatsapp'] ?? null);
+    }
+
+    public function testEdicaoNaoChamaAsaasSeWhatsappNaoFoiEnviado(): void
+    {
+        $clientId = $this->db->seedClient('Cliente Asaas', 150.0, 10, 'active', '5511999999999', 'cus_test123');
+
+        $res = Endpoint::call('clients/edit.php', [
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoLogada(),
+            'body' => ['client_id' => $clientId, 'due_day' => 20],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(200, $res->status, $res->body);
+        self::assertSame(20, (int) ($res->json()['client']['due_day'] ?? 0));
+        self::assertSame('5511999999999', $res->json()['client']['whatsapp'] ?? null);
+    }
+
+    public function testEdicaoDisparaAtualizacaoNoAsaasQuandoWhatsappMudaEClientePossuiAsaasId(): void
+    {
+        $clientId = $this->db->seedClient('Cliente Asaas', 150.0, 10, 'active', '5511999999999', 'cus_test123');
+
+        $res = Endpoint::call('clients/edit.php', [
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoLogada(),
+            'body' => ['client_id' => $clientId, 'whatsapp' => '5511888888888'],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(500, $res->status, $res->body);
+        self::assertStringContainsString('Erro ao atualizar no Asaas: ASAAS_API_KEY não configurada.', (string) ($res->json()['error'] ?? ''));
+    }
 }

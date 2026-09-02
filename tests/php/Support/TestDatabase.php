@@ -111,12 +111,14 @@ final class TestDatabase
         string $name,
         float $monthlyValue = 0.0,
         int $dueDay = 10,
-        string $status = 'active'
+        string $status = 'active',
+        ?string $whatsapp = null,
+        ?string $asaasCustomerId = null
     ): int {
         $stmt = $this->pdo()->prepare(
-            'INSERT INTO clients (name, monthly_value, due_day, status) VALUES (?, ?, ?, ?)'
+            'INSERT INTO clients (name, monthly_value, due_day, status, whatsapp, asaas_customer_id) VALUES (?, ?, ?, ?, ?, ?)'
         );
-        $stmt->execute([$name, $monthlyValue, $dueDay, $status]);
+        $stmt->execute([$name, $monthlyValue, $dueDay, $status, $whatsapp, $asaasCustomerId]);
 
         return (int) $this->pdo()->lastInsertId();
     }

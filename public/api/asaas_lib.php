@@ -71,6 +71,11 @@ function asaasCreateCustomer(string $name, string $email, ?string $document, ?st
     return $response['id'];
 }
 
+function asaasUpdateCustomer(string $customerId, array $data): array
+{
+    return asaasRequest('/customers/' . $customerId, 'POST', $data);
+}
+
 function asaasCreatePayment(string $customerId, float $value, string $dueDate): array
 {
     $data = [
