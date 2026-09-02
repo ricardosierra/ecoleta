@@ -4,7 +4,16 @@
 
 ## [Futuro]
 
-## [Unreleased](https://github.com/ricardosierra/ecoleta/compare/v1.2.0...master)
+## [v1.3.0]
+
+### 🐛 Correções
+
+- [x] **Faturamento Automático (Cron)** — corrigida duplicação de faturas em meses de 31 dias e implementada idempotência na geração de pagamentos Asaas.
+- [x] **Integração Asaas** — sincronização do WhatsApp na API do Asaas habilitada durante a edição do cliente.
+- [x] **Normalização de WhatsApp** — corrigida regex para preservar o zero correto e normalizar os 14 dígitos (DDI + DDD) no padrão aceito pelo Asaas.
+- [x] **Segurança e Erros** — impedida conversão incorreta (TypeError) no PHP 8 e mascaramento de exceções críticas no cadastro de empresas.
+- [x] **Perfil de Usuário** — bloqueada tentativa silenciosa de sobrepor um e-mail já existente na tela de troca de senha inicial.
+
 
 ### ✨ Novidades
 
@@ -73,6 +82,15 @@
 - [x] Os três zips do histórico foram conferidos e **nenhum contém `out/api/env.php`**, que o deploy gera com as credenciais de produção em texto puro. O arquivo é ignorado pela regra `/out/`, mas um zip de `out/` não era — e foi um zip de `out/` que entrou no histórico três vezes.
 
 ## [v1.2.0 (2026-08-21)](https://github.com/ricardosierra/ecoleta/compare/v1.0.4...v1.2.0)
+
+### 🐛 Correções
+
+- [x] **Faturamento Automático (Cron)** — corrigida duplicação de faturas em meses de 31 dias e implementada idempotência na geração de pagamentos Asaas.
+- [x] **Integração Asaas** — sincronização do WhatsApp na API do Asaas habilitada durante a edição do cliente.
+- [x] **Normalização de WhatsApp** — corrigida regex para preservar o zero correto e normalizar os 14 dígitos (DDI + DDD) no padrão aceito pelo Asaas.
+- [x] **Segurança e Erros** — impedida conversão incorreta (TypeError) no PHP 8 e mascaramento de exceções críticas no cadastro de empresas.
+- [x] **Perfil de Usuário** — bloqueada tentativa silenciosa de sobrepor um e-mail já existente na tela de troca de senha inicial.
+
 
 ### ✨ Novidades
 
