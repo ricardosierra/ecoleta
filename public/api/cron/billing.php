@@ -3,7 +3,10 @@ declare(strict_types=1);
 
 // This script should be protected or only callable via a secret token if exposed.
 // In this example, we'll check for a simple GET parameter secret to prevent abuse.
-require_once __DIR__ . '/../env.php';
+$envFile = __DIR__ . '/../env.php';
+if (file_exists($envFile)) {
+    require_once $envFile;
+}
 
 $cronSecret = defined('CRON_SECRET') ? CRON_SECRET : (getenv('CRON_SECRET') ?: 'ecoleva_cron_secret');
 if (($_GET['secret'] ?? '') !== $cronSecret) {
@@ -21,7 +24,7 @@ $day = (int)$today->format('d');
 $isLastDayOfMonth = $day === (int)$today->format('t'); // Handle February
 
 // Day 30 (or last day of month) - Generate new invoices
-if ($day === 30 || $isLastDayOfMonth) {
+if ($day === 30 || ($isLastDayOfMonth && $day < 30)) {
     // Only active clients with a positive monthly value get billed.
     $clients = $db->query("SELECT * FROM clients WHERE monthly_value > 0 AND status = 'active' AND asaas_customer_id IS NOT NULL")->fetchAll();
 
@@ -36,6 +39,12 @@ if ($day === 30 || $isLastDayOfMonth) {
         try {
             $dueDay = min(max((int)($client['due_day'] ?? 10), 1), $lastDayOfNextMonth);
             $dueDateStr = sprintf('%04d-%02d-%02d', $nextMonthYear, $nextMonthNum, $dueDay);
+
+            $checkStmt = $db->prepare("SELECT id FROM invoices WHERE client_id = ? AND due_date = ? LIMIT 1");
+            $checkStmt->execute([$client['id'], $dueDateStr]);
+            if ($checkStmt->fetch()) {
+                continue;
+            }
 
             $payment = asaasCreatePayment($client['asaas_customer_id'], (float)$client['monthly_value'], $dueDateStr);
             $qrCode = asaasGetPixQrCode($payment['id']);
