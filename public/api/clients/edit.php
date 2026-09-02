@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../authz.php';
+require_once __DIR__ . '/../asaas_lib.php';
 
 startSecureSession();
 apiRequireCsrfToken();
@@ -36,10 +37,11 @@ if (!$client) {
     exit;
 }
 
-// Campos de cobrança: só atualiza o que veio no corpo, o resto fica como está.
+// Campos de cobrança e contato: só atualiza o que veio no corpo, o resto fica como está.
 $monthlyValue = array_key_exists('monthly_value', $body) ? (float)$body['monthly_value'] : (float)$client['monthly_value'];
 $dueDay = array_key_exists('due_day', $body) ? (int)$body['due_day'] : (int)$client['due_day'];
 $status = array_key_exists('status', $body) ? $body['status'] : $client['status'];
+$whatsapp = array_key_exists('whatsapp', $body) ? (is_null($body['whatsapp']) ? null : trim((string)$body['whatsapp'])) : $client['whatsapp'];
 
 if ($monthlyValue < 0) {
     http_response_code(400);
@@ -59,9 +61,19 @@ if (!in_array($status, ['active', 'inactive'], true)) {
     exit;
 }
 
+if (array_key_exists('whatsapp', $body) && $whatsapp !== $client['whatsapp'] && !empty($client['asaas_customer_id'])) {
+    try {
+        asaasUpdateCustomer($client['asaas_customer_id'], ['mobilePhone' => $whatsapp]);
+    } catch (\Throwable $e) {
+        http_response_code(500);
+        echo json_encode(['error' => 'Erro ao atualizar no Asaas: ' . $e->getMessage()]);
+        exit;
+    }
+}
+
 try {
-    $update = $db->prepare("UPDATE clients SET monthly_value = ?, due_day = ?, status = ? WHERE id = ?");
-    $update->execute([$monthlyValue, $dueDay, $status, $clientId]);
+    $update = $db->prepare("UPDATE clients SET monthly_value = ?, due_day = ?, status = ?, whatsapp = ? WHERE id = ?");
+    $update->execute([$monthlyValue, $dueDay, $status, $whatsapp, $clientId]);
 
     echo json_encode([
         'ok' => true,
@@ -69,7 +81,7 @@ try {
             'id' => (int)$client['id'],
             'name' => $client['name'],
             'email' => $client['email'],
-            'whatsapp' => $client['whatsapp'],
+            'whatsapp' => $whatsapp,
             'document' => $client['document'],
             'monthly_value' => $monthlyValue,
             'due_day' => $dueDay,
