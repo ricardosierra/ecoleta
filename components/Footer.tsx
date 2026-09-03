@@ -69,6 +69,7 @@ export default function Footer() {
             <FooterLink href="/solucoes">Serviços</FooterLink>
             <FooterLink href="/conteudos">Conteúdos</FooterLink>
             <FooterLink href="/dashboard">Painel BI</FooterLink>
+            <FooterLink href="/politica-de-privacidade">Privacidade</FooterLink>
           </FooterCol>
 
           <FooterCol title="Contato">
