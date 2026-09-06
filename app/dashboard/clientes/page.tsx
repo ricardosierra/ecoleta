@@ -29,6 +29,8 @@ function ClientesMain() {
   const { user } = useDashboardAuth();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   
   // Form states
   const [name, setName] = useState("");
@@ -42,6 +44,9 @@ function ClientesMain() {
 
   const isUserAdmin = isAdmin(user);
 
+  /** Cliente com mensalidade só é faturável com CPF/CNPJ — ver o campo abaixo. */
+  const cobraMensalidade = parseFloat(monthlyValue) > 0;
+
   useEffect(() => {
     if (!isUserAdmin) return;
     
@@ -50,8 +55,9 @@ function ClientesMain() {
       .then(data => {
         if (data.ok) {
           setClients(data.clients);
-        }
+        } else { throw new Error(data.error || "Erro ao carregar clientes."); }
       })
+      .catch(e => setError(e.message || "Erro de conexão."))
       .finally(() => setLoading(false));
   }, [isUserAdmin]);
 
@@ -63,9 +69,10 @@ function ClientesMain() {
     e.preventDefault();
     setError("");
     setSuccess("");
-    
+    setSubmitting(true);
     try {
-      const res = await apiPostJson("/api/clients/index.php", {
+      const res = await apiPostJson(editingId === null ? "/api/clients/index.php" : "/api/clients/edit.php", {
+        ...(editingId === null ? {} : { client_id: editingId }),
         name,
         email,
         whatsapp: normalizePhone(whatsapp),
@@ -76,8 +83,9 @@ function ClientesMain() {
       const data = await res.json();
       
       if (res.ok && data.ok) {
-        setSuccess("Cliente cadastrado com sucesso.");
-        setClients([data.client, ...clients]);
+        setSuccess(editingId === null ? "Cliente cadastrado com sucesso." : "Cliente atualizado com sucesso.");
+        setClients(current => editingId === null ? [data.client, ...current] : current.map(c => c.id === editingId ? data.client : c));
+        setEditingId(null);
         setName("");
         setEmail("");
         setWhatsapp("");
@@ -89,7 +97,7 @@ function ClientesMain() {
       }
     } catch {
       setError("Erro de comunicação com o servidor.");
-    }
+    } finally { setSubmitting(false); }
   };
 
   const handleToggleStatus = async (client: Client) => {
@@ -123,32 +131,45 @@ function ClientesMain() {
       </div>
 
       <div className="bg-[rgba(255,255,255,0.04)] rounded-2xl border border-[var(--color-border-dark)] p-6">
-        <h2 className="text-xl font-semibold mb-4">Novo Cliente</h2>
+        <h2 className="text-xl font-semibold mb-4">{editingId === null ? "Novo Cliente" : "Editar Cliente"}</h2>
+        {editingId !== null && <button type="button" onClick={() => { setEditingId(null); setName(""); setEmail(""); setWhatsapp(""); setDocument(""); setMonthlyValue("0"); setDueDay("10"); }} className="mb-4 text-sm text-[var(--color-accent)]">Cancelar edição</button>}
         <form onSubmit={handleCreate} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm mb-1 text-[var(--color-text-on-dark)]">Nome / Empresa *</label>
-            <input required value={name} onChange={e => setName(e.target.value)} className="w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg px-3 py-2 outline-none focus:border-[var(--color-accent)]" />
+            <label className="block text-sm mb-1 text-[var(--color-text-on-dark)]" htmlFor="cliente-nome">Nome / Empresa *</label>
+            <input id="cliente-nome" required value={name} onChange={e => setName(e.target.value)} className="w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg px-3 py-2 outline-none focus:border-[var(--color-accent)]" />
           </div>
           <div>
-            <label className="block text-sm mb-1 text-[var(--color-text-on-dark)]">E-mail</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg px-3 py-2 outline-none focus:border-[var(--color-accent)]" />
+            <label className="block text-sm mb-1 text-[var(--color-text-on-dark)]" htmlFor="cliente-email">E-mail</label>
+            <input id="cliente-email" type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg px-3 py-2 outline-none focus:border-[var(--color-accent)]" />
           </div>
           <div>
-            <label className="block text-sm mb-1 text-[var(--color-text-on-dark)]">WhatsApp</label>
-            <input value={whatsapp} onChange={e => setWhatsapp(e.target.value)} placeholder="Ex: 5511999999999" className="w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg px-3 py-2 outline-none focus:border-[var(--color-accent)]" />
+            <label className="block text-sm mb-1 text-[var(--color-text-on-dark)]" htmlFor="cliente-whatsapp">WhatsApp</label>
+            <input
+              id="cliente-whatsapp"
+              value={whatsapp}
+              onChange={e => setWhatsapp(e.target.value)}
+              onBlur={e => setWhatsapp(normalizePhone(e.target.value))}
+              placeholder="Ex: 5511999999999"
+              className="w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg px-3 py-2 outline-none focus:border-[var(--color-accent)]"
+            />
           </div>
           <div>
-            <label className="block text-sm mb-1 text-[var(--color-text-on-dark)]">CPF/CNPJ</label>
-            <input value={document} onChange={e => setDocument(e.target.value)} className="w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg px-3 py-2 outline-none focus:border-[var(--color-accent)]" />
+            <label className="block text-sm mb-1 text-[var(--color-text-on-dark)]" htmlFor="cliente-documento">
+              CPF/CNPJ{cobraMensalidade ? " *" : ""}
+            </label>
+            {/* Obrigatório assim que há valor mensal: o Asaas cadastra o cliente
+                sem documento mas recusa gerar a cobrança, e a recusa só
+                apareceria no dia 30, no log do cron. */}
+            <input id="cliente-documento" required={cobraMensalidade} value={document} onChange={e => setDocument(e.target.value)} className="w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg px-3 py-2 outline-none focus:border-[var(--color-accent)]" />
           </div>
           <div>
-            <label className="block text-sm mb-1 text-[var(--color-text-on-dark)]">Valor Mensal Fixo (R$)</label>
-            <input type="number" step="0.01" min="0" value={monthlyValue} onChange={e => setMonthlyValue(e.target.value)} className="w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg px-3 py-2 outline-none focus:border-[var(--color-accent)]" />
+            <label className="block text-sm mb-1 text-[var(--color-text-on-dark)]" htmlFor="cliente-valor">Valor Mensal Fixo (R$)</label>
+            <input id="cliente-valor" type="number" step="0.01" min="0" value={monthlyValue} onChange={e => setMonthlyValue(e.target.value)} className="w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg px-3 py-2 outline-none focus:border-[var(--color-accent)]" />
             <p className="text-xs text-white/40 mt-1">Só clientes ativos e com valor positivo entram na cobrança automática.</p>
           </div>
           <div>
-            <label className="block text-sm mb-1 text-[var(--color-text-on-dark)]">Dia de Vencimento</label>
-            <input type="number" min="1" max="31" value={dueDay} onChange={e => setDueDay(e.target.value)} className="w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg px-3 py-2 outline-none focus:border-[var(--color-accent)]" />
+            <label className="block text-sm mb-1 text-[var(--color-text-on-dark)]" htmlFor="cliente-vencimento">Dia de Vencimento</label>
+            <input id="cliente-vencimento" type="number" min="1" max="31" value={dueDay} onChange={e => setDueDay(e.target.value)} className="w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg px-3 py-2 outline-none focus:border-[var(--color-accent)]" />
             <p className="text-xs text-white/40 mt-1">Dia do mês em que a fatura vence (1 a 31).</p>
           </div>
 
@@ -157,14 +178,14 @@ function ClientesMain() {
               {error && <span className="text-red-400 text-sm">{error}</span>}
               {success && <span className="text-[var(--color-accent)] text-sm">{success}</span>}
             </div>
-            <button type="submit" className="bg-[var(--color-accent)] text-[var(--color-bg-dark)] px-5 py-2 rounded-full font-semibold hover:opacity-90 transition">
-              Salvar Cliente
+            <button type="submit" disabled={submitting} className="bg-[var(--color-accent)] text-[var(--color-bg-dark)] px-5 py-2 rounded-full font-semibold hover:opacity-90 transition">
+              {submitting ? "Salvando..." : "Salvar Cliente"}
             </button>
           </div>
         </form>
       </div>
 
-      <div className="bg-[rgba(255,255,255,0.04)] rounded-2xl border border-[var(--color-border-dark)] overflow-hidden">
+      <div className="bg-[rgba(255,255,255,0.04)] rounded-2xl border border-[var(--color-border-dark)] overflow-x-auto">
         <table className="w-full text-left text-sm whitespace-nowrap">
           <thead className="bg-black/40 text-[var(--color-text-on-dark)] border-b border-[var(--color-border-dark)]">
             <tr>
@@ -185,6 +206,10 @@ function ClientesMain() {
                 <td className="px-6 py-4">
                   <p className="font-semibold">{client.name}</p>
                   <p className="text-xs text-white/50">{client.document || "Sem documento"}</p>
+                  <button aria-label={`Editar ${client.name}`} className="mt-2 text-xs text-[var(--color-accent)]" onClick={() => {
+                    setEditingId(client.id); setName(client.name); setEmail(client.email ?? ""); setWhatsapp(client.whatsapp ?? "");
+                    setDocument(client.document ?? ""); setMonthlyValue(String(client.monthly_value)); setDueDay(String(client.due_day)); setError(""); setSuccess("");
+                  }}>Editar</button>
                 </td>
                 <td className="px-6 py-4">
                   <p>{client.email || "-"}</p>

@@ -5,13 +5,26 @@ require_once __DIR__ . '/security.php';
 require_once __DIR__ . '/schema.php';
 
 // Carrega as variáveis de ambiente geradas pelo deploy (arquivo fora do Git).
-$envFile = __DIR__ . '/env.php';
-if (file_exists($envFile)) {
+//
+// `ECOLETA_ENV_FILE` no ambiente troca o arquivo, e o valor `none` manda não
+// carregar nenhum. É o que a suíte de testes usa: sem isso, o env.php da máquina
+// de quem edita o código — que o deploy gera com as credenciais DE PRODUÇÃO —
+// entra nos testes, e um caso escrito para "sem chave configurada" passa a rodar
+// com a chave real na mão. Já aconteceu: AsaasLibTest e BillingEndpointsTest
+// falhavam só na máquina de quem tinha publicado, e passavam na CI.
+$envFileOverride = trim((string) (getenv('ECOLETA_ENV_FILE') ?: ''));
+$envFile = $envFileOverride !== '' ? $envFileOverride : __DIR__ . '/env.php';
+
+if ($envFileOverride !== 'none' && file_exists($envFile)) {
     require_once $envFile;
 } else {
-    // Sem env.php só restam as variáveis de ambiente do servidor. Nenhum segredo
+    // Sem arquivo de ambiente só restam as variáveis do processo. Nenhum segredo
     // tem valor embutido: o que não estiver definido faz o recurso falhar fechado.
-    error_log('public/api/env.php ausente — usando apenas variáveis de ambiente do servidor.');
+    // As quatro constantes de conexão precisam existir de qualquer jeito —
+    // getDbConnection() as lê direto, e constante ausente é fatal no PHP 8.
+    if ($envFileOverride !== 'none') {
+        error_log('public/api/env.php ausente — usando apenas variáveis de ambiente do servidor.');
+    }
     if (!defined('DB_HOST')) define('DB_HOST', getenv('DB_HOST') ?: 'localhost');
     if (!defined('DB_NAME')) define('DB_NAME', getenv('DB_NAME') ?: 'ecoleta');
     if (!defined('DB_USER')) define('DB_USER', getenv('DB_USER') ?: 'root');

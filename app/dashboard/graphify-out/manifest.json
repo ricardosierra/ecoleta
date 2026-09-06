@@ -1,0 +1,62 @@
+{
+  "clientes/page.tsx": {
+    "mtime": 1788474213.28927,
+    "ast_hash": "3cd1444dce8144d891ce6b4bf8bd707e",
+    "semantic_hash": "3cd1444dce8144d891ce6b4bf8bd707e"
+  },
+  "configuracoes/empresas/page.tsx": {
+    "mtime": 1788325153.4131007,
+    "ast_hash": "7fc94f803cfb43e90ffa97266ddcb8cb",
+    "semantic_hash": "7fc94f803cfb43e90ffa97266ddcb8cb"
+  },
+  "configuracoes/grupos/page.tsx": {
+    "mtime": 1788228311.3228076,
+    "ast_hash": "e22276ac4e1f2ce91ba26f1b7147867d",
+    "semantic_hash": "e22276ac4e1f2ce91ba26f1b7147867d"
+  },
+  "configuracoes/indicadores/page.tsx": {
+    "mtime": 1788291275.9944196,
+    "ast_hash": "ccccd300d76d5a9ca83b3531c76823b6",
+    "semantic_hash": "ccccd300d76d5a9ca83b3531c76823b6"
+  },
+  "configuracoes/layout.tsx": {
+    "mtime": 1788228311.3242695,
+    "ast_hash": "5247f3cffb0deeb43579c7dc63f99063",
+    "semantic_hash": "5247f3cffb0deeb43579c7dc63f99063"
+  },
+  "configuracoes/page.tsx": {
+    "mtime": 1788228311.3391879,
+    "ast_hash": "13fffdd758827fcd3c7579b674dfbfc7",
+    "semantic_hash": "13fffdd758827fcd3c7579b674dfbfc7"
+  },
+  "configuracoes/usuarios/page.tsx": {
+    "mtime": 1788301478.8737738,
+    "ast_hash": "8ca4e5b9bc91d71286bd6710260f7196",
+    "semantic_hash": "8ca4e5b9bc91d71286bd6710260f7196"
+  },
+  "configuracoes/usuarios/ver/page.tsx": {
+    "mtime": 1788228311.3795788,
+    "ast_hash": "e829b6ce3382e696a1d99113f08ce967",
+    "semantic_hash": "e829b6ce3382e696a1d99113f08ce967"
+  },
+  "faturas/page.tsx": {
+    "mtime": 1788228311.4044564,
+    "ast_hash": "63a5d97c14404fee58a2206a6165b56b",
+    "semantic_hash": "63a5d97c14404fee58a2206a6165b56b"
+  },
+  "os/page.tsx": {
+    "mtime": 1788463609.801368,
+    "ast_hash": "382087d0f100ed1560b32ea77c4b9df5",
+    "semantic_hash": "382087d0f100ed1560b32ea77c4b9df5"
+  },
+  "page.tsx": {
+    "mtime": 1788228311.441259,
+    "ast_hash": "1238ea22ba15dc4b46a701b685f1f450",
+    "semantic_hash": "1238ea22ba15dc4b46a701b685f1f450"
+  },
+  "whatsapp/page.tsx": {
+    "mtime": 1788464306.3589015,
+    "ast_hash": "2508607f55d187ab78de7f5ec76f1668",
+    "semantic_hash": "2508607f55d187ab78de7f5ec76f1668"
+  }
+}

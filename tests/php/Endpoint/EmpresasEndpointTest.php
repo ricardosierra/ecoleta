@@ -258,4 +258,30 @@ final class EmpresasEndpointTest extends TestCase
         self::assertSame(200, $res->status, $res->body);
         self::assertSame(0, $this->db->count('site_clients'));
     }
+
+    public function testUpdateChangesNameAndLogoWithoutChangingVisibility(): void
+    {
+        $id = $this->seedEmpresa('Antes', '/logos/antes.png', 0);
+        $res = Endpoint::call('site/empresas.php', [
+            'dsn' => $this->db->dsn(), 'session' => $this->sessaoAdmin(),
+            'body' => ['action' => 'update', 'id' => $id, 'name' => 'Depois', 'logo_url' => '/logos/depois.png'],
+        ]);
+        self::assertSame(200, $res->status, $res->body);
+        $row = $this->db->rows('site_clients')[0];
+        self::assertSame('Depois', $row['name']);
+        self::assertSame('/logos/depois.png', $row['logo_url']);
+        self::assertSame(0, (int) $row['is_active']);
+    }
+
+    public function testUpdateRejectsDuplicateName(): void
+    {
+        $id = $this->seedEmpresa('Antes');
+        $this->seedEmpresa('Existente');
+        $res = Endpoint::call('site/empresas.php', [
+            'dsn' => $this->db->dsn(), 'session' => $this->sessaoAdmin(),
+            'body' => ['action' => 'update', 'id' => $id, 'name' => 'Existente', 'logo_url' => '/logos/x.png'],
+        ]);
+        self::assertSame(409, $res->status, $res->body);
+        self::assertSame('Antes', $this->db->rows('site_clients')[0]['name']);
+    }
 }

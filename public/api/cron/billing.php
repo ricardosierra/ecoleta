@@ -1,87 +1,99 @@
 <?php
 declare(strict_types=1);
 
-// This script should be protected or only callable via a secret token if exposed.
-// In this example, we'll check for a simple GET parameter secret to prevent abuse.
-$envFile = __DIR__ . '/../env.php';
-if (file_exists($envFile)) {
-    require_once $envFile;
-}
-
-$cronSecret = defined('CRON_SECRET') ? CRON_SECRET : (getenv('CRON_SECRET') ?: 'ecoleva_cron_secret');
-if (($_GET['secret'] ?? '') !== $cronSecret) {
-    http_response_code(403);
-    die('Acesso negado.');
-}
+/**
+ * Faturamento mensal automático.
+ *
+ * Roda por cron (HTTP ou CLI) e faz duas coisas, cada uma no seu dia:
+ *
+ *   dia 30 (ou o último do mês, quando o mês não chega ao 30)
+ *       gera a cobrança do mês seguinte no Asaas para cada cliente ativo com
+ *       valor mensal positivo, grava em `invoices` e manda o e-mail com o Pix e
+ *       o link do boleto.
+ *
+ *   dias 3 e 7
+ *       relembra o que continua `PENDING` com vencimento dentro do mês.
+ *
+ * A decisão de quando cobrar e o documento que o cliente recebe moram em
+ * `billing_lib.php`, onde a suíte consegue exercitá-los. Aqui fica só o efeito
+ * colateral: segredo, banco, Asaas e e-mail.
+ */
 
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../asaas_lib.php';
+require_once __DIR__ . '/../billing_lib.php';
+require_once __DIR__ . '/../os/os_lib.php';
 
+// ── Quem pode disparar ───────────────────────────────────────────────────────
+// Falha fechado: sem CRON_SECRET configurado o endpoint não roda. A versão
+// anterior caía em um valor embutido no código ('ecoleva_cron_secret'), que está
+// publicado neste repositório — qualquer pessoa na internet podia emitir as
+// cobranças do mês e disparar os e-mails.
+//
+// O segredo vem preferencialmente pelo cabeçalho `X-Cron-Secret`, que é o que a
+// documentação sempre prometeu (.env.example) e o que não fica gravado no log de
+// acesso do servidor. O `?secret=` continua aceito para não quebrar um cron já
+// agendado, mas o cabeçalho é o caminho a usar.
+$cronSecret = apiSecret('CRON_SECRET');
+
+if ($cronSecret === '') {
+    error_log('cron/billing.php: CRON_SECRET não configurado — execução recusada.');
+    http_response_code(503);
+    exit("CRON_SECRET não configurado no servidor.\n");
+}
+
+$enviado = trim(apiRequestHeader('X-Cron-Secret'));
+if ($enviado === '') {
+    $enviado = trim((string) ($_GET['secret'] ?? ''));
+}
+
+// A scheduler running PHP locally already has the server's filesystem access.
+if (PHP_SAPI === 'cli' && getenv('ECOLETA_TEST_CONTEXT') === false) {
+    $enviado = $cronSecret;
+}
+
+if ($enviado === '' || !hash_equals($cronSecret, $enviado)) {
+    error_log('cron/billing.php: segredo inválido vindo de ' . apiClientIp());
+    http_response_code(403);
+    exit("Acesso negado.\n");
+}
+
+require_once __DIR__ . '/../billing_delivery.php';
 $db = getDbConnection();
+$today = new DateTimeImmutable('now', new DateTimeZone('America/Sao_Paulo'));
+$generated = 0;
+$reminders = 0;
+$errors = [];
 
-$today = new DateTime();
-$day = (int)$today->format('d');
-$isLastDayOfMonth = $day === (int)$today->format('t'); // Handle February
-
-// Day 30 (or last day of month) - Generate new invoices
-if ($day === 30 || ($isLastDayOfMonth && $day < 30)) {
-    // Only active clients with a positive monthly value get billed.
-    $clients = $db->query("SELECT * FROM clients WHERE monthly_value > 0 AND status = 'active' AND asaas_customer_id IS NOT NULL")->fetchAll();
-
-    // Due date is next month, on each client's configured due day.
-    $nextMonth = clone $today;
-    $nextMonth->modify('first day of next month');
-    $nextMonthYear = (int)$nextMonth->format('Y');
-    $nextMonthNum = (int)$nextMonth->format('m');
-    $lastDayOfNextMonth = (int)$nextMonth->format('t');
-
+if (billingShouldIssue($today)) {
+    $clients = $db->query("SELECT * FROM clients WHERE monthly_value > 0 AND status = 'active'")->fetchAll();
     foreach ($clients as $client) {
         try {
-            $dueDay = min(max((int)($client['due_day'] ?? 10), 1), $lastDayOfNextMonth);
-            $dueDateStr = sprintf('%04d-%02d-%02d', $nextMonthYear, $nextMonthNum, $dueDay);
-
-            $checkStmt = $db->prepare("SELECT id FROM invoices WHERE client_id = ? AND due_date = ? LIMIT 1");
-            $checkStmt->execute([$client['id'], $dueDateStr]);
-            if ($checkStmt->fetch()) {
-                continue;
-            }
-
-            $payment = asaasCreatePayment($client['asaas_customer_id'], (float)$client['monthly_value'], $dueDateStr);
-            $qrCode = asaasGetPixQrCode($payment['id']);
-            
-            $stmt = $db->prepare("INSERT INTO invoices (client_id, asaas_payment_id, value, due_date, invoice_url, pix_qrcode_text, pix_qrcode_url) VALUES (?, ?, ?, ?, ?, ?, ?)");
-            $stmt->execute([
-                $client['id'],
-                $payment['id'],
-                $client['monthly_value'],
-                $dueDateStr,
-                $payment['invoiceUrl'],
-                $qrCode['payload'],
-                $qrCode['encodedImage']
-            ]);
-            
-            // Here we would send the email via Resend with the QR code.
-            // Asaas will also send its own notifications.
-        } catch (\Throwable $e) {
-            error_log('Cron Billing Erro no cliente ' . $client['id'] . ': ' . $e->getMessage());
+            $invoice = billingIssueInvoice($db, $client, (float) $client['monthly_value'], billingDueDate($today, (int) $client['due_day']));
+            if ($invoice['created']) $generated++;
+            $delivery = billingDeliverInvoice($db, $invoice, $client);
+            if ($delivery['errors']) $errors[] = ['client_id' => $client['id'], 'delivery' => $delivery];
+        } catch (Throwable $e) {
+            $errors[] = ['client_id' => $client['id'], 'error' => $e->getMessage()];
         }
     }
 }
 
-// Day 03 or 07 - Resend notifications for PENDING invoices
-if ($day === 3 || $day === 7) {
-    // Due dates vary per client now, so remind about anything still pending this month.
-    $monthStart = $today->format('Y-m-01');
-    $monthEnd = $today->format('Y-m-t');
-
-    $stmt = $db->prepare("SELECT i.*, c.email, c.name FROM invoices i JOIN clients c ON i.client_id = c.id WHERE i.status = 'PENDING' AND i.due_date BETWEEN ? AND ?");
-    $stmt->execute([$monthStart, $monthEnd]);
-    $pendingInvoices = $stmt->fetchAll();
-    
-    foreach ($pendingInvoices as $inv) {
-        // Here we would send a reminder email via Resend
-        // Asaas also handles SMS/WhatsApp reminders if configured.
+if (billingShouldRemind($today)) {
+    $stmt = $db->prepare("SELECT i.*, c.name, c.email, c.whatsapp FROM invoices i JOIN clients c ON c.id = i.client_id WHERE i.status IN ('PENDING', 'OVERDUE') AND c.status = 'active' AND i.due_date BETWEEN ? AND ?");
+    $stmt->execute([$today->format('Y-m-01'), $today->format('Y-m-t')]);
+    foreach ($stmt->fetchAll() as $invoice) {
+        $client = ['id' => $invoice['client_id'], 'name' => $invoice['name'], 'email' => $invoice['email'], 'whatsapp' => $invoice['whatsapp']];
+        $delivery = billingDeliverInvoice($db, $invoice, $client, 'reminder:' . $today->format('Y-m-d'));
+        if ($delivery['email'] === 'sent' || $delivery['whatsapp'] === 'accepted') $reminders++;
+        if ($delivery['errors']) $errors[] = ['invoice_id' => $invoice['id'], 'delivery' => $delivery];
     }
 }
 
-echo "Cron rodou com sucesso.";
+if ($errors) {
+    http_response_code(502);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['ok' => false, 'generated' => $generated, 'reminders' => $reminders, 'errors' => $errors], JSON_UNESCAPED_UNICODE);
+} else {
+    echo sprintf("Cron rodou com sucesso. Faturas geradas: %d. Lembretes enviados: %d.\n", $generated, $reminders);
+}

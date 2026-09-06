@@ -3,8 +3,18 @@ declare(strict_types=1);
 
 use PHPUnit\Framework\TestCase;
 
+/**
+ * O cron de faturamento rodando o arquivo de verdade.
+ *
+ * Aqui fica só o que depende de executar o endpoint: a porta de entrada. A
+ * regra de data e o documento do e-mail moram em `billing_lib.php` e são
+ * exercitados por BillingLibTest — antes eram reimplementados dentro do próprio
+ * teste, que por isso não notou que o e-mail saía com o botão do boleto vazio.
+ */
 final class BillingCronTest extends TestCase
 {
+    private const SECRET = 'segredo-de-cron-para-teste-1234567890';
+
     private TestDatabase $db;
 
     protected function setUp(): void
@@ -17,132 +27,83 @@ final class BillingCronTest extends TestCase
         $this->db->destroy();
     }
 
-    public function testCronExigeSecretCorreto(): void
+    /** @param array<string,mixed> $options */
+    private function chamar(array $options = []): EndpointResponse
     {
-        $resSemSecret = Endpoint::call('cron/billing.php', [
+        return Endpoint::call('cron/billing.php', array_merge([
             'method' => 'GET',
             'dsn' => $this->db->dsn(),
-            'query' => [],
-        ]);
-        self::assertSame(403, $resSemSecret->status, $resSemSecret->body);
-        self::assertStringContainsString('Acesso negado', $resSemSecret->body);
+            'env' => ['CRON_SECRET' => self::SECRET, 'MAIL_TRANSPORT' => 'log'],
+        ], $options));
+    }
 
-        $resSecretErrado = Endpoint::call('cron/billing.php', [
-            'method' => 'GET',
-            'dsn' => $this->db->dsn(),
-            'query' => ['secret' => 'invalido'],
-        ]);
-        self::assertSame(403, $resSecretErrado->status, $resSecretErrado->body);
-        self::assertStringContainsString('Acesso negado', $resSecretErrado->body);
-
-        $resSecretCorreto = Endpoint::call('cron/billing.php', [
-            'method' => 'GET',
-            'dsn' => $this->db->dsn(),
+    public function testSemSegredoConfiguradoOCronNaoRoda(): void
+    {
+        // Falha fechado: um servidor sem CRON_SECRET não deve executar cobrança
+        // nenhuma. A versão anterior caía em 'ecoleva_cron_secret', embutido no
+        // código e publicado no repositório.
+        $res = $this->chamar([
+            'env' => ['CRON_SECRET' => '', 'MAIL_TRANSPORT' => 'log'],
             'query' => ['secret' => 'ecoleva_cron_secret'],
         ]);
-        self::assertSame(200, $resSecretCorreto->status, $resSecretCorreto->body);
-        self::assertStringContainsString('Cron rodou com sucesso', $resSecretCorreto->body);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(503, $res->status, $res->body);
     }
 
-    public function testLogicaDeDataExecutaExatamenteUmaVezPorMesEmAnoComum(): void
+    public function testSegredoAntigoEmbutidoNoCodigoNaoAbreMais(): void
     {
-        $diasPorMes = [
-            1 => 31, 2 => 28, 3 => 31, 4 => 30,
-            5 => 31, 6 => 30, 7 => 31, 8 => 31,
-            9 => 30, 10 => 31, 11 => 30, 12 => 31,
-        ];
+        $res = $this->chamar(['query' => ['secret' => 'ecoleva_cron_secret']]);
 
-        foreach ($diasPorMes as $mes => $totalDias) {
-            $execucoesNoMes = 0;
-            $diasExecutados = [];
-
-            for ($dia = 1; $dia <= $totalDias; $dia++) {
-                $isLastDayOfMonth = ($dia === $totalDias);
-                $deveExecutar = ($dia === 30 || ($isLastDayOfMonth && $dia < 30));
-                if ($deveExecutar) {
-                    $execucoesNoMes++;
-                    $diasExecutados[] = $dia;
-                }
-            }
-
-            self::assertSame(
-                1,
-                $execucoesNoMes,
-                sprintf('Mes %d deveria executar 1 vez, executou %d vezes nos dias: %s', $mes, $execucoesNoMes, implode(',', $diasExecutados))
-            );
-
-            if ($totalDias === 31) {
-                self::assertSame([30], $diasExecutados, "Mes {$mes} (31 dias) deve executar apenas no dia 30, nao no dia 31.");
-            } elseif ($totalDias === 30) {
-                self::assertSame([30], $diasExecutados, "Mes {$mes} (30 dias) deve executar no dia 30.");
-            } elseif ($totalDias === 28) {
-                self::assertSame([28], $diasExecutados, "Fevereiro comum deve executar no dia 28.");
-            }
-        }
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(403, $res->status, $res->body);
     }
 
-    public function testLogicaDeDataExecutaEmFevereiroBissexto(): void
+    public function testSemSegredoNaRequisicaoResponde403(): void
     {
-        $totalDias = 29;
-        $diasExecutados = [];
+        $res = $this->chamar(['query' => []]);
 
-        for ($dia = 1; $dia <= $totalDias; $dia++) {
-            $isLastDayOfMonth = ($dia === $totalDias);
-            $deveExecutar = ($dia === 30 || ($isLastDayOfMonth && $dia < 30));
-            if ($deveExecutar) {
-                $diasExecutados[] = $dia;
-            }
-        }
-
-        self::assertSame([29], $diasExecutados, 'Fevereiro bissexto deve executar no dia 29.');
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(403, $res->status, $res->body);
+        self::assertStringContainsString('Acesso negado', $res->body);
     }
 
-    public function testIdempotenciaNaoGeraFaturaDuplicadaParaMesmoClienteEVencimento(): void
+    public function testSegredoErradoResponde403(): void
     {
-        $pdo = $this->db->pdo();
-        $stmt = $pdo->prepare("INSERT INTO clients (name, monthly_value, due_day, status, asaas_customer_id) VALUES (?, ?, ?, ?, ?)");
-        $stmt->execute(['Cliente Teste Idempotencia', 200.00, 10, 'active', 'cus_test_123']);
-        $clientId = (int)$pdo->lastInsertId();
+        $res = $this->chamar(['query' => ['secret' => 'invalido']]);
 
-        $dueDateStr = '2026-10-10';
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(403, $res->status, $res->body);
+    }
 
-        // 1. Antes de gerar, verifica que fatura nao existe
-        $checkStmt = $pdo->prepare("SELECT id FROM invoices WHERE client_id = ? AND due_date = ? LIMIT 1");
-        $checkStmt->execute([$clientId, $dueDateStr]);
-        self::assertFalse((bool)$checkStmt->fetch(), 'Fatura ainda nao deve existir');
+    public function testSegredoCorretoNoCabecalhoRoda(): void
+    {
+        $res = $this->chamar(['server' => ['HTTP_X_CRON_SECRET' => self::SECRET]]);
 
-        // 2. Insere a primeira fatura (como o cron faz na 1a execucao)
-        $insertStmt = $pdo->prepare("INSERT INTO invoices (client_id, asaas_payment_id, value, due_date, invoice_url, pix_qrcode_text, pix_qrcode_url) VALUES (?, ?, ?, ?, ?, ?, ?)");
-        $insertStmt->execute([
-            $clientId,
-            'pay_test_001',
-            200.00,
-            $dueDateStr,
-            'https://asaas.com/i/test001',
-            'pix-payload-test',
-            'pix-image-test',
-        ]);
-        self::assertSame(1, $this->db->count('invoices'));
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(200, $res->status, $res->body);
+        self::assertStringContainsString('Cron rodou com sucesso', $res->body);
+    }
 
-        // 3. Simula a segunda execucao do cron no mesmo dia
-        $checkStmt->execute([$clientId, $dueDateStr]);
-        $existing = $checkStmt->fetch();
-        self::assertNotEmpty($existing, 'A verificacao de idempotencia deve encontrar a fatura existente');
+    public function testSegredoCorretoNaQueryStringContinuaAceito(): void
+    {
+        // Compatibilidade com um cron já agendado como ?secret=...
+        $res = $this->chamar(['query' => ['secret' => self::SECRET]]);
 
-        // Como encontrou, o cron da continue e nao faz novo insert
-        if (!$existing) {
-            $insertStmt->execute([
-                $clientId,
-                'pay_test_002',
-                200.00,
-                $dueDateStr,
-                'https://asaas.com/i/test002',
-                'pix-payload-test',
-                'pix-image-test',
-            ]);
-        }
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(200, $res->status, $res->body);
+        self::assertStringContainsString('Cron rodou com sucesso', $res->body);
+    }
 
-        // Contagem de faturas permanece 1
-        self::assertSame(1, $this->db->count('invoices'), 'Nao deve existir duplicata de fatura para o mesmo cliente e vencimento');
+    public function testSemClienteCobravelNaoGeraFatura(): void
+    {
+        // Cliente inativo e cliente sem Asaas ficam de fora da emissão.
+        $this->db->seedClient('Inativo', 100.0, 10, 'inactive', null, 'cus_1');
+        $this->db->seedClient('Sem Asaas', 100.0, 10, 'active', null, null);
+
+        $res = $this->chamar(['server' => ['HTTP_X_CRON_SECRET' => self::SECRET]]);
+
+        self::assertSame(200, $res->status, $res->body);
+        self::assertSame(0, $this->db->count('invoices'));
     }
 }

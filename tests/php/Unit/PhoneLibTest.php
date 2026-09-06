@@ -61,6 +61,18 @@ final class PhoneLibTest extends TestCase
         self::assertSame('552133445566', normalizePhone('02133445566'));
     }
 
+    public function testCompletaODddPadraoEmCelularDeNoveDigitos(): void
+    {
+        self::assertSame('5521999887766', normalizePhone('99988-7766'));
+        self::assertSame('5521999887766', normalizePhone('999887766'));
+    }
+
+    public function testCompletaODddPadraoEmFixoDeOitoDigitos(): void
+    {
+        self::assertSame('552133445566', normalizePhone('3344-5566'));
+        self::assertSame('552133445566', normalizePhone('33445566'));
+    }
+
     public function testRetornaStringVaziaParaEntradasInvalidasOuVazias(): void
     {
         self::assertSame('', normalizePhone(''));

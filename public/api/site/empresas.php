@@ -31,7 +31,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $action = (string) ($body['action'] ?? '');
 
-    if ($action === 'create') {
+    if ($action === 'create' || $action === 'update') {
+        $id = (int) ($body['id'] ?? 0);
+        $existing = null;
+        if ($action === 'update') {
+            $lookup = $db->prepare('SELECT * FROM site_clients WHERE id = ?');
+            $lookup->execute([$id]);
+            $existing = $lookup->fetch();
+            if (!$existing) apiJsonResponse(404, ['error' => 'Empresa não encontrada.']);
+        }
         $name = trim((string) ($body['name'] ?? ''));
         $logoUrl = trim((string) ($body['logo_url'] ?? ''));
         $file = $isMultipart ? ($_FILES['logo'] ?? null) : null;
@@ -51,8 +59,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // A UNIQUE em name (migration 013) já barraria no INSERT; conferir
         // antes devolve uma mensagem clara em vez de um erro de banco.
-        $stmt = $db->prepare("SELECT id FROM site_clients WHERE name = ?");
-        $stmt->execute([$name]);
+        $stmt = $db->prepare("SELECT id FROM site_clients WHERE name = ? AND id <> ?");
+        $stmt->execute([$name, $existing ? $id : 0]);
         if ($stmt->fetch()) {
             http_response_code(409);
             echo json_encode(['error' => 'Já existe uma empresa com esse nome.']);
@@ -85,10 +93,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         try {
-            $stmt = $db->prepare("INSERT INTO site_clients (name, logo_url, is_active) VALUES (?, ?, 1)");
-            $stmt->execute([$name, $logoUrl]);
+            if ($existing) {
+                $stmt = $db->prepare('UPDATE site_clients SET name = ?, logo_url = ? WHERE id = ?');
+                $stmt->execute([$name, $logoUrl, $id]);
+            } else {
+                $stmt = $db->prepare("INSERT INTO site_clients (name, logo_url, is_active) VALUES (?, ?, 1)");
+                $stmt->execute([$name, $logoUrl]);
+                $id = (int) $db->lastInsertId();
+            }
         } catch (PDOException $e) {
-            ecoletaLogoDeleteByUrl($logoUrl);
+            if ($hasFile) ecoletaLogoDeleteByUrl($logoUrl);
             if ($e->getCode() === '23000') {
                 http_response_code(409);
                 echo json_encode(['error' => 'Já existe uma empresa com esse nome.']);
@@ -99,13 +113,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
-        $id = (int) $db->lastInsertId();
-
+        // Keep the old file: another company can share the same logo URL.
         logActivity(
             $db,
             null,
-            'site_client_create',
-            "Empresa parceira '{$name}' cadastrada por {$operatorLogin}",
+            $existing ? 'site_client_update' : 'site_client_create',
+            sprintf("Empresa parceira '%s' %s por %s", $name, $existing ? 'atualizada' : 'cadastrada', $operatorLogin),
             $operatorId,
             $operatorLogin
         );

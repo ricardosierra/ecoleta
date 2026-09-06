@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, FormEvent } from "react";
-import { apiPostJson } from "@/lib/dashboard-api";
+import { apiFetch, apiPostJson } from "@/lib/dashboard-api";
 
 type Company = {
   id: number;
@@ -20,14 +20,21 @@ export default function EmpresasPage() {
   const [newName, setNewName] = useState("");
   const [newLogoUrl, setNewLogoUrl] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState("");
+  const [busyId, setBusyId] = useState<number | null>(null);
+
+  useEffect(() => {
+    return () => { if (logoPreview) URL.revokeObjectURL(logoPreview); };
+  }, [logoPreview]);
 
   const fetchData = async () => {
     try {
       const res = await fetch("/api/site/empresas.php");
-      if (res.ok) {
-        const data = await res.json();
-        if (data.ok) setCompanies(data.companies);
-      }
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Erro ao carregar empresas.");
+      setCompanies(data.companies);
     } catch {
       setError("Erro ao carregar empresas.");
     } finally {
@@ -42,19 +49,30 @@ export default function EmpresasPage() {
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
+    setError("");
+    setSuccessMsg("");
+    if (!logoFile && !newLogoUrl.trim()) {
+      setError("Envie a imagem da logo ou informe um caminho.");
+      return;
+    }
     setIsSubmitting(true);
     try {
-      const res = await apiPostJson("/api/site/empresas.php", {
-        action: "create",
-        name: newName,
-        logo_url: newLogoUrl
-      });
+      const form = new FormData();
+      form.set("action", editingId === null ? "create" : "update");
+      if (editingId !== null) form.set("id", String(editingId));
+      form.set("name", newName.trim());
+      form.set("logo_url", newLogoUrl.trim());
+      if (logoFile) form.set("logo", logoFile);
+      const res = await apiFetch("/api/site/empresas.php", { method: "POST", body: form });
       const data = await res.json();
       if (res.ok && data.ok) {
-        setSuccessMsg("Empresa cadastrada com sucesso!");
+        setSuccessMsg(editingId === null ? "Empresa cadastrada com sucesso!" : "Empresa atualizada com sucesso!");
         setIsCreating(false);
         setNewName("");
         setNewLogoUrl("");
+        setLogoFile(null);
+        setLogoPreview("");
+        setEditingId(null);
         fetchData();
       } else {
         setError(data.error || "Erro ao salvar.");
@@ -67,17 +85,20 @@ export default function EmpresasPage() {
   };
 
   const handleToggle = async (c: Company) => {
+    if (busyId !== null) return;
+    setBusyId(c.id);
+    setError("");
     try {
       const res = await apiPostJson("/api/site/empresas.php", {
-        action: "toggle_active",
-        id: c.id,
-        is_active: c.is_active ? 0 : 1
+        action: "toggle_active", id: c.id, is_active: c.is_active ? 0 : 1
       });
-      if (res.ok) {
-        fetchData();
-      }
-    } catch {
-      // ignora
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Erro ao alterar status.");
+      setCompanies(current => current.map(company => company.id === c.id ? { ...company, is_active: data.is_active } : company));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro de conexão.");
+    } finally {
+      setBusyId(null);
     }
   };
 
@@ -88,11 +109,11 @@ export default function EmpresasPage() {
         action: "delete",
         id
       });
-      if (res.ok) {
-        fetchData();
-      }
-    } catch {
-      // ignora
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Erro ao excluir empresa.");
+      setCompanies(current => current.filter(company => company.id !== id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro de conexão.");
     }
   };
 
@@ -108,7 +129,7 @@ export default function EmpresasPage() {
           </p>
         </div>
         <button
-          onClick={() => setIsCreating(!isCreating)}
+          onClick={() => { setIsCreating(!isCreating); setEditingId(null); setNewName(""); setNewLogoUrl(""); setLogoFile(null); setLogoPreview(""); setError(""); }}
           className="bg-[var(--color-accent)] text-black px-5 py-2.5 rounded-full text-sm font-semibold transition-opacity"
         >
           {isCreating ? "✕ Cancelar" : "+ Nova Empresa"}
@@ -122,7 +143,7 @@ export default function EmpresasPage() {
         </div>
       )}
 
-      {error && !isCreating && (
+      {error && (
         <div className="mb-6 p-4 bg-red-950/60 border border-red-500/50 rounded-2xl text-red-200">
           {error}
         </div>
@@ -130,7 +151,7 @@ export default function EmpresasPage() {
 
       {isCreating && (
         <form onSubmit={handleCreate} className="mb-8 p-6 bg-[rgba(255,255,255,0.04)] border border-[var(--color-border-dark)] rounded-2xl">
-          <h2 className="text-lg font-semibold text-white mb-4">Nova Empresa</h2>
+          <h2 className="text-lg font-semibold text-white mb-4">{editingId === null ? "Nova Empresa" : "Editar Empresa"}</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block text-sm text-[var(--color-text-on-dark)]">Nome da Empresa
               <input 
@@ -141,12 +162,22 @@ export default function EmpresasPage() {
             </label>
             <label className="block text-sm text-[var(--color-text-on-dark)]">Caminho da Logo (URL ou /logos/...)
               <input 
-                value={newLogoUrl} onChange={e => setNewLogoUrl(e.target.value)} required
+                value={newLogoUrl} onChange={e => setNewLogoUrl(e.target.value)}
                 placeholder="Ex: /logos/heineken.png"
                 className="mt-1 w-full rounded-xl border border-[var(--color-border-dark)] bg-black/30 px-3.5 py-2.5 text-white outline-none focus:border-[var(--color-accent)]"
               />
             </label>
           </div>
+          <label className="block mt-4 text-sm text-[var(--color-text-on-dark)]">Imagem da Logo (PNG, JPEG ou WebP, até 4 MB)
+            <input type="file" accept="image/png,image/jpeg,image/webp" className="block mt-2" onChange={e => {
+              const file = e.target.files?.[0] ?? null;
+              setLogoFile(file); setLogoPreview(file ? URL.createObjectURL(file) : "");
+            }} />
+          </label>
+          {logoFile && logoPreview && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logoPreview} alt="Prévia da logo" className="mt-3 max-h-24 bg-white rounded p-2" />
+          )}
           <div className="mt-5">
             <button type="submit" disabled={isSubmitting} className="bg-[var(--color-accent)] text-black px-6 py-2.5 rounded-full text-sm font-semibold transition-opacity">
               {isSubmitting ? "Salvando..." : "Salvar Empresa"}
@@ -155,7 +186,7 @@ export default function EmpresasPage() {
         </form>
       )}
 
-      <div className="bg-[rgba(255,255,255,0.03)] border border-[var(--color-border-dark)] rounded-2xl overflow-hidden shadow-2xl">
+      <div className="bg-[rgba(255,255,255,0.03)] border border-[var(--color-border-dark)] rounded-2xl overflow-x-auto shadow-2xl">
         <table className="w-full text-left text-sm text-white/80">
           <thead className="bg-black/40 text-white border-b border-[var(--color-border-dark)] text-xs uppercase tracking-wider">
             <tr>
@@ -177,11 +208,15 @@ export default function EmpresasPage() {
                 </td>
                 <td className="px-6 py-4 text-xs font-mono">{c.logo_url}</td>
                 <td className="px-6 py-4">
-                  <button onClick={() => handleToggle(c)} className={`px-2 py-1 rounded text-xs ${c.is_active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
-                    {c.is_active ? 'Ativo' : 'Inativo'}
+                  <button disabled={busyId !== null} onClick={() => handleToggle(c)} className={`px-2 py-1 rounded text-xs ${c.is_active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+                    {busyId === c.id ? <span role="status" aria-label="Alterando status">Alterando...</span> : c.is_active ? 'Ativo' : 'Inativo'}
                   </button>
                 </td>
                 <td className="px-6 py-4 text-right">
+                  <button aria-label={`Editar ${c.name}`} onClick={() => {
+                    setEditingId(c.id); setNewName(c.name); setNewLogoUrl(c.logo_url);
+                    setLogoFile(null); setLogoPreview(""); setError(""); setIsCreating(true);
+                  }} className="mr-4 text-[var(--color-accent)]">Editar</button>
                   <button onClick={() => handleDelete(c.id)} className="text-red-400 hover:text-red-300">🗑️ Excluir</button>
                 </td>
               </tr>

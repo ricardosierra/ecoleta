@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canViewWhatsAppPanel,
   DASHBOARD_ROLES,
   ROLE_LABELS,
   actorRole,
@@ -265,6 +266,49 @@ describe("ROLE_LABELS", () => {
   it("tem rótulo para todo papel conhecido", () => {
     for (const papel of DASHBOARD_ROLES) {
       expect(ROLE_LABELS[papel]).toBeTruthy();
+    }
+  });
+});
+
+describe("canViewWhatsAppPanel", () => {
+  // Mesma tabela de casos de AuthzTest::acessosAoPainelDeWhatsApp() no PHP.
+  // Os dois lados precisam concordar: divergir aqui desenha um link de menu que
+  // a API recusa, ou esconde uma tela que a conta pode abrir.
+  const casos: [string, { role: string | null; email: string | null }, boolean][] = [
+    ["root na lista", { role: "root", email: "sierra.csi@gmail.com" }, true],
+    ["root na lista em caixa alta", { role: "root", email: "Sierra.CSI@Gmail.com" }, true],
+    ["root na lista com espaço", { role: "root", email: "  sierra.csi@gmail.com  " }, true],
+    ["root fora da lista", { role: "root", email: "outro@exemplo.com" }, false],
+    ["root sem e-mail", { role: "root", email: null }, false],
+    ["root com e-mail vazio", { role: "root", email: "" }, false],
+    ["master na lista", { role: "master", email: "sierra.csi@gmail.com" }, false],
+    ["user na lista", { role: "user", email: "sierra.csi@gmail.com" }, false],
+    ["papel desconhecido", { role: "superadmin", email: "sierra.csi@gmail.com" }, false],
+    ["papel com caixa trocada", { role: "Root", email: "sierra.csi@gmail.com" }, false],
+  ];
+
+  it.each(casos)("%s", (_nome, ator, esperado) => {
+    expect(canViewWhatsAppPanel(ator)).toBe(esperado);
+  });
+
+  it("não autoriza ator ausente", () => {
+    expect(canViewWhatsAppPanel(null)).toBe(false);
+    expect(canViewWhatsAppPanel(undefined)).toBe(false);
+  });
+});
+
+describe("dashboardNavLinks — WhatsApp", () => {
+  it("mostra o link só para a conta que pode abrir o painel", () => {
+    const permitido = dashboardNavLinks({ role: "root", email: "sierra.csi@gmail.com" });
+    expect(permitido.some(l => l.href === "/dashboard/whatsapp")).toBe(true);
+  });
+
+  it("esconde o link de outro root e de master", () => {
+    for (const ator of [
+      { role: "root", email: "outro@exemplo.com" },
+      { role: "master", email: "sierra.csi@gmail.com" },
+    ]) {
+      expect(dashboardNavLinks(ator).some(l => l.href === "/dashboard/whatsapp")).toBe(false);
     }
   });
 });

@@ -43,6 +43,16 @@ describe("normalizePhone", () => {
     expect(normalizePhone("02133445566")).toBe("552133445566");
   });
 
+  it("completa o DDD padrão quando o número vem só com 9 dígitos", () => {
+    expect(normalizePhone("99988-7766")).toBe("5521999887766");
+    expect(normalizePhone("999887766")).toBe("5521999887766");
+  });
+
+  it("completa o DDD padrão em número fixo de 8 dígitos", () => {
+    expect(normalizePhone("3344-5566")).toBe("552133445566");
+    expect(normalizePhone("33445566")).toBe("552133445566");
+  });
+
   it("retorna string vazia para entradas vazias, nulas ou indefinidas", () => {
     expect(normalizePhone("")).toBe("");
     expect(normalizePhone(null)).toBe("");

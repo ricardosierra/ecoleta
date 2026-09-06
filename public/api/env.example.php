@@ -44,3 +44,42 @@ define('DASHBOARD_INSTALL_TOKEN', '');
 // Continua com prefixo NEXT_PUBLIC_ porque o mesmo valor é embutido no bundle
 // do site (components/PowerBIViewer.tsx) — não é segredo.
 define('NEXT_PUBLIC_POWERBI_URL', '');
+
+// ── Ordem de Serviço: encaminhamento por e-mail e WhatsApp ───────────────────
+
+// Raiz absoluta do site, com ou sem barra final. É o que monta o link com token
+// que vai no e-mail e na mensagem de WhatsApp. Sem esta constante o endereço é
+// deduzido do cabeçalho Host — que o cliente controla, e que num e-mail enviado
+// por nós apontaria o destinatário para o servidor de outra pessoa.
+define('SITE_BASE_URL', 'https://www.ecolevaeco.com');
+
+// Remetente do e-mail da OS. Vazio usa o mesmo de public/contact.php.
+define('OS_MAIL_FROM', '');
+
+// 'log' registra o destinatário no log e NÃO envia — modo de desenvolvimento e
+// da suíte de testes. Vazio (ou ausente) envia de verdade, por mail().
+define('MAIL_TRANSPORT', '');
+
+// WhatsApp Cloud API — o "WhatsApp do robô". Ausentes, o botão do robô responde
+// 503 e sobra o "Meu WhatsApp", que é só um link wa.me montado no navegador.
+define('WHATSAPP_PHONE_ID', '');
+define('WHATSAPP_ACCESS_TOKEN', '');
+
+// Template aprovado na Meta. Vazio manda texto livre, que só é entregue dentro
+// da janela de 24h depois da última mensagem do cliente.
+// Parâmetros do corpo, nesta ordem: {{1}} cliente, {{2}} nº da OS, {{3}} link.
+define('WHATSAPP_OS_TEMPLATE', '');
+define('WHATSAPP_OS_TEMPLATE_LANG', 'pt_BR');
+
+// 'off' desliga o disparo do robô sem apagar as credenciais acima. Vazio, envia.
+define('WHATSAPP_TRANSPORT', '');
+
+// Webhook do WhatsApp (api/webhooks/whatsapp.php). O token é o que a Meta manda
+// na verificação da URL; o App Secret assina cada evento e sem ele o webhook
+// recusa tudo — corpo não assinado deixaria qualquer um abrindo a janela de 24h.
+define('WHATSAPP_WEBHOOK_VERIFY_TOKEN', '');
+define('WHATSAPP_APP_SECRET', '');
+
+// Template da fatura: cliente, valor, vencimento e link.
+define('WHATSAPP_BILLING_TEMPLATE', '');
+define('WHATSAPP_BILLING_TEMPLATE_LANG', 'pt_BR');

@@ -1,0 +1,152 @@
+{
+  "communities": {
+    "0": [
+      "configuracoes_usuarios_ver_page",
+      "configuracoes_usuarios_ver_page_activitylog",
+      "configuracoes_usuarios_ver_page_group",
+      "configuracoes_usuarios_ver_page_user",
+      "configuracoes_usuarios_ver_page_usuariodetails",
+      "configuracoes_usuarios_ver_page_viewusuariopage"
+    ],
+    "1": [
+      "os_page",
+      "os_page_client",
+      "os_page_feedback",
+      "os_page_osmain",
+      "os_page_ospage",
+      "os_page_reenviowhatsapp"
+    ],
+    "2": [
+      "configuracoes_usuarios_page",
+      "configuracoes_usuarios_page_group",
+      "configuracoes_usuarios_page_user",
+      "configuracoes_usuarios_page_usuarioslist",
+      "configuracoes_usuarios_page_usuariospage"
+    ],
+    "3": [
+      "whatsapp_page",
+      "whatsapp_page_bubble",
+      "whatsapp_page_whatsappmain",
+      "whatsapp_page_whatsapppage",
+      "whatsapp_page_windowstrip"
+    ],
+    "4": [
+      "clientes_page",
+      "clientes_page_client",
+      "clientes_page_clientesmain",
+      "clientes_page_clientespage"
+    ],
+    "5": [
+      "configuracoes_grupos_page",
+      "configuracoes_grupos_page_group",
+      "configuracoes_grupos_page_gruposlist",
+      "configuracoes_grupos_page_grupospage"
+    ],
+    "6": [
+      "configuracoes_indicadores_page",
+      "configuracoes_indicadores_page_historylog",
+      "configuracoes_indicadores_page_indicadorespage",
+      "configuracoes_indicadores_page_indicator"
+    ],
+    "7": [
+      "faturas_page",
+      "faturas_page_faturasmain",
+      "faturas_page_faturaspage",
+      "faturas_page_invoice"
+    ],
+    "8": [
+      "page",
+      "page_dashboardmain",
+      "page_dashboardpage",
+      "page_group"
+    ],
+    "9": [
+      "configuracoes_empresas_page",
+      "configuracoes_empresas_page_company",
+      "configuracoes_empresas_page_empresaspage"
+    ],
+    "10": [
+      "configuracoes_layout",
+      "configuracoes_layout_configuracoeslayout",
+      "configuracoes_layout_configuracoessidebar"
+    ],
+    "11": [
+      "configuracoes_page",
+      "configuracoes_page_configuracoespage"
+    ]
+  },
+  "cohesion": {
+    "0": 0.3333333333333333,
+    "1": 0.3333333333333333,
+    "2": 0.4,
+    "3": 0.4,
+    "4": 0.5,
+    "5": 0.5,
+    "6": 0.5,
+    "7": 0.5,
+    "8": 0.5,
+    "9": 0.6666666666666666,
+    "10": 0.6666666666666666,
+    "11": 1.0
+  },
+  "gods": [
+    {
+      "id": "clientes_page_client",
+      "label": "Client",
+      "degree": 1
+    },
+    {
+      "id": "configuracoes_empresas_page_company",
+      "label": "Company",
+      "degree": 1
+    },
+    {
+      "id": "configuracoes_grupos_page_group",
+      "label": "Group",
+      "degree": 1
+    },
+    {
+      "id": "configuracoes_indicadores_page_indicator",
+      "label": "Indicator",
+      "degree": 1
+    },
+    {
+      "id": "configuracoes_indicadores_page_historylog",
+      "label": "HistoryLog",
+      "degree": 1
+    },
+    {
+      "id": "configuracoes_usuarios_page_group",
+      "label": "Group",
+      "degree": 1
+    },
+    {
+      "id": "configuracoes_usuarios_page_user",
+      "label": "User",
+      "degree": 1
+    },
+    {
+      "id": "configuracoes_usuarios_ver_page_group",
+      "label": "Group",
+      "degree": 1
+    },
+    {
+      "id": "configuracoes_usuarios_ver_page_user",
+      "label": "User",
+      "degree": 1
+    },
+    {
+      "id": "configuracoes_usuarios_ver_page_activitylog",
+      "label": "ActivityLog",
+      "degree": 1
+    }
+  ],
+  "surprises": [],
+  "questions": [
+    {
+      "type": "isolated_nodes",
+      "question": "What connects `Client`, `Company`, `Group` to the rest of the system?",
+      "why": "15 weakly-connected nodes found - possible documentation gaps or missing edges."
+    }
+  ]
+}

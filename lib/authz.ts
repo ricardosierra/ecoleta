@@ -28,6 +28,8 @@ export const ROLE_LABELS: Record<DashboardRole, string> = {
 export type Actor = {
   id?: number | null;
   role?: string | null;
+  /** Só o painel de WhatsApp olha para isto — ver `canViewWhatsAppPanel`. */
+  email?: string | null;
 } | null | undefined;
 
 /** O mínimo que uma decisão de permissão precisa saber sobre o alvo. */
@@ -87,6 +89,33 @@ export function canManageUsers(actor: Actor): boolean {
 /** Acesso à tela de gestão de grupos (`/dashboard/grupos`). */
 export function canManageGroups(actor: Actor): boolean {
   return isAdmin(actor);
+}
+
+/**
+ * Contas que enxergam o painel de conversas do WhatsApp.
+ *
+ * Espelha `API_WHATSAPP_PANEL_EMAILS` em `public/api/authz.php`, que é o lado
+ * que decide. A lista está no código, e não no env, justamente porque precisa
+ * existir dos dois lados: sem ela aqui, o menu desenharia um link que a API
+ * recusa. Não é segredo — é o endereço de uma pessoa.
+ */
+export const WHATSAPP_PANEL_EMAILS: readonly string[] = ["sierra.csi@gmail.com"];
+
+/**
+ * Painel de WhatsApp: exige `root` E estar na lista acima.
+ *
+ * As duas condições juntas de propósito. Só o papel deixaria qualquer root
+ * futuro lendo conversa de cliente; só o e-mail daria acesso a uma conta que
+ * foi rebaixada e continua com o mesmo endereço.
+ */
+export function canViewWhatsAppPanel(actor: Actor): boolean {
+  if (!isRoot(actor)) {
+    return false;
+  }
+
+  const email = (actor?.email ?? "").trim().toLowerCase();
+
+  return email !== "" && WHATSAPP_PANEL_EMAILS.includes(email);
 }
 
 /** Seletor de grupos no topo do painel — só quem enxerga mais de um grupo. */
@@ -219,6 +248,10 @@ export function dashboardNavLinks(actor: Actor): NavLink[] {
     links.push({ href: "/dashboard/faturas", label: "Faturas" });
     links.push({ href: "/dashboard/os", label: "OS Eletrônica" });
     links.push({ href: "/dashboard/configuracoes", label: "Configurações" });
+  }
+
+  if (canViewWhatsAppPanel(actor)) {
+    links.push({ href: "/dashboard/whatsapp", label: "WhatsApp" });
   }
 
   return links;

@@ -1,4 +1,14 @@
 /**
+ * DDD assumido quando o número vem sem ele.
+ *
+ * A Ecoleva atende a partir de Rio Bonito - RJ e o cadastro é preenchido por
+ * quem já está lá; um número digitado como "99988-7766" é um número do 21. Sem
+ * este padrão, os 9 dígitos seguiam para o banco como "999887766" — que a Meta
+ * recusa e que nenhum `wa.me` abre.
+ */
+export const DEFAULT_AREA_CODE = "21";
+
+/**
  * Normaliza um número de telefone/WhatsApp para o formato numérico padrão com DDI (55).
  * Trata variações de formatação, DDD com 0 à esquerda e DDI explícito.
  *
@@ -7,6 +17,7 @@
  * - "(21) 99988-7766"     -> "5521999887766"
  * - "+55 21 99988-7766"   -> "5521999887766"
  * - "021999887766"        -> "5521999887766"
+ * - "99988-7766"          -> "5521999887766"  (DDD padrão)
  */
 export function normalizePhone(phone?: string | null): string {
   if (!phone) {
@@ -30,6 +41,10 @@ export function normalizePhone(phone?: string | null): string {
     // Se começar com 0 sem DDI (ex: 021999887766 -> 21999887766)
     if (digits.startsWith("0")) {
       digits = digits.slice(1);
+    }
+    // 8 (fixo) ou 9 (celular) dígitos é número sem DDD: completa com o padrão.
+    if (digits.length === 8 || digits.length === 9) {
+      digits = DEFAULT_AREA_CODE + digits;
     }
     // Se tiver 10 ou 11 dígitos (DDD + número), adiciona DDI 55
     if (digits.length === 10 || digits.length === 11) {

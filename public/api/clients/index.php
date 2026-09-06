@@ -1,5 +1,17 @@
 <?php
 declare(strict_types=1);
+
+/**
+ * Listagem e cadastro de clientes.
+ *
+ * Exige administrador. A tela (`app/dashboard/clientes/page.tsx`) sempre desenhou
+ * "Acesso negado." para quem não é `root`/`master`, mas o backend aceitava
+ * qualquer sessão — e uma conta `user`, que no dashboard só enxerga o próprio
+ * painel, podia ler a carteira inteira (nome, e-mail, WhatsApp, CPF/CNPJ e valor
+ * mensal de cada cliente) e ainda cadastrar cliente novo, com efeito no Asaas.
+ * Mesma régua do módulo de OS.
+ */
+
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../authz.php';
 require_once __DIR__ . '/../asaas_lib.php';
@@ -8,7 +20,7 @@ require_once __DIR__ . '/phone_lib.php';
 startSecureSession();
 apiRequireCsrfToken();
 apiSendJsonHeaders();
-$operator = apiRequireAuthenticated(); // Qualquer papel logado; o front restringe a tela a admin
+$operator = apiRequireAdmin();
 
 $db = getDbConnection();
 
@@ -25,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name = trim($body['name'] ?? '');
     $email = trim($body['email'] ?? '');
     $whatsapp = normalizePhone($body['whatsapp'] ?? '');
-    $document = trim($body['document'] ?? '');
+    $document = preg_replace('/\D+/', '', (string) ($body['document'] ?? '')) ?? '';
     $monthlyValue = (float)($body['monthly_value'] ?? 0);
     $dueDay = (int)($body['due_day'] ?? 10);
     $status = $body['status'] ?? 'active';
@@ -48,6 +60,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    // Cliente com valor mensal precisa de documento, senão a cobrança do dia 30
+    // falha em silêncio.
+    //
+    // O Asaas ACEITA cadastrar um cliente sem CPF/CNPJ — o que ele recusa é a
+    // cobrança: "Para criar esta cobrança é necessário preencher o CPF ou CNPJ do
+    // cliente". Como o cron trata cada cliente dentro de um try/catch para não
+    // derrubar os outros, o erro ia só para o error_log e o cliente
+    // simplesmente nunca era faturado, mês após mês, sem ninguém perceber.
+    if ($monthlyValue > 0 && $document === '') {
+        http_response_code(400);
+        echo json_encode(['error' => 'Cliente com cobrança mensal precisa de CPF ou CNPJ — o Asaas recusa gerar a fatura sem ele.']);
+        exit;
+    }
+
+    if (!is_finite($monthlyValue) || $monthlyValue < 0) {
+        apiJsonResponse(400, ['error' => 'Valor mensal não pode ser negativo ou inválido.']);
+    }
+    if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        apiJsonResponse(400, ['error' => 'E-mail inválido.']);
+    }
+    if ($whatsapp !== '' && !preg_match('/^55[1-9][0-9]{9,10}$/', $whatsapp)) {
+        apiJsonResponse(400, ['error' => 'WhatsApp inválido. Informe DDD e telefone.']);
+    }
+    // NULL permits multiple customers without a document; an empty string is unique.
+    if ($document !== '') {
+        $duplicate = $db->prepare('SELECT id FROM clients WHERE document = ? LIMIT 1');
+        $duplicate->execute([$document]);
+        if ($duplicate->fetch()) apiJsonResponse(409, ['error' => 'Cliente com este documento já existe.']);
+    }
+
     // Create customer in Asaas
     $asaasCustomerId = null;
     try {
@@ -60,7 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         $stmt = $db->prepare("INSERT INTO clients (name, email, whatsapp, document, monthly_value, due_day, status, asaas_customer_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->execute([$name, $email, $whatsapp, $document, $monthlyValue, $dueDay, $status, $asaasCustomerId]);
+        $stmt->execute([$name, $email, $whatsapp, $document !== '' ? $document : null, $monthlyValue, $dueDay, $status, $asaasCustomerId]);
         $id = (int)$db->lastInsertId();
 
         echo json_encode([

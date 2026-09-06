@@ -25,6 +25,7 @@ final class Endpoint
      *     session?: array<string,mixed>,
      *     csrf?: string|bool,
      *     dsn?: string|null,
+     *     env?: array<string,string>,
      *     remote_addr?: string,
      *     server?: array<string,string>
      * } $options
@@ -60,7 +61,7 @@ final class Endpoint
             'HTTP_USER_AGENT' => 'EcoletaTestes/1.0',
             'HTTP_HOST' => 'localhost',
             'SERVER_PORT' => '80',
-            'CONTENT_TYPE' => 'application/json',
+            'CONTENT_TYPE' => isset($options['post']) || isset($options['files']) ? 'multipart/form-data; boundary=ecoleta-test' : 'application/json',
             'CONTENT_LENGTH' => (string) strlen($rawBody),
         ];
 
@@ -76,6 +77,8 @@ final class Endpoint
             'query' => array_map('strval', $options['query'] ?? []),
             'session' => $session,
             'body' => $rawBody,
+            'post' => $options['post'] ?? [],
+            'files' => $options['files'] ?? [],
             'session_id' => 'ecoletatest' . bin2hex(random_bytes(8)),
             'session_dir' => $workDir . '/sessions',
             'error_log_file' => $workDir . '/error.log',
@@ -90,6 +93,11 @@ final class Endpoint
         $env = [
             'ECOLETA_TEST_CONTEXT' => $contextFile,
             'PATH' => getenv('PATH') ?: '/usr/bin:/bin',
+            // A suíte nunca lê public/api/env.php. Esse arquivo é gerado pelo
+            // deploy com as credenciais de PRODUÇÃO, e na máquina de quem
+            // publicou ele entrava nos testes: um caso escrito para "sem chave
+            // configurada" rodava com a chave real. Ver db.php.
+            'ECOLETA_ENV_FILE' => 'none',
         ];
         if (array_key_exists('dsn', $options)) {
             if ($options['dsn'] !== null) {
@@ -97,6 +105,13 @@ final class Endpoint
             }
         } else {
             throw new InvalidArgumentException('Passe dsn: explicitamente (use null para não definir DB_DSN).');
+        }
+
+        // Variáveis extras do processo filho. É por aqui que a suíte desliga o
+        // envio de e-mail (MAIL_TRANSPORT=log): apiSecret() lê constante e, na
+        // falta dela, getenv() — e nenhum teste deve chamar mail() de verdade.
+        foreach ($options['env'] ?? [] as $name => $value) {
+            $env[(string) $name] = (string) $value;
         }
 
         self::run($path, $env, $rawBody, $workDir);

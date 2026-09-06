@@ -13,6 +13,19 @@
   --color-border-dark: rgba(255, 255, 255, 0.08);
   --color-border-light: rgba(13, 31, 15, 0.08);
 
+  /* Painel de conversas do WhatsApp (/dashboard/whatsapp).
+     São as cores do próprio WhatsApp, não da identidade da Ecoleta: a tela
+     reproduz uma conversa e precisa ser reconhecível como tal. Ficam no @theme
+     como qualquer outro token para não virarem hex solto no meio do JSX —
+     e não devem ser usadas fora desse painel. */
+  --color-wa-bg: #e7ddd3;
+  --color-wa-panel: #f0f2f5;
+  --color-wa-in: #ffffff;
+  --color-wa-out: #d9fdd3;
+  --color-wa-time: #667781;
+  --color-wa-teal: #008069;
+  --color-wa-line: #d9dee4;
+
   --font-sans: var(--font-montserrat), system-ui, -apple-system, "Segoe UI", sans-serif;
 
   --radius-button: 50px;

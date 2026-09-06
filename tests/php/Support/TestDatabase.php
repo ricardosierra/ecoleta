@@ -27,7 +27,7 @@ final class TestDatabase
      * Versão de schema que este espelho reproduz. Precisa acompanhar
      * ECOLETA_SCHEMA_VERSION — SchemaMirrorTest garante isso.
      */
-    public const MIRRORED_VERSION = 12;
+    public const MIRRORED_VERSION = 15;
 
     private string $path;
 
@@ -113,12 +113,45 @@ final class TestDatabase
         int $dueDay = 10,
         string $status = 'active',
         ?string $whatsapp = null,
-        ?string $asaasCustomerId = null
+        ?string $asaasCustomerId = null,
+        ?string $email = null
     ): int {
         $stmt = $this->pdo()->prepare(
-            'INSERT INTO clients (name, monthly_value, due_day, status, whatsapp, asaas_customer_id) VALUES (?, ?, ?, ?, ?, ?)'
+            'INSERT INTO clients (name, monthly_value, due_day, status, whatsapp, asaas_customer_id, email) VALUES (?, ?, ?, ?, ?, ?, ?)'
         );
-        $stmt->execute([$name, $monthlyValue, $dueDay, $status, $whatsapp, $asaasCustomerId]);
+        $stmt->execute([$name, $monthlyValue, $dueDay, $status, $whatsapp, $asaasCustomerId, $email]);
+
+        return (int) $this->pdo()->lastInsertId();
+    }
+
+    /**
+     * Uma OS pronta. `$shareToken` nulo reproduz a linha criada antes da
+     * migration 014, que os endpoints de encaminhamento precisam saber tratar.
+     */
+    public function seedServiceOrder(
+        int $clientId,
+        ?string $shareToken = null,
+        ?string $collectionDate = '2026-09-03',
+        ?string $whatsappSentAt = null,
+        ?string $whatsappSentTo = null
+    ): int {
+        $stmt = $this->pdo()->prepare(
+            'INSERT INTO service_orders
+                (client_id, weight, collection_date, bags_count, containers_count, responsible,
+                 share_token, whatsapp_sent_at, whatsapp_sent_to)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        );
+        $stmt->execute([
+            $clientId,
+            '150 kg',
+            $collectionDate,
+            12,
+            2,
+            'Equipe A',
+            $shareToken,
+            $whatsappSentAt,
+            $whatsappSentTo,
+        ]);
 
         return (int) $this->pdo()->lastInsertId();
     }
@@ -247,7 +280,7 @@ final class TestDatabase
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )');
 
-        // 008_create_service_orders.sql
+        // 008_create_service_orders.sql + 014_service_order_share.sql
         $pdo->exec('CREATE TABLE service_orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             client_id INTEGER NOT NULL,
@@ -257,13 +290,52 @@ final class TestDatabase
             containers_count INTEGER NULL,
             responsible TEXT NULL,
             signature_text TEXT NOT NULL DEFAULT \'Responsável Técnica - ECOLEVA\',
+            share_token TEXT NULL UNIQUE,
+            sent_at TEXT NULL,
+            sent_to TEXT NULL,
+            whatsapp_sent_at TEXT NULL,
+            whatsapp_sent_to TEXT NULL,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )');
 
-        // 009_create_site_content.sql — 004 e 010 são só seed, sem DDL novo.
+        // 015_whatsapp_conversations.sql
+        $pdo->exec('CREATE TABLE whatsapp_conversations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            phone TEXT NOT NULL UNIQUE,
+            wa_id TEXT NULL,
+            profile_name TEXT NULL,
+            client_id INTEGER NULL,
+            status TEXT NOT NULL DEFAULT \'open\',
+            unread_count INTEGER NOT NULL DEFAULT 0,
+            last_inbound_at TEXT NULL,
+            last_message_at TEXT NULL,
+            last_message_preview TEXT NULL,
+            last_message_direction TEXT NULL,
+            service_window_expires_at TEXT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )');
+
+        $pdo->exec('CREATE TABLE whatsapp_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id INTEGER NOT NULL,
+            wa_message_id TEXT NULL UNIQUE,
+            direction TEXT NOT NULL,
+            type TEXT NULL,
+            status TEXT NULL,
+            body TEXT NULL,
+            error_message TEXT NULL,
+            raw_payload TEXT NULL,
+            message_at TEXT NOT NULL,
+            sent_by_user_id INTEGER NULL,
+            service_order_id INTEGER NULL,
+            created_at TEXT NOT NULL
+        )');
+
+        // 009_create_site_content.sql + 013_dedup_site_clients.sql
         $pdo->exec('CREATE TABLE site_clients (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
+            name TEXT NOT NULL UNIQUE,
             logo_url TEXT NOT NULL,
             is_active INTEGER NOT NULL DEFAULT 1,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,

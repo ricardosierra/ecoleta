@@ -285,6 +285,36 @@ final class AuthzTest extends TestCase
         ];
     }
 
+    // ── Painel de WhatsApp ──────────────────────────────────────────────────
+
+    /**
+     * A regra tem DUAS condições, e cada caso abaixo derruba uma delas. Espelha
+     * `canViewWhatsAppPanel()` em lib/authz.ts — os dois arquivos exercitam a
+     * mesma tabela de propósito.
+     */
+    #[DataProvider('acessosAoPainelDeWhatsApp')]
+    public function testAcessoAoPainelDeWhatsApp(?string $role, ?string $email, bool $esperado): void
+    {
+        self::assertSame($esperado, apiRoleCanViewWhatsAppPanel($role, $email));
+    }
+
+    public static function acessosAoPainelDeWhatsApp(): array
+    {
+        return [
+            'root na lista' => ['root', 'sierra.csi@gmail.com', true],
+            'root na lista em caixa alta' => ['root', 'Sierra.CSI@Gmail.com', true],
+            'root na lista com espaço' => ['root', '  sierra.csi@gmail.com  ', true],
+            'root fora da lista' => ['root', 'outro@exemplo.com', false],
+            'root sem e-mail' => ['root', null, false],
+            'root com e-mail vazio' => ['root', '', false],
+            'master na lista' => ['master', 'sierra.csi@gmail.com', false],
+            'user na lista' => ['user', 'sierra.csi@gmail.com', false],
+            'sem papel' => [null, 'sierra.csi@gmail.com', false],
+            'papel desconhecido' => ['superadmin', 'sierra.csi@gmail.com', false],
+            'papel com caixa trocada' => ['Root', 'sierra.csi@gmail.com', false],
+        ];
+    }
+
     protected function tearDown(): void
     {
         $_SESSION = [];

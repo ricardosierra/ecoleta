@@ -161,7 +161,8 @@ if (!is_array($context)) {
 
 $_SERVER = array_merge($_SERVER, $context['server']);
 $_GET = $context['query'];
-$_POST = [];
+$_POST = $context['post'] ?? [];
+$_FILES = $context['files'] ?? [];
 $_REQUEST = $_GET;
 
 EcoletaTestPhpStream::$input = (string) $context['body'];

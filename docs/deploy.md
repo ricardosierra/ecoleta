@@ -184,6 +184,33 @@ A senha volta na resposta uma única vez. Troque-a no primeiro acesso, apague
 `DASHBOARD_INSTALL_TOKEN` do `.env` e refaça o deploy — sem o token o endpoint
 responde 404.
 
+## Webhook do WhatsApp
+
+A janela de 24 horas — que decide se o envio da OS é gratuito ou cobrado — só
+existe se a Meta conseguir nos entregar as mensagens recebidas. Sem o webhook
+cadastrado, `service_window_expires_at` nunca é preenchida, o botão do robô fica
+sempre neutro e todo envio cai no caminho do template.
+
+Ordem, uma vez só:
+
+1. No `.env`, defina `WHATSAPP_WEBHOOK_VERIFY_TOKEN` (valor livre, por exemplo
+   `php -r "echo bin2hex(random_bytes(24));"`) e `WHATSAPP_APP_SECRET` (o App
+   Secret do app, em Configurações > Básico no painel da Meta).
+2. Publique (`npm run deploy:ftp`) para o `api/env.php` do servidor receber os
+   dois valores. A URL precisa existir **antes** de a Meta tentar verificá-la.
+3. No painel da Meta, em WhatsApp > Configuração, cadastre o callback:
+   - URL: `https://<dominio>/api/webhooks/whatsapp.php`
+   - Token de verificação: o mesmo `WHATSAPP_WEBHOOK_VERIFY_TOKEN`
+   - Campo assinado: `messages`
+4. Confirme que a verificação passou. A Meta faz um `GET` com `hub.challenge` e
+   espera o valor de volta em texto puro; token errado devolve 403 e o motivo
+   fica no log do servidor.
+
+O `WHATSAPP_APP_SECRET` não é opcional: o endpoint recusa (503) todo evento
+enquanto ele estiver vazio. É ele que prova que o corpo veio da Meta — sem essa
+conferência, qualquer um na internet abriria a janela de 24 horas mandando uma
+mensagem inventada de cliente.
+
 ## Checklist
 
 - [ ] `.env` com `DB_*`, `DB_DDL_*` e `FTP_*` preenchidos
@@ -193,3 +220,5 @@ responde 404.
 - [ ] `npm run deploy:ftp`
 - [ ] `/dashboard` abre e o login funciona
 - [ ] `DASHBOARD_INSTALL_TOKEN` vazio no `.env` (fora da instalação inicial)
+- [ ] `SITE_BASE_URL` apontando para o domínio de produção
+- [ ] Webhook do WhatsApp verificado no painel da Meta (ver acima)

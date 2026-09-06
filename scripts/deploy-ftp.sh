@@ -84,6 +84,24 @@ FTP_UPLOAD_PATH="${FTP_UPLOAD_PATH#/}"
 FTP_UPLOAD_PATH="${FTP_UPLOAD_PATH%/}"
 FTP_UPLOAD_PATH="${FTP_UPLOAD_PATH:-.}"
 
+# ─── Os segredos chegaram inteiros até aqui? ─────────────────────────────────
+# Eles entram no env.php dentro de aspas simples do PHP, e a chave do Asaas
+# começa com "$". Sem aspas simples no .env, o `source` lá em cima expande esse
+# "$aact_..." como se fosse nome de variável e a chave chega aqui mutilada — sem
+# erro nenhum, e a API do Asaas só responde 401 depois de publicado.
+for secret in DB_PASS DASHBOARD_INSTALL_TOKEN ASAAS_API_KEY CRON_SECRET ASAAS_WEBHOOK_TOKEN WHATSAPP_ACCESS_TOKEN WHATSAPP_APP_SECRET WHATSAPP_WEBHOOK_VERIFY_TOKEN; do
+  if [[ "${!secret:-}" == *"'"* ]]; then
+    echo "$secret contém aspa simples — quebraria api/env.php." >&2
+    exit 1
+  fi
+done
+
+if [[ -n "${ASAAS_API_KEY:-}" && "$ASAAS_API_KEY" != \$aact_* ]]; then
+  echo "ASAAS_API_KEY não começa com \$aact_ — o shell provavelmente a expandiu." >&2
+  echo "No .env, use aspas simples: ASAAS_API_KEY='\$aact_...'" >&2
+  exit 1
+fi
+
 mkdir -p "$ROOT_DIR/public/api"
 # Segredos do dashboard NÃO usam o prefixo NEXT_PUBLIC_: esse prefixo faz o
 # Next.js embutir o valor no bundle servido ao navegador.
@@ -102,6 +120,27 @@ define('DASHBOARD_INSTALL_TOKEN', '${DASHBOARD_INSTALL_TOKEN:-}');
 define('NEXT_PUBLIC_POWERBI_URL', '${NEXT_PUBLIC_POWERBI_URL:-}');
 define('ASAAS_API_KEY', '${ASAAS_API_KEY:-}');
 define('CRON_SECRET', '${CRON_SECRET:-}');
+define('ASAAS_WEBHOOK_TOKEN', '${ASAAS_WEBHOOK_TOKEN:-}');
+define('WHATSAPP_PHONE_ID', '${WHATSAPP_PHONE_ID:-}');
+define('WHATSAPP_BUSINESS_ACCOUNT_ID', '${WHATSAPP_BUSINESS_ACCOUNT_ID:-}');
+define('WHATSAPP_ACCESS_TOKEN', '${WHATSAPP_ACCESS_TOKEN:-}');
+define('SMTP_HOST', '${SMTP_HOST:-}');
+define('SMTP_PORT', '${SMTP_PORT:-465}');
+define('SMTP_SECURE', '${SMTP_SECURE:-true}');
+define('SMTP_USER', '${SMTP_USER:-}');
+define('SMTP_PASS', '${SMTP_PASS:-}');
+define('CONTACT_FROM_EMAIL', '${CONTACT_FROM_EMAIL:-}');
+define('CONTACT_FROM_NAME', '${CONTACT_FROM_NAME:-}');
+define('WHATSAPP_OS_TEMPLATE', '${WHATSAPP_OS_TEMPLATE:-}');
+define('WHATSAPP_OS_TEMPLATE_LANG', '${WHATSAPP_OS_TEMPLATE_LANG:-}');
+define('WHATSAPP_BILLING_TEMPLATE', '${WHATSAPP_BILLING_TEMPLATE:-}');
+define('WHATSAPP_BILLING_TEMPLATE_LANG', '${WHATSAPP_BILLING_TEMPLATE_LANG:-pt_BR}');
+define('WHATSAPP_TRANSPORT', '${WHATSAPP_TRANSPORT:-}');
+define('WHATSAPP_WEBHOOK_VERIFY_TOKEN', '${WHATSAPP_WEBHOOK_VERIFY_TOKEN:-}');
+define('WHATSAPP_APP_SECRET', '${WHATSAPP_APP_SECRET:-}');
+define('SITE_BASE_URL', '${SITE_BASE_URL:-}');
+define('OS_MAIL_FROM', '${OS_MAIL_FROM:-}');
+define('MAIL_TRANSPORT', '${MAIL_TRANSPORT:-}');
 EOF
 
 if [[ -n "${DASHBOARD_INSTALL_TOKEN:-}" ]]; then
