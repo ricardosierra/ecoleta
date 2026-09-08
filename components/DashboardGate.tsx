@@ -215,9 +215,14 @@ export function DashboardGate({ children }: { children?: React.ReactNode }) {
 
   return (
     <DashboardAuthContext.Provider value={{ user, logout: handleLogout, refreshUser }}>
-      <div className="flex h-dvh flex-col overflow-hidden bg-[var(--color-bg-dark)] font-sans text-white">
+      {/* O header é um filho normal do flex e só o <main> rola: assim toda
+          tela ganha scroll sem precisar montar a própria área rolável, e o
+          `sticky` da navegação de Configurações gruda no topo do main.
+          color-scheme dark faz os controles nativos (date, select) desenharem
+          em cima do fundo escuro. */}
+      <div className="dashboard-shell flex h-dvh flex-col overflow-hidden bg-[var(--color-bg-dark)] font-sans text-white [color-scheme:dark]">
         <DashboardHeader onLogout={handleLogout} user={user} />
-        <main className="min-h-0 flex-1 pt-16">
+        <main className="dashboard-main min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           {children ? children : <PowerBIViewer />}
         </main>
       </div>

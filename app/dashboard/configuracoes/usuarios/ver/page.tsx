@@ -5,6 +5,15 @@ import { useDashboardAuth } from "@/components/DashboardGate";
 import { DashboardAccessDenied } from "@/components/DashboardAccessDenied";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { DashboardModal, ModalActions } from "@/components/DashboardModal";
+import {
+  ArrowRightIcon,
+  CheckIcon,
+  CopyIcon,
+  KeyIcon,
+  PencilIcon,
+  TrashIcon,
+} from "@/components/icons";
 import { apiPostJson } from "@/lib/dashboard-api";
 import {
   ROLE_LABELS,
@@ -13,8 +22,58 @@ import {
   canEditUser,
   canGeneratePassword,
   canManageUsers,
+  normalizeRole,
   requiresGroup,
 } from "@/lib/authz";
+import { formatOsDateTime } from "@/lib/os-share";
+
+const inputClass =
+  "mt-1.5 w-full rounded-xl border border-[var(--color-border-dark)] bg-black/30 px-3.5 py-2.5 text-sm text-white outline-none transition-colors placeholder:text-white/30 focus:border-[var(--color-accent)]";
+
+const labelClass = "block text-xs font-semibold uppercase tracking-wider text-[var(--color-text-on-dark)]";
+
+const ghostButton =
+  "inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium text-white/70 transition-colors hover:bg-white/5 hover:text-white disabled:opacity-50";
+
+const alertError = "mt-4 rounded-xl border border-red-500/40 bg-red-950/60 p-3 text-sm text-red-200";
+
+/** Rótulo e cor de cada evento do log. Ação desconhecida sai como veio, em cinza. */
+const ACTION_BADGES: Record<string, { label: string; tone: string; dot: string }> = {
+  login: { label: "Login", tone: "border-emerald-500/30 bg-emerald-500/15 text-emerald-300", dot: "bg-emerald-400" },
+  logout: { label: "Logout", tone: "border-white/15 bg-white/10 text-white/80", dot: "bg-white/50" },
+  change_password: { label: "Troca de Senha", tone: "border-sky-500/30 bg-sky-500/15 text-sky-300", dot: "bg-sky-400" },
+  reset_password: { label: "Senha Redefinida", tone: "border-amber-500/30 bg-amber-500/15 text-amber-300", dot: "bg-amber-400" },
+  create_user: { label: "Conta Criada", tone: "border-purple-500/30 bg-purple-500/15 text-purple-300", dot: "bg-purple-400" },
+  edit_user: { label: "Edição de Cadastro", tone: "border-sky-500/30 bg-sky-500/15 text-sky-300", dot: "bg-sky-400" },
+  delete_user: { label: "Exclusão", tone: "border-red-500/30 bg-red-500/15 text-red-300", dot: "bg-red-400" },
+};
+
+function ActionBadge({ action }: { action: string }) {
+  const badge = ACTION_BADGES[action] ?? { label: action, tone: "border-white/15 bg-white/10 text-white/80", dot: "bg-white/50" };
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-semibold ${badge.tone}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${badge.dot}`} />
+      {badge.label}
+    </span>
+  );
+}
+
+function RoleBadge({ role }: { role: string }) {
+  const known = normalizeRole(role);
+  const tone =
+    known === "root"
+      ? "border-red-500/30 bg-red-500/15 text-red-300"
+      : known === "master"
+        ? "border-sky-500/30 bg-sky-500/15 text-sky-300"
+        : "border-white/15 bg-white/10 text-white/85";
+
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider ${tone}`}>
+      {known ? ROLE_LABELS[known] : role}
+    </span>
+  );
+}
 
 type Group = {
   id: number;
@@ -223,466 +282,406 @@ function UsuarioDetails() {
     }
   };
 
-  const renderActionBadge = (action: string) => {
-    switch (action) {
-      case "login":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            Login
-          </span>
-        );
-      case "logout":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-500/20 text-gray-300 border border-gray-500/30">
-            <span className="h-1.5 w-1.5 rounded-full bg-gray-400" />
-            Logout
-          </span>
-        );
-      case "change_password":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30">
-            <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
-            Troca de Senha
-          </span>
-        );
-      case "reset_password":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-            Senha Redefinida
-          </span>
-        );
-      case "create_user":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30">
-            <span className="h-1.5 w-1.5 rounded-full bg-purple-400" />
-            Conta Criada
-          </span>
-        );
-      case "edit_user":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30">
-            <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
-            Edição de Cadastro
-          </span>
-        );
-      case "delete_user":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-500/20 text-red-300 border border-red-500/30">
-            <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
-            Exclusão
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-white/10 text-white/80 border border-white/15">
-            {action}
-          </span>
-        );
-    }
-  };
-
   if (!canManage) {
     return <DashboardAccessDenied area="a gestão de usuários" />;
   }
 
-  if (loading) return <div className="p-8 text-white">Carregando histórico...</div>;
-  if (error) return <div className="p-8 text-red-400">{error}</div>;
+  if (loading) {
+    return (
+      <div className="flex items-center gap-3 p-6 text-sm text-[var(--color-text-on-dark)] sm:p-8">
+        <span className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--color-accent-soft)] border-t-[var(--color-accent)]" />
+        Carregando histórico...
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="p-6 sm:p-8">
+        <div className="rounded-2xl border border-red-500/40 bg-red-950/60 p-4 text-sm text-red-200">{error}</div>
+      </div>
+    );
+  }
   if (!user) return <div className="p-8 text-white">Usuário não encontrado.</div>;
 
   return (
-    <div className="p-4 sm:p-8 max-w-6xl mx-auto h-full overflow-y-auto">
-      {/* Botão voltar */}
-      <Link 
-        href="/dashboard/configuracoes/usuarios" 
-        className="text-[var(--color-accent)] text-sm font-medium hover:underline inline-flex items-center gap-2 mb-6"
+    <div className="mx-auto max-w-6xl p-4 sm:p-6 lg:p-8">
+      <Link
+        href="/dashboard/configuracoes/usuarios"
+        className="mb-5 inline-flex items-center gap-2 text-sm font-medium text-[var(--color-accent)] hover:underline"
       >
-        &larr; Voltar para Usuários
+        <ArrowRightIcon width={16} height={16} className="rotate-180" />
+        Voltar para Usuários
       </Link>
 
       {/* Card de detalhes do usuário */}
-      <div className="bg-[rgba(255,255,255,0.03)] border border-[var(--color-border-dark)] rounded-3xl p-6 sm:p-8 shadow-2xl mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-        <div>
-          <div className="flex items-center gap-3 mb-2 flex-wrap">
-            <h1 className="text-3xl font-bold text-white">{user.login}</h1>
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider ${
-              user.role === 'root' 
-                ? 'bg-red-500/20 text-red-300 border border-red-500/30' 
-                : user.role === 'master' 
-                ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' 
-                : 'bg-white/10 text-white/90 border border-white/15'
-            }`}>
-              {user.role}
-            </span>
-            {user.group_name && (
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-[var(--color-accent-soft)] text-[var(--color-accent)] border border-[var(--color-accent)]/20">
-                Grupo: {user.group_name}
-              </span>
-            )}
-            {user.force_password_change && (
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                Pendente troca de senha
-              </span>
-            )}
+      <div className="mb-6 flex flex-col gap-5 rounded-3xl border border-[var(--color-border-dark)] bg-[rgba(255,255,255,0.03)] p-5 shadow-2xl sm:p-6 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-start gap-4">
+          <span
+            aria-hidden="true"
+            className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent)] text-xl font-bold uppercase text-[var(--color-bg-dark)]"
+          >
+            {user.login.slice(0, 1)}
+          </span>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="break-all text-2xl font-bold text-white sm:text-3xl">{user.login}</h1>
+              <RoleBadge role={user.role} />
+              {user.group_name && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-accent)]/20 bg-[var(--color-accent-soft)] px-2.5 py-1 text-xs font-semibold text-[var(--color-accent)]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]" />
+                  {user.group_name}
+                </span>
+              )}
+              {user.force_password_change && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/15 px-2.5 py-1 text-xs font-semibold text-amber-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                  Troca de senha pendente
+                </span>
+              )}
+            </div>
+            <p className="mt-2 break-all text-sm text-[var(--color-text-on-dark)]">
+              {user.email || <span className="text-white/45">Sem e-mail</span>}
+            </p>
+            <p className="mt-1 text-xs text-white/50">
+              Cadastrado em {formatOsDateTime(user.created_at)}
+            </p>
           </div>
-          <p className="text-sm text-[var(--color-text-on-dark)]">
-            E-mail: <span className="text-white font-medium">{user.email || 'Não informado'}</span>
-          </p>
-          <p className="text-xs text-white/60 mt-1">
-            Cadastrado em: {new Date(user.created_at).toLocaleString('pt-BR')}
-          </p>
         </div>
 
         {/* Ações de administrador */}
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex flex-wrap items-center gap-2">
           {mayEditUser && (
             <button
+              type="button"
               onClick={openEditModal}
-              className="bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 border border-blue-500/40 px-5 py-2.5 rounded-full text-xs sm:text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer"
+              className="inline-flex items-center gap-2 rounded-full border border-sky-500/40 bg-sky-500/15 px-4 py-2 text-xs font-semibold text-sky-300 transition-colors hover:bg-sky-500/25 sm:text-sm"
             >
-              ✏️ Editar Cadastro
+              <PencilIcon width={15} height={15} />
+              Editar
             </button>
           )}
 
           {mayGeneratePassword && (
             <button
+              type="button"
               onClick={() => {
                 setShowGenModal(true);
                 setActionError("");
                 setGenPasswordResult(null);
               }}
-              className="bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 px-5 py-2.5 rounded-full text-xs sm:text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer"
+              className="inline-flex items-center gap-2 rounded-full border border-amber-500/40 bg-amber-500/15 px-4 py-2 text-xs font-semibold text-amber-300 transition-colors hover:bg-amber-500/25 sm:text-sm"
             >
-              🔑 Gerar Nova Senha
+              <KeyIcon width={15} height={15} />
+              Nova Senha
             </button>
           )}
 
           {mayDeleteUser && (
             <button
+              type="button"
               onClick={() => {
                 setShowDeleteModal(true);
                 setActionError("");
               }}
-              className="bg-red-500/15 hover:bg-red-500/25 text-red-300 border border-red-500/40 px-5 py-2.5 rounded-full text-xs sm:text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer"
+              className="inline-flex items-center gap-2 rounded-full border border-red-500/40 bg-red-500/15 px-4 py-2 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/25 sm:text-sm"
             >
-              🗑️ Excluir Usuário
+              <TrashIcon width={15} height={15} />
+              Excluir
             </button>
           )}
         </div>
       </div>
 
-      {/* Tabela de histórico de auditoria */}
-      <div className="bg-[rgba(255,255,255,0.03)] border border-[var(--color-border-dark)] rounded-3xl overflow-hidden shadow-2xl">
-        <div className="px-6 py-5 border-b border-[var(--color-border-dark)] bg-black/30 flex justify-between items-center">
-          <div>
-            <h2 className="text-lg font-semibold text-white">Histórico de Atividades e Acessos</h2>
-            <p className="text-xs text-white/60 mt-0.5">Logs de auditoria e registros de segurança (últimos 100 eventos)</p>
-          </div>
-          <span className="text-xs text-[var(--color-accent)] bg-[var(--color-accent-soft)] px-3 py-1 rounded-full border border-[var(--color-accent)]/20">
-            {logs.length} {logs.length === 1 ? 'evento' : 'eventos'}
+      {/* Histórico de auditoria */}
+      <section className="overflow-hidden rounded-3xl border border-[var(--color-border-dark)] bg-[rgba(255,255,255,0.03)] shadow-2xl">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border-dark)] bg-black/30 px-4 py-4 sm:px-6">
+          <h2 className="text-lg font-semibold text-white">Histórico de Atividades</h2>
+          <span className="rounded-full border border-[var(--color-accent)]/20 bg-[var(--color-accent-soft)] px-3 py-1 text-xs text-[var(--color-accent)]">
+            {logs.length} {logs.length === 1 ? "evento" : "eventos"}
           </span>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-white/80">
-            <thead className="bg-black/40 text-white border-b border-[var(--color-border-dark)] text-xs uppercase tracking-wider">
-              <tr>
-                <th className="px-6 py-4 font-semibold">Data / Hora</th>
-                <th className="px-6 py-4 font-semibold">Ação / Evento</th>
-                <th className="px-6 py-4 font-semibold">Detalhes / Responsável</th>
-                <th className="px-6 py-4 font-semibold">Endereço IP</th>
-                <th className="px-6 py-4 font-semibold">Dispositivo / Agente</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--color-border-dark)]">
-              {logs.map((log) => (
-                <tr key={log.id} className="hover:bg-white/5 transition-colors">
-                  <td className="px-6 py-4 font-medium text-white whitespace-nowrap text-xs">
-                    {new Date(log.created_at).toLocaleString("pt-BR")}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {renderActionBadge(log.action)}
-                  </td>
-                  <td className="px-6 py-4 text-xs">
-                    <div className="font-medium text-white/90">
-                      {log.description || "—"}
-                    </div>
+        <div className="data-table-wrap">
+
+          <table className="data-table text-white/85">
+          <thead className="bg-black/40 text-white">
+            <tr>
+              <th>Data / Hora</th>
+              <th>Evento</th>
+              <th>Detalhes</th>
+              <th>IP</th>
+              <th>Dispositivo</th>
+            </tr>
+          </thead>
+          <tbody>
+            {logs.map((log) => (
+              <tr key={log.id} className="transition-colors xl:hover:bg-white/5">
+                <td data-label="Data" className="whitespace-nowrap text-xs font-medium text-white">
+                  {formatOsDateTime(log.created_at)}
+                </td>
+                <td data-label="Evento">
+                  <ActionBadge action={log.action} />
+                </td>
+                <td data-label="Detalhes" className="text-xs">
+                  <div className="min-w-0">
+                    <p className="break-words font-medium text-white/90">{log.description || "—"}</p>
                     {log.performed_by_login && log.performed_by_login !== user.login && (
-                      <div className="text-[11px] text-amber-300/80 mt-0.5">
-                        Executor: <span className="font-mono">{log.performed_by_login}</span>
-                      </div>
+                      <p className="mt-0.5 text-[11px] text-amber-300/80">
+                        por <span className="font-mono">{log.performed_by_login}</span>
+                      </p>
                     )}
-                  </td>
-                  <td className="px-6 py-4 text-xs font-mono text-white/70 whitespace-nowrap">
-                    {log.ip_address}
-                  </td>
-                  <td className="px-6 py-4 text-xs max-w-xs truncate text-white/60" title={log.user_agent}>
+                  </div>
+                </td>
+                <td data-label="IP" className="whitespace-nowrap font-mono text-xs text-white/70">
+                  {log.ip_address}
+                </td>
+                <td data-label="Dispositivo" className="text-xs text-white/60">
+                  <span className="block max-w-[14rem] truncate xl:max-w-[12rem]" title={log.user_agent}>
                     {log.user_agent}
-                  </td>
-                </tr>
-              ))}
-              {logs.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-white/60">
-                    Nenhum registro de atividade encontrado para este usuário.
-                  </td>
-                </tr>
-              )}
-            </tbody>
+                  </span>
+                </td>
+              </tr>
+            ))}
+            {logs.length === 0 && (
+              <tr>
+                <td colSpan={5} className="data-table-empty py-10 text-center text-sm text-white/60">
+                  Nenhum registro de atividade para este usuário.
+                </td>
+              </tr>
+            )}
+          </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
       {/* Modal: Editar Usuário */}
       {showEditModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
-          <form onSubmit={handleConfirmEdit} className="w-full max-w-lg bg-[#0D1F0F] border border-[var(--color-border-dark)] rounded-3xl p-6 shadow-2xl">
-            <div className="flex items-center gap-3 mb-4 text-blue-400">
-              <span className="text-2xl">✏️</span>
-              <h3 className="text-xl font-bold text-white">Editar Usuário</h3>
-            </div>
-            <p className="text-sm text-[var(--color-text-on-dark)] mb-6">
-              Atualize as informações do usuário <strong className="text-white">{user.login}</strong>.
-            </p>
+        <DashboardModal
+          title="Editar Usuário"
+          icon={<PencilIcon width={18} height={18} />}
+          tone="info"
+          as="form"
+          onSubmit={handleConfirmEdit}
+          onClose={() => { setShowEditModal(false); setActionError(""); }}
+        >
+          <p className="mb-5 text-sm text-[var(--color-text-on-dark)]">
+            Conta <strong className="text-white">{user.login}</strong>
+          </p>
 
-            <div className="space-y-4 mb-6">
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--color-text-on-dark)] mb-1">
-                  Login
-                </label>
-                <input
-                  value={editLogin}
-                  onChange={(e) => setEditLogin(e.target.value)}
-                  required
-                  className="w-full rounded-xl border border-[var(--color-border-dark)] bg-black/40 px-3.5 py-2.5 text-white outline-none focus:border-[var(--color-accent)]"
-                />
-              </div>
+          <div className="space-y-4">
+            <label className={labelClass}>Login
+              <input
+                value={editLogin}
+                onChange={(e) => setEditLogin(e.target.value)}
+                required
+                className={inputClass}
+              />
+            </label>
 
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--color-text-on-dark)] mb-1">
-                  E-mail
-                </label>
-                <input
-                  type="email"
-                  value={editEmail}
-                  onChange={(e) => setEditEmail(e.target.value)}
-                  required
-                  className="w-full rounded-xl border border-[var(--color-border-dark)] bg-black/40 px-3.5 py-2.5 text-white outline-none focus:border-[var(--color-accent)]"
-                />
-              </div>
+            <label className={labelClass}>E-mail
+              <input
+                type="email"
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+                required
+                className={inputClass}
+              />
+            </label>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {editableRoles.length > 1 && (
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--color-text-on-dark)] mb-1">
-                      Nível de Acesso
-                    </label>
-                    <select
-                      value={editRole}
-                      onChange={(e) => setEditRole(e.target.value)}
-                      className="w-full rounded-xl border border-[var(--color-border-dark)] bg-black/40 px-3.5 py-2.5 text-white outline-none focus:border-[var(--color-accent)]"
-                    >
-                      {editableRoles.map((option) => (
-                        <option key={option} value={option} className="bg-[#0D1F0F] text-white">
-                          {ROLE_LABELS[option]}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                <div className={editableRoles.length > 1 ? "" : "sm:col-span-2"}>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--color-text-on-dark)] mb-1">
-                    Grupo (Power BI)
-                  </label>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {editableRoles.length > 1 && (
+                <label className={labelClass}>Nível de Acesso
                   <select
-                    value={editGroupId}
-                    onChange={(e) => setEditGroupId(e.target.value ? Number(e.target.value) : "")}
-                    required={requiresGroup(editRole)}
-                    className="w-full rounded-xl border border-[var(--color-border-dark)] bg-black/40 px-3.5 py-2.5 text-white outline-none focus:border-[var(--color-accent)]"
+                    value={editRole}
+                    onChange={(e) => setEditRole(e.target.value)}
+                    className={inputClass}
                   >
-                    {!requiresGroup(editRole) && <option value="" className="bg-[#0D1F0F] text-white">Nenhum (Todos/Admin)</option>}
-                    {groups.map((g) => (
-                      <option key={g.id} value={g.id} className="bg-[#0D1F0F] text-white">
-                        {g.name}
+                    {editableRoles.map((option) => (
+                      <option key={option} value={option}>
+                        {ROLE_LABELS[option]}
                       </option>
                     ))}
                   </select>
-                </div>
-              </div>
-
-              {mayGeneratePassword && (
-                <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold text-white">Redefinição de Acesso</p>
-                    <p className="text-[11px] text-white/50">Precisa enviar uma nova credencial para este usuário?</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowEditModal(false);
-                      setShowGenModal(true);
-                      setActionError("");
-                      setGenPasswordResult(null);
-                    }}
-                    className="px-3.5 py-1.5 rounded-full text-xs font-semibold border border-amber-500/40 text-amber-300 hover:bg-amber-500/20 hover:text-white transition-colors cursor-pointer whitespace-nowrap"
-                  >
-                    🔑 Gerar Nova Senha
-                  </button>
-                </div>
+                </label>
               )}
+
+              <label className={`${labelClass} ${editableRoles.length > 1 ? "" : "sm:col-span-2"}`}>Grupo (Power BI)
+                <select
+                  value={editGroupId}
+                  onChange={(e) => setEditGroupId(e.target.value ? Number(e.target.value) : "")}
+                  required={requiresGroup(editRole)}
+                  className={inputClass}
+                >
+                  {!requiresGroup(editRole) && <option value="">Nenhum (Todos/Admin)</option>}
+                  {groups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
 
-            {actionError && (
-              <p className="text-xs text-red-300 mb-4 p-3 bg-red-950/60 border border-red-500/40 rounded-xl">{actionError}</p>
+            {mayGeneratePassword && (
+              <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-4">
+                <p className="text-xs font-semibold text-white">Acesso</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setShowGenModal(true);
+                    setActionError("");
+                    setGenPasswordResult(null);
+                  }}
+                  className="inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-amber-500/40 px-3.5 py-1.5 text-xs font-semibold text-amber-300 transition-colors hover:bg-amber-500/20 hover:text-white"
+                >
+                  <KeyIcon width={14} height={14} />
+                  Gerar Nova Senha
+                </button>
+              </div>
             )}
+          </div>
 
-            <div className="flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => { setShowEditModal(false); setActionError(""); }}
-                disabled={isEditing}
-                className="px-5 py-2.5 rounded-full text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                disabled={isEditing}
-                className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-full text-sm font-semibold transition-opacity disabled:opacity-50 cursor-pointer shadow-lg"
-              >
-                {isEditing ? "Salvando..." : "Salvar Alterações"}
-              </button>
-            </div>
-          </form>
-        </div>
+          {actionError && <p role="alert" className={alertError}>{actionError}</p>}
+
+          <ModalActions>
+            <button
+              type="button"
+              onClick={() => { setShowEditModal(false); setActionError(""); }}
+              disabled={isEditing}
+              className={ghostButton}
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={isEditing}
+              className="inline-flex items-center justify-center rounded-full bg-sky-600 px-6 py-2.5 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-sky-500 disabled:opacity-50"
+            >
+              {isEditing ? "Salvando..." : "Salvar Alterações"}
+            </button>
+          </ModalActions>
+        </DashboardModal>
       )}
 
       {/* Modal: Gerar Senha */}
       {showGenModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-[#0D1F0F] border border-[var(--color-border-dark)] rounded-3xl p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-            {!genPasswordResult ? (
-              <>
-                <div className="flex items-center gap-3 mb-4 text-amber-400">
-                  <span className="text-2xl">🔑</span>
-                  <h3 className="text-xl font-bold text-white">Gerar Nova Senha</h3>
-                </div>
-                <p className="text-sm text-[var(--color-text-on-dark)] mb-4">
-                  Deseja gerar uma nova senha temporária para <strong className="text-white">{user.login}</strong>?
-                </p>
-                <p className="text-xs text-white/60 mb-6 bg-white/5 p-3 rounded-xl border border-white/10">
-                  ⚠️ A senha atual será invalidada imediatamente e o usuário precisará cadastrar uma nova no próximo acesso.
-                </p>
+        <DashboardModal
+          title={genPasswordResult ? "Nova Senha Gerada" : "Gerar Nova Senha"}
+          icon={genPasswordResult ? <CheckIcon width={18} height={18} /> : <KeyIcon width={18} height={18} />}
+          tone={genPasswordResult ? "success" : "warning"}
+          size="sm"
+          onClose={() => { setShowGenModal(false); setGenPasswordResult(null); setActionError(""); }}
+        >
+          {!genPasswordResult ? (
+            <>
+              <p className="text-sm text-[var(--color-text-on-dark)]">
+                Gerar uma nova senha temporária para <strong className="text-white">{user.login}</strong>?
+              </p>
+              <p className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-200/90">
+                A senha atual deixa de valer na hora e o usuário define outra no próximo login.
+              </p>
 
-                {actionError && (
-                  <p className="text-xs text-red-300 mb-4 p-3 bg-red-950/60 border border-red-500/40 rounded-xl">{actionError}</p>
-                )}
+              {actionError && <p role="alert" className={alertError}>{actionError}</p>}
 
-                <div className="flex justify-end gap-3">
-                  <button
-                    onClick={() => { setShowGenModal(false); setActionError(""); }}
-                    disabled={isGenerating}
-                    className="px-5 py-2.5 rounded-full text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={handleConfirmGeneratePassword}
-                    disabled={isGenerating}
-                    className="bg-amber-500 hover:bg-amber-400 text-black px-6 py-2.5 rounded-full text-sm font-semibold transition-opacity disabled:opacity-50 cursor-pointer shadow-lg"
-                  >
-                    {isGenerating ? "Gerando..." : "Confirmar e Gerar"}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center gap-3 mb-3 text-emerald-400">
-                  <span className="text-2xl">✓</span>
-                  <h3 className="text-xl font-bold text-white">Nova Senha Gerada!</h3>
-                </div>
-                <p className="text-sm text-[var(--color-text-on-dark)] mb-4">
-                  A nova senha temporária para <strong className="text-white">{user.login}</strong> foi criada com sucesso:
-                </p>
+              <ModalActions>
+                <button
+                  type="button"
+                  onClick={() => { setShowGenModal(false); setActionError(""); }}
+                  disabled={isGenerating}
+                  className={ghostButton}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmGeneratePassword}
+                  disabled={isGenerating}
+                  className="inline-flex items-center justify-center rounded-full bg-amber-500 px-6 py-2.5 text-sm font-semibold text-black shadow-lg transition-colors hover:bg-amber-400 disabled:opacity-50"
+                >
+                  {isGenerating ? "Gerando..." : "Confirmar e Gerar"}
+                </button>
+              </ModalActions>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-[var(--color-text-on-dark)]">
+                Senha temporária de <strong className="text-white">{user.login}</strong>:
+              </p>
 
-                <div className="mb-4 p-4 rounded-2xl bg-black/40 border border-[var(--color-accent)]/40 flex items-center justify-between">
-                  <code className="text-lg font-mono font-bold text-[var(--color-accent)] select-all tracking-wider">
-                    {genPasswordResult}
-                  </code>
-                  <button
-                    onClick={handleCopyPassword}
-                    className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-                      copied 
-                        ? 'bg-emerald-500 text-black' 
-                        : 'bg-white/10 hover:bg-white/20 text-white'
-                    }`}
-                  >
-                    {copied ? "✓ Copiado!" : "Copiar"}
-                  </button>
-                </div>
+              <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-[var(--color-accent)]/40 bg-black/40 p-4">
+                <code className="min-w-0 select-all break-all font-mono text-lg font-bold tracking-wider text-[var(--color-accent)]">
+                  {genPasswordResult}
+                </code>
+                <button
+                  type="button"
+                  onClick={handleCopyPassword}
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all ${
+                    copied
+                      ? "bg-emerald-500 text-black"
+                      : "bg-white/10 text-white hover:bg-white/20"
+                  }`}
+                >
+                  {copied ? <CheckIcon width={14} height={14} /> : <CopyIcon width={14} height={14} />}
+                  {copied ? "Copiado" : "Copiar"}
+                </button>
+              </div>
 
-                <p className="text-xs text-white/60 mb-6">
-                  Compartilhe esta senha com o usuário de forma segura. O evento foi registrado no histórico acima.
-                </p>
-
-                <div className="flex justify-end">
-                  <button
-                    onClick={() => {
-                      setShowGenModal(false);
-                      setGenPasswordResult(null);
-                    }}
-                    className="bg-[var(--color-accent)] text-black px-6 py-2.5 rounded-full text-sm font-semibold hover:opacity-90 transition-opacity cursor-pointer"
-                  >
-                    Concluir
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
+              <ModalActions>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowGenModal(false);
+                    setGenPasswordResult(null);
+                  }}
+                  className="inline-flex items-center justify-center rounded-full bg-[var(--color-accent)] px-6 py-2.5 text-sm font-semibold text-[var(--color-bg-dark)] transition-opacity hover:opacity-90"
+                >
+                  Concluir
+                </button>
+              </ModalActions>
+            </>
+          )}
+        </DashboardModal>
       )}
 
       {/* Modal: Excluir Usuário */}
       {showDeleteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-[#0D1F0F] border border-red-500/30 rounded-3xl p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center gap-3 mb-4 text-red-400">
-              <span className="text-2xl">🗑️</span>
-              <h3 className="text-xl font-bold text-white">Excluir Usuário</h3>
-            </div>
-            <p className="text-sm text-[var(--color-text-on-dark)] mb-4">
-              Tem certeza que deseja excluir permanentemente o usuário <strong className="text-white">{user.login}</strong>?
-            </p>
-            <p className="text-xs text-red-300/80 mb-6 bg-red-950/40 p-3 rounded-xl border border-red-500/20">
-              ⚠️ Esta ação removerá a conta permanentemente. O evento de exclusão será registrado no histórico.
-            </p>
+        <DashboardModal
+          title="Excluir Usuário"
+          icon={<TrashIcon width={18} height={18} />}
+          tone="danger"
+          size="sm"
+          onClose={() => { setShowDeleteModal(false); setActionError(""); }}
+        >
+          <p className="text-sm text-[var(--color-text-on-dark)]">
+            Excluir permanentemente <strong className="text-white">{user.login}</strong>?
+          </p>
+          <p className="mt-3 rounded-xl border border-red-500/20 bg-red-950/40 p-3 text-xs text-red-300/90">
+            Não dá para desfazer. O acesso é cortado na hora.
+          </p>
 
-            {actionError && (
-              <p className="text-xs text-red-300 mb-4 p-3 bg-red-950/60 border border-red-500/40 rounded-xl">{actionError}</p>
-            )}
+          {actionError && <p role="alert" className={alertError}>{actionError}</p>}
 
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => { setShowDeleteModal(false); setActionError(""); }}
-                disabled={isDeleting}
-                className="px-5 py-2.5 rounded-full text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleConfirmDelete}
-                disabled={isDeleting}
-                className="bg-red-600 hover:bg-red-500 text-white px-6 py-2.5 rounded-full text-sm font-semibold transition-opacity disabled:opacity-50 cursor-pointer shadow-lg"
-              >
-                {isDeleting ? "Excluindo..." : "Confirmar Exclusão"}
-              </button>
-            </div>
-          </div>
-        </div>
+          <ModalActions>
+            <button
+              type="button"
+              onClick={() => { setShowDeleteModal(false); setActionError(""); }}
+              disabled={isDeleting}
+              className={ghostButton}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmDelete}
+              disabled={isDeleting}
+              className="inline-flex items-center justify-center rounded-full bg-red-600 px-6 py-2.5 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-red-500 disabled:opacity-50"
+            >
+              {isDeleting ? "Excluindo..." : "Confirmar Exclusão"}
+            </button>
+          </ModalActions>
+        </DashboardModal>
       )}
     </div>
   );
 }
-

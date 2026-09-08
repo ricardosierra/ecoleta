@@ -83,7 +83,7 @@ describe("/dashboard/os — encaminhamento", () => {
     await abrirOS(user);
 
     expect(screen.getByLabelText("E-mail do destinatário")).toHaveValue("contato@heineken.exemplo");
-    await user.click(screen.getByRole("button", { name: "✉️ E-mail" }));
+    await user.click(screen.getByRole("button", { name: "E-mail" }));
 
     await waitFor(() => {
       expect(screen.getByRole("status")).toHaveTextContent("Enviada para contato@heineken.exemplo.");
@@ -99,7 +99,7 @@ describe("/dashboard/os — encaminhamento", () => {
 
     const user = userEvent.setup();
     await abrirOS(user);
-    await user.click(screen.getByRole("button", { name: "✉️ E-mail" }));
+    await user.click(screen.getByRole("button", { name: "E-mail" }));
 
     await waitFor(() => {
       expect(screen.getByRole("status")).toHaveTextContent("E-mail de destino inválido.");
@@ -114,7 +114,7 @@ describe("/dashboard/os — encaminhamento", () => {
 
     const user = userEvent.setup();
     await abrirOS(user);
-    await user.click(screen.getByRole("button", { name: "📱 Meu WhatsApp" }));
+    await user.click(screen.getByRole("button", { name: "Meu WhatsApp" }));
 
     expect(open).toHaveBeenCalledTimes(1);
     const url = String(open.mock.calls[0][0]);
@@ -132,7 +132,7 @@ describe("/dashboard/os — encaminhamento", () => {
 
     const user = userEvent.setup();
     await abrirOS(user);
-    await user.click(screen.getByRole("button", { name: "🤖 WhatsApp do robô" }));
+    await user.click(screen.getByRole("button", { name: "WhatsApp do robô" }));
 
     await waitFor(() => {
       expect(screen.getByRole("status")).toHaveTextContent("Enviada pelo robô para 5521999887766.");
@@ -159,7 +159,7 @@ describe("/dashboard/os — encaminhamento", () => {
 
     const user = userEvent.setup();
     await abrirOS(user);
-    await user.click(screen.getByRole("button", { name: "🤖 WhatsApp do robô" }));
+    await user.click(screen.getByRole("button", { name: "WhatsApp do robô" }));
 
     const dialogo = await screen.findByRole("dialog");
     expect(dialogo).toHaveTextContent("OS Nº 00042 já enviada");
@@ -186,7 +186,7 @@ describe("/dashboard/os — encaminhamento", () => {
 
     const user = userEvent.setup();
     await abrirOS(user);
-    await user.click(screen.getByRole("button", { name: "🤖 WhatsApp do robô" }));
+    await user.click(screen.getByRole("button", { name: "WhatsApp do robô" }));
     await user.click(await screen.findByRole("button", { name: "Cancelar" }));
 
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -204,7 +204,7 @@ describe("/dashboard/os — encaminhamento", () => {
 
     const user = userEvent.setup();
     await abrirOS(user);
-    await user.click(screen.getByRole("button", { name: "🤖 WhatsApp do robô" }));
+    await user.click(screen.getByRole("button", { name: "WhatsApp do robô" }));
 
     await waitFor(() => {
       expect(screen.getByRole("status")).toHaveTextContent("não está configurado");
@@ -228,7 +228,7 @@ describe("/dashboard/os — janela de 24h do WhatsApp", () => {
     render(<OSPage />);
     await abrirOS(userEvent.setup());
 
-    return screen.getByRole("button", { name: "🤖 WhatsApp do robô" });
+    return screen.getByRole("button", { name: "WhatsApp do robô" });
   };
 
   /**
@@ -272,7 +272,7 @@ describe("/dashboard/os — janela de 24h do WhatsApp", () => {
 
     const user = userEvent.setup();
     await abrirOS(user);
-    await user.click(screen.getByRole("button", { name: "🤖 WhatsApp do robô" }));
+    await user.click(screen.getByRole("button", { name: "WhatsApp do robô" }));
 
     await waitFor(() => {
       expect(screen.getByRole("status")).toHaveTextContent("mais de 24 horas");

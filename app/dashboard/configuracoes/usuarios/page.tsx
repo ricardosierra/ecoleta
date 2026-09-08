@@ -1,8 +1,21 @@
 "use client";
 
-import { useEffect, useState, useCallback, FormEvent } from "react";
+import { useEffect, useState, useCallback, useMemo, FormEvent } from "react";
 import { useDashboardAuth } from "@/components/DashboardGate";
 import { DashboardAccessDenied } from "@/components/DashboardAccessDenied";
+import { DashboardModal, ModalActions } from "@/components/DashboardModal";
+import {
+  CheckIcon,
+  ClockIcon,
+  CloseIcon,
+  CopyIcon,
+  KeyIcon,
+  PencilIcon,
+  PlusIcon,
+  SearchIcon,
+  TrashIcon,
+  UsersIcon,
+} from "@/components/icons";
 import Link from "next/link";
 import { apiPostJson } from "@/lib/dashboard-api";
 import {
@@ -13,8 +26,10 @@ import {
   canEditUser,
   canGeneratePassword,
   canManageUsers,
+  normalizeRole,
   requiresGroup,
 } from "@/lib/authz";
+import { formatOsDateTime } from "@/lib/os-share";
 
 type Group = {
   id: number;
@@ -35,8 +50,81 @@ type User = {
   last_login: string | null;
 };
 
+const inputClass =
+  "mt-1.5 w-full rounded-xl border border-[var(--color-border-dark)] bg-black/30 px-3.5 py-2.5 text-sm text-white outline-none transition-colors placeholder:text-white/30 focus:border-[var(--color-accent)]";
+
+const labelClass = "block text-xs font-semibold uppercase tracking-wider text-[var(--color-text-on-dark)]";
+
+const primaryButton =
+  "inline-flex items-center justify-center gap-2 rounded-full bg-[var(--color-accent)] px-5 py-2.5 text-sm font-semibold text-[var(--color-bg-dark)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
+
+const ghostButton =
+  "inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium text-white/70 transition-colors hover:bg-white/5 hover:text-white disabled:opacity-50";
+
+const alertError = "mt-4 rounded-xl border border-red-500/40 bg-red-950/60 p-3 text-sm text-red-200";
+
 export default function UsuariosPage() {
   return <UsuariosList />;
+}
+
+function RoleBadge({ role }: { role: string }) {
+  const known = normalizeRole(role);
+  const tone =
+    known === "root"
+      ? "border-red-500/30 bg-red-500/15 text-red-300"
+      : known === "master"
+        ? "border-sky-500/30 bg-sky-500/15 text-sky-300"
+        : "border-white/15 bg-white/10 text-white/85";
+
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider ${tone}`}>
+      {known ? ROLE_LABELS[known] : role}
+    </span>
+  );
+}
+
+/** Círculo com a inicial do login, para a linha ter um ponto de ancoragem visual. */
+function Avatar({ login, self }: { login: string; self: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold uppercase ${
+        self ? "bg-[var(--color-accent)] text-[var(--color-bg-dark)]" : "bg-white/10 text-white"
+      }`}
+    >
+      {login.slice(0, 1)}
+    </span>
+  );
+}
+
+function IconButton({
+  label,
+  tone,
+  onClick,
+  children,
+}: {
+  label: string;
+  tone: "info" | "warning" | "danger";
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  const toneClass = {
+    info: "border-sky-500/30 text-sky-300 hover:bg-sky-500/15",
+    warning: "border-amber-500/30 text-amber-300 hover:bg-amber-500/15",
+    danger: "border-red-500/30 text-red-300 hover:bg-red-500/15",
+  }[tone];
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className={`flex h-9 w-9 items-center justify-center rounded-full border transition-colors hover:text-white ${toneClass}`}
+    >
+      {children}
+    </button>
+  );
 }
 
 function UsuariosList() {
@@ -46,6 +134,7 @@ function UsuariosList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const [query, setQuery] = useState("");
 
   // Form states: Criar Usuário
   const [login, setLogin] = useState("");
@@ -53,6 +142,7 @@ function UsuariosList() {
   const [role, setRole] = useState("user");
   const [groupId, setGroupId] = useState<number | "">("");
   const [successMsg, setSuccessMsg] = useState("");
+  const [isSubmittingCreate, setIsSubmittingCreate] = useState(false);
 
   // Modal: Editar Usuário
   const [editTarget, setEditTarget] = useState<User | null>(null);
@@ -128,6 +218,15 @@ function UsuariosList() {
   const creatableRoles = assignableRolesOnCreate(currentUser);
   const editableRoles = assignableRolesOnEdit(currentUser, editTarget ?? {});
 
+  const filteredUsers = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    if (!term) return users;
+
+    return users.filter((u) =>
+      [u.login, u.email ?? "", u.group_name ?? ""].some((field) => field.toLowerCase().includes(term))
+    );
+  }, [users, query]);
+
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
@@ -137,11 +236,12 @@ function UsuariosList() {
       setError("Selecione um grupo obrigatório para o usuário padrão.");
       return;
     }
-    
+
+    setIsSubmittingCreate(true);
     try {
       const res = await apiPostJson("/api/users/index.php", {
-        login, 
-        email, 
+        login,
+        email,
         role,
         group_id: groupId ? Number(groupId) : null
       });
@@ -159,6 +259,8 @@ function UsuariosList() {
       }
     } catch {
       setError("Erro de conexão.");
+    } finally {
+      setIsSubmittingCreate(false);
     }
   };
 
@@ -268,497 +370,521 @@ function UsuariosList() {
     return <DashboardAccessDenied area="a gestão de usuários" />;
   }
 
-  if (loading) return <div className="p-8 text-white">Carregando usuários...</div>;
-  if (error && !isCreating) return <div className="p-8 text-red-400">{error}</div>;
+  if (loading) {
+    return (
+      <div className="flex items-center gap-3 p-6 text-sm text-[var(--color-text-on-dark)] sm:p-8">
+        <span className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--color-accent-soft)] border-t-[var(--color-accent)]" />
+        Carregando usuários...
+      </div>
+    );
+  }
+
+  if (error && !isCreating) {
+    return (
+      <div className="p-6 sm:p-8">
+        <div className="rounded-2xl border border-red-500/40 bg-red-950/60 p-4 text-sm text-red-200">{error}</div>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-4 sm:p-8 max-w-6xl mx-auto h-full overflow-y-auto">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-        <div>
+    <div className="mx-auto max-w-6xl p-4 sm:p-6 lg:p-8">
+      {/* Cabeçalho */}
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-white">Gerenciar Usuários</h1>
-          <p className="text-sm text-[var(--color-text-on-dark)] mt-1">
-            Controle de contas, atribuição de grupos, geração de senhas e auditoria.
+          <p className="mt-1 text-sm text-[var(--color-text-on-dark)]">
+            Contas, grupos do Power BI e senhas de acesso.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
           <Link
             href="/dashboard/configuracoes/grupos"
-            className="px-4 py-2.5 rounded-full text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors border border-white/15"
+            className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-white/20"
           >
-            📊 Ver Grupos
+            <UsersIcon width={15} height={15} />
+            Ver Grupos
           </Link>
-          <button 
-            onClick={() => { 
-              setIsCreating(!isCreating); 
-              setError(""); 
-              setSuccessMsg(""); 
+          <button
+            type="button"
+            onClick={() => {
+              setIsCreating(!isCreating);
+              setError("");
+              setSuccessMsg("");
               if (groups.length > 0 && !groupId) setGroupId(groups[0].id);
             }}
-            className="bg-[var(--color-accent)] text-black px-5 py-2.5 rounded-full text-sm font-semibold hover:opacity-90 transition-opacity flex items-center gap-2 shadow-md cursor-pointer"
+            className={isCreating ? ghostButton : primaryButton}
           >
-            {isCreating ? "✕ Cancelar" : "+ Novo Usuário"}
+            {isCreating ? <CloseIcon width={16} height={16} /> : <PlusIcon width={16} height={16} />}
+            {isCreating ? "Cancelar" : "Novo Usuário"}
           </button>
         </div>
       </div>
 
       {successMsg && (
-        <div className="mb-6 p-4 bg-emerald-950/60 border border-emerald-500/50 rounded-2xl text-emerald-200 flex items-start justify-between">
-          <div>
-            <p className="font-semibold text-sm">{successMsg}</p>
-            <p className="text-xs mt-1 text-emerald-300/80">Operação concluída com registro na trilha de auditoria.</p>
-          </div>
-          <button onClick={() => setSuccessMsg("")} className="text-emerald-400 hover:text-white text-sm font-bold ml-4 cursor-pointer">✕</button>
+        <div role="status" className="mb-6 flex items-start justify-between gap-4 rounded-2xl border border-emerald-500/50 bg-emerald-950/60 p-4 text-emerald-200">
+          <p className="min-w-0 break-words text-sm font-semibold">{successMsg}</p>
+          <button
+            type="button"
+            onClick={() => setSuccessMsg("")}
+            aria-label="Fechar aviso"
+            className="shrink-0 rounded-full p-1 text-emerald-400 transition-colors hover:bg-white/10 hover:text-white"
+          >
+            <CloseIcon width={16} height={16} />
+          </button>
         </div>
       )}
 
       {error && isCreating && (
-        <div className="mb-6 p-4 bg-red-950/60 border border-red-500/50 rounded-2xl text-red-200">
+        <div role="alert" className="mb-6 rounded-2xl border border-red-500/50 bg-red-950/60 p-4 text-sm text-red-200">
           {error}
         </div>
       )}
 
       {/* Formulário de Criação */}
       {isCreating && (
-        <form onSubmit={handleCreate} className="mb-8 p-6 bg-[rgba(255,255,255,0.04)] border border-[var(--color-border-dark)] rounded-2xl shadow-xl animate-in fade-in duration-200">
-          <h2 className="text-lg font-semibold text-white mb-4">Novo Usuário</h2>
+        <form onSubmit={handleCreate} className="mb-6 rounded-2xl border border-[var(--color-border-dark)] bg-[rgba(255,255,255,0.04)] p-5 shadow-xl sm:p-6">
+          <h2 className="mb-4 text-lg font-semibold text-white">Novo Usuário</h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <label className="block text-sm text-[var(--color-text-on-dark)]">Login
-              <input 
-                value={login} 
-                onChange={e => setLogin(e.target.value)} 
-                placeholder="Ex: joao.silva"
-                required 
-                className="mt-1 w-full rounded-xl border border-[var(--color-border-dark)] bg-black/30 px-3.5 py-2.5 text-white outline-none focus:border-[var(--color-accent)]" 
+            <label className={labelClass}>Login
+              <input
+                value={login}
+                onChange={e => setLogin(e.target.value)}
+                placeholder="joao.silva"
+                required
+                autoComplete="off"
+                className={inputClass}
               />
             </label>
-            <label className="block text-sm text-[var(--color-text-on-dark)]">E-mail <span className="text-white/40">(opcional)</span>
+            <label className={labelClass}>E-mail <span className="font-normal normal-case tracking-normal text-white/40">(opcional)</span>
               <input
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="Pedido no 1º acesso se vazio"
-                className="mt-1 w-full rounded-xl border border-[var(--color-border-dark)] bg-black/30 px-3.5 py-2.5 text-white outline-none focus:border-[var(--color-accent)]"
+                autoComplete="off"
+                className={inputClass}
               />
             </label>
-            <label className="block text-sm text-[var(--color-text-on-dark)]">Nível de Acesso
-              <select 
-                value={role} 
-                onChange={e => setRole(e.target.value)} 
-                className="mt-1 w-full rounded-xl border border-[var(--color-border-dark)] bg-black/30 px-3.5 py-2.5 text-white outline-none focus:border-[var(--color-accent)]"
+            <label className={labelClass}>Nível de Acesso
+              <select
+                value={role}
+                onChange={e => setRole(e.target.value)}
+                className={inputClass}
               >
                 {creatableRoles.map((option) => (
-                  <option key={option} value={option} className="bg-[#0D1F0F] text-white">
+                  <option key={option} value={option}>
                     {ROLE_LABELS[option]}
                   </option>
                 ))}
               </select>
             </label>
-            <label className="block text-sm text-[var(--color-text-on-dark)]">Grupo (Power BI)
-              <select 
-                value={groupId} 
+            <label className={labelClass}>Grupo (Power BI)
+              <select
+                value={groupId}
                 onChange={e => setGroupId(e.target.value ? Number(e.target.value) : "")}
                 required={requiresGroup(role)}
-                className="mt-1 w-full rounded-xl border border-[var(--color-border-dark)] bg-black/30 px-3.5 py-2.5 text-white outline-none focus:border-[var(--color-accent)]"
+                className={inputClass}
               >
-                {!requiresGroup(role) && <option value="" className="bg-[#0D1F0F] text-white">Nenhum (Todos/Admin)</option>}
+                {!requiresGroup(role) && <option value="">Nenhum (Todos/Admin)</option>}
                 {groups.map((g) => (
-                  <option key={g.id} value={g.id} className="bg-[#0D1F0F] text-white">
+                  <option key={g.id} value={g.id}>
                     {g.name}
                   </option>
                 ))}
               </select>
             </label>
           </div>
-          <div className="mt-5 flex gap-3">
-            <button type="submit" className="bg-[var(--color-accent)] text-black px-6 py-2.5 rounded-full text-sm font-semibold hover:opacity-90 transition-opacity cursor-pointer">
-              Salvar e Gerar Senha
-            </button>
-            <button type="button" onClick={() => setIsCreating(false)} className="px-5 py-2.5 rounded-full text-sm font-medium text-white/70 hover:text-white hover:bg-white/5 transition-colors cursor-pointer">
+          <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:gap-3">
+            <button type="button" onClick={() => setIsCreating(false)} className={ghostButton}>
               Cancelar
+            </button>
+            <button type="submit" disabled={isSubmittingCreate} className={primaryButton}>
+              {isSubmittingCreate ? "Salvando..." : "Salvar e Gerar Senha"}
             </button>
           </div>
         </form>
       )}
 
-      {/* Tabela de Usuários */}
-      <div className="bg-[rgba(255,255,255,0.03)] border border-[var(--color-border-dark)] rounded-2xl overflow-hidden shadow-2xl">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-white/80">
-            <thead className="bg-black/40 text-white border-b border-[var(--color-border-dark)] text-xs uppercase tracking-wider">
-              <tr>
-                <th className="px-6 py-4 font-semibold">Login</th>
-                <th className="px-6 py-4 font-semibold">E-mail</th>
-                <th className="px-6 py-4 font-semibold">Nível</th>
-                <th className="px-6 py-4 font-semibold">Grupo</th>
-                <th className="px-6 py-4 font-semibold">Status</th>
-                <th className="px-6 py-4 font-semibold">Último login</th>
-                <th className="px-6 py-4 font-semibold text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--color-border-dark)]">
-              {users.map(u => {
-                const canEdit = canEditUser(currentUser, u);
-                const canGen = canGeneratePassword(currentUser, u);
-                const canDel = canDeleteUser(currentUser, u);
+      {/* Lista */}
+      <section className="overflow-hidden rounded-2xl border border-[var(--color-border-dark)] bg-[rgba(255,255,255,0.03)] shadow-2xl">
+        <div className="flex flex-col gap-3 border-b border-[var(--color-border-dark)] p-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-[var(--color-text-on-dark)]">
+            <strong className="font-semibold text-white">{users.length}</strong>{" "}
+            {users.length === 1 ? "usuário" : "usuários"}
+            {query.trim() && filteredUsers.length !== users.length && (
+              <span className="text-white/50"> · {filteredUsers.length} na busca</span>
+            )}
+          </p>
+          <label className="relative block w-full sm:w-72">
+            <span className="sr-only">Buscar usuário</span>
+            <SearchIcon width={16} height={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-white/40" />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar"
+              className="w-full rounded-full border border-[var(--color-border-dark)] bg-black/30 py-2 pl-10 pr-4 text-sm text-white outline-none transition-colors placeholder:text-white/30 focus:border-[var(--color-accent)]"
+            />
+          </label>
+        </div>
 
-                return (
-                  <tr key={u.id} className="hover:bg-white/5 transition-colors">
-                    <td className="px-6 py-4 font-medium text-white">
-                      <div className="flex items-center gap-2">
-                        <span>{u.login}</span>
-                        {u.id === currentUser?.id && (
-                          <span className="text-[10px] bg-white/10 text-white/70 px-2 py-0.5 rounded-full">você</span>
-                        )}
+        <div className="data-table-wrap">
+
+          <table className="data-table text-white/85">
+          <thead className="bg-black/40 text-white">
+            <tr>
+              <th>Usuário</th>
+              <th>Nível</th>
+              <th>Grupo</th>
+              <th>Status</th>
+              <th className="text-right">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredUsers.map(u => {
+              const canEdit = canEditUser(currentUser, u);
+              const canGen = canGeneratePassword(currentUser, u);
+              const canDel = canDeleteUser(currentUser, u);
+              const isSelf = u.id === currentUser?.id;
+
+              return (
+                <tr key={u.id} className="transition-colors xl:hover:bg-white/5">
+                  <td>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <Avatar login={u.login} self={isSelf} />
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="truncate font-semibold text-white">{u.login}</span>
+                          {isSelf && (
+                            <span className="rounded-full bg-[var(--color-accent-soft)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-accent)]">você</span>
+                          )}
+                        </div>
+                        <p className="truncate text-xs text-white/55">{u.email || "sem e-mail"}</p>
                       </div>
-                    </td>
-                    <td className="px-6 py-4 text-white/70">{u.email || '-'}</td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wider ${
-                        u.role === 'root' 
-                          ? 'bg-red-500/20 text-red-300 border border-red-500/30' 
-                          : u.role === 'master' 
-                          ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' 
-                          : 'bg-white/10 text-white/90 border border-white/15'
-                      }`}>
-                        {u.role}
+                    </div>
+                  </td>
+                  <td data-label="Nível">
+                    <RoleBadge role={u.role} />
+                  </td>
+                  <td data-label="Grupo">
+                    {u.group_name ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-accent)]/20 bg-[var(--color-accent-soft)] px-2.5 py-1 text-xs font-semibold text-[var(--color-accent)]">
+                        <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]" />
+                        {u.group_name}
                       </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      {u.group_name ? (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-[var(--color-accent-soft)] text-[var(--color-accent)] border border-[var(--color-accent)]/20">
-                          <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]" />
-                          {u.group_name}
-                        </span>
-                      ) : (
-                        <span className="text-white/40 text-xs">—</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
+                    ) : (
+                      <span className="text-xs text-white/40">—</span>
+                    )}
+                  </td>
+                  <td data-label="Status">
+                    <div className="space-y-0.5">
                       {u.force_password_change ? (
-                        <span className="inline-flex items-center gap-1.5 text-amber-400 text-xs font-medium">
+                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-400">
                           <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                          Troca pendente
+                          Troca de senha pendente
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1.5 text-emerald-400 text-xs font-medium">
+                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-400">
                           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                           Ativo
                         </span>
                       )}
-                    </td>
-                    <td className="px-6 py-4 text-white/70 text-xs whitespace-nowrap">
-                      {u.last_login
-                        ? new Date(u.last_login.replace(" ", "T")).toLocaleString("pt-BR")
-                        : <span className="text-white/40">Nunca acessou</span>}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                        {canEdit && (
-                          <button
-                            onClick={() => openEditModal(u)}
-                            title="Editar dados e grupo deste usuário"
-                            className="text-xs font-medium px-3 py-1.5 rounded-full border border-blue-500/40 text-blue-300 hover:bg-blue-500/20 hover:text-white transition-colors cursor-pointer"
-                          >
-                            ✏️ Editar
-                          </button>
-                        )}
-
-                        {canGen && (
-                          <button
-                            onClick={() => {
-                              setGenTarget(u);
-                              setActionError("");
-                              setGeneratedPasswordResult(null);
-                            }}
-                            title="Gerar nova senha temporária para este usuário"
-                            className="text-xs font-medium px-3 py-1.5 rounded-full border border-amber-500/40 text-amber-300 hover:bg-amber-500/20 hover:text-white transition-colors cursor-pointer"
-                          >
-                            🔑 Senha
-                          </button>
-                        )}
-
-                        {canDel && (
-                          <button
-                            onClick={() => {
-                              setDeleteTarget(u);
-                              setActionError("");
-                            }}
-                            title="Excluir usuário permanentemente"
-                            className="text-xs font-medium px-3 py-1.5 rounded-full border border-red-500/40 text-red-300 hover:bg-red-500/20 hover:text-white transition-colors cursor-pointer"
-                          >
-                            🗑️ Excluir
-                          </button>
-                        )}
-
-                        <Link 
-                          href={`/dashboard/configuracoes/usuarios/ver?id=${u.id}`} 
-                          className="text-xs font-semibold text-[var(--color-accent)] hover:underline px-2 py-1.5"
+                      <p className="text-[11px] text-white/45">
+                        {u.last_login ? `Último acesso ${formatOsDateTime(u.last_login)}` : "Nunca acessou"}
+                      </p>
+                    </div>
+                  </td>
+                  <td className="data-table-actions">
+                    <div className="flex items-center justify-end gap-1.5">
+                      {canEdit && (
+                        <IconButton label={`Editar ${u.login}`} tone="info" onClick={() => openEditModal(u)}>
+                          <PencilIcon width={16} height={16} />
+                        </IconButton>
+                      )}
+                      {canGen && (
+                        <IconButton
+                          label={`Gerar nova senha para ${u.login}`}
+                          tone="warning"
+                          onClick={() => {
+                            setGenTarget(u);
+                            setActionError("");
+                            setGeneratedPasswordResult(null);
+                          }}
                         >
-                          Histórico &rarr;
-                        </Link>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {users.length === 0 && (
-                <tr><td colSpan={7} className="px-6 py-8 text-center text-white/60">Nenhum usuário cadastrado.</td></tr>
-              )}
-            </tbody>
+                          <KeyIcon width={16} height={16} />
+                        </IconButton>
+                      )}
+                      {canDel && (
+                        <IconButton
+                          label={`Excluir ${u.login}`}
+                          tone="danger"
+                          onClick={() => {
+                            setDeleteTarget(u);
+                            setActionError("");
+                          }}
+                        >
+                          <TrashIcon width={16} height={16} />
+                        </IconButton>
+                      )}
+                      <Link
+                        href={`/dashboard/configuracoes/usuarios/ver?id=${u.id}`}
+                        title={`Histórico de ${u.login}`}
+                        className="ml-1 inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold text-[var(--color-accent)] transition-colors hover:bg-[var(--color-accent-soft)]"
+                      >
+                        <ClockIcon width={15} height={15} />
+                        Histórico
+                      </Link>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+            {users.length === 0 && (
+              <tr>
+                <td colSpan={5} className="data-table-empty py-10 text-center text-sm text-white/60">Nenhum usuário cadastrado.</td>
+              </tr>
+            )}
+            {users.length > 0 && filteredUsers.length === 0 && (
+              <tr>
+                <td colSpan={5} className="data-table-empty py-10 text-center text-sm text-white/60">
+                  Nenhum usuário encontrado para “{query.trim()}”.
+                </td>
+              </tr>
+            )}
+          </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
       {/* Modal: Editar Usuário */}
       {editTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
-          <form onSubmit={handleConfirmEdit} className="w-full max-w-lg bg-[#0D1F0F] border border-[var(--color-border-dark)] rounded-3xl p-6 shadow-2xl">
-            <div className="flex items-center gap-3 mb-4 text-blue-400">
-              <span className="text-2xl">✏️</span>
-              <h3 className="text-xl font-bold text-white">Editar Usuário</h3>
-            </div>
-            <p className="text-sm text-[var(--color-text-on-dark)] mb-6">
-              Atualize as informações e o grupo associado ao usuário <strong className="text-white">{editTarget.login}</strong>.
-            </p>
+        <DashboardModal
+          title="Editar Usuário"
+          icon={<PencilIcon width={18} height={18} />}
+          tone="info"
+          as="form"
+          onSubmit={handleConfirmEdit}
+          onClose={() => { setEditTarget(null); setActionError(""); }}
+        >
+          <p className="mb-5 text-sm text-[var(--color-text-on-dark)]">
+            Conta <strong className="text-white">{editTarget.login}</strong>
+          </p>
 
-            <div className="space-y-4 mb-6">
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--color-text-on-dark)] mb-1">
-                  Login
-                </label>
-                <input
-                  value={editLogin}
-                  onChange={(e) => setEditLogin(e.target.value)}
-                  required
-                  className="w-full rounded-xl border border-[var(--color-border-dark)] bg-black/40 px-3.5 py-2.5 text-white outline-none focus:border-[var(--color-accent)]"
-                />
-              </div>
+          <div className="space-y-4">
+            <label className={labelClass}>Login
+              <input
+                value={editLogin}
+                onChange={(e) => setEditLogin(e.target.value)}
+                required
+                className={inputClass}
+              />
+            </label>
 
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--color-text-on-dark)] mb-1">
-                  E-mail
-                </label>
-                <input
-                  type="email"
-                  value={editEmail}
-                  onChange={(e) => setEditEmail(e.target.value)}
-                  required
-                  className="w-full rounded-xl border border-[var(--color-border-dark)] bg-black/40 px-3.5 py-2.5 text-white outline-none focus:border-[var(--color-accent)]"
-                />
-              </div>
+            <label className={labelClass}>E-mail
+              <input
+                type="email"
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+                required
+                className={inputClass}
+              />
+            </label>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {editableRoles.length > 1 && (
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--color-text-on-dark)] mb-1">
-                      Nível de Acesso
-                    </label>
-                    <select
-                      value={editRole}
-                      onChange={(e) => setEditRole(e.target.value)}
-                      className="w-full rounded-xl border border-[var(--color-border-dark)] bg-black/40 px-3.5 py-2.5 text-white outline-none focus:border-[var(--color-accent)]"
-                    >
-                      {editableRoles.map((option) => (
-                        <option key={option} value={option} className="bg-[#0D1F0F] text-white">
-                          {ROLE_LABELS[option]}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                <div className={editableRoles.length > 1 ? "" : "sm:col-span-2"}>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--color-text-on-dark)] mb-1">
-                    Grupo (Power BI)
-                  </label>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {editableRoles.length > 1 && (
+                <label className={labelClass}>Nível de Acesso
                   <select
-                    value={editGroupId}
-                    onChange={(e) => setEditGroupId(e.target.value ? Number(e.target.value) : "")}
-                    required={requiresGroup(editRole)}
-                    className="w-full rounded-xl border border-[var(--color-border-dark)] bg-black/40 px-3.5 py-2.5 text-white outline-none focus:border-[var(--color-accent)]"
+                    value={editRole}
+                    onChange={(e) => setEditRole(e.target.value)}
+                    className={inputClass}
                   >
-                    {!requiresGroup(editRole) && <option value="" className="bg-[#0D1F0F] text-white">Nenhum (Todos/Admin)</option>}
-                    {groups.map((g) => (
-                      <option key={g.id} value={g.id} className="bg-[#0D1F0F] text-white">
-                        {g.name}
+                    {editableRoles.map((option) => (
+                      <option key={option} value={option}>
+                        {ROLE_LABELS[option]}
                       </option>
                     ))}
                   </select>
-                </div>
-              </div>
-
-              {canGeneratePassword(currentUser, editTarget) && (
-                <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold text-white">Redefinição de Acesso</p>
-                    <p className="text-[11px] text-white/50">Precisa enviar uma nova credencial para este usuário?</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const u = editTarget;
-                      setEditTarget(null);
-                      setGenTarget(u);
-                      setActionError("");
-                      setGeneratedPasswordResult(null);
-                    }}
-                    className="px-3.5 py-1.5 rounded-full text-xs font-semibold border border-amber-500/40 text-amber-300 hover:bg-amber-500/20 hover:text-white transition-colors cursor-pointer whitespace-nowrap"
-                  >
-                    🔑 Gerar Nova Senha
-                  </button>
-                </div>
+                </label>
               )}
+
+              <label className={`${labelClass} ${editableRoles.length > 1 ? "" : "sm:col-span-2"}`}>Grupo (Power BI)
+                <select
+                  value={editGroupId}
+                  onChange={(e) => setEditGroupId(e.target.value ? Number(e.target.value) : "")}
+                  required={requiresGroup(editRole)}
+                  className={inputClass}
+                >
+                  {!requiresGroup(editRole) && <option value="">Nenhum (Todos/Admin)</option>}
+                  {groups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
 
-            {actionError && (
-              <p className="text-xs text-red-300 mb-4 p-3 bg-red-950/60 border border-red-500/40 rounded-xl">{actionError}</p>
+            {canGeneratePassword(currentUser, editTarget) && (
+              <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-4">
+                <p className="text-xs font-semibold text-white">Acesso</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const u = editTarget;
+                    setEditTarget(null);
+                    setGenTarget(u);
+                    setActionError("");
+                    setGeneratedPasswordResult(null);
+                  }}
+                  className="inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-amber-500/40 px-3.5 py-1.5 text-xs font-semibold text-amber-300 transition-colors hover:bg-amber-500/20 hover:text-white"
+                >
+                  <KeyIcon width={14} height={14} />
+                  Gerar Nova Senha
+                </button>
+              </div>
             )}
+          </div>
 
-            <div className="flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => { setEditTarget(null); setActionError(""); }}
-                disabled={isEditing}
-                className="px-5 py-2.5 rounded-full text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                disabled={isEditing}
-                className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-full text-sm font-semibold transition-opacity disabled:opacity-50 cursor-pointer shadow-lg"
-              >
-                {isEditing ? "Salvando..." : "Salvar Alterações"}
-              </button>
-            </div>
-          </form>
-        </div>
+          {actionError && <p role="alert" className={alertError}>{actionError}</p>}
+
+          <ModalActions>
+            <button
+              type="button"
+              onClick={() => { setEditTarget(null); setActionError(""); }}
+              disabled={isEditing}
+              className={ghostButton}
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={isEditing}
+              className="inline-flex items-center justify-center rounded-full bg-sky-600 px-6 py-2.5 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-sky-500 disabled:opacity-50"
+            >
+              {isEditing ? "Salvando..." : "Salvar Alterações"}
+            </button>
+          </ModalActions>
+        </DashboardModal>
       )}
 
       {/* Modal: Gerar Senha */}
       {genTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-[#0D1F0F] border border-[var(--color-border-dark)] rounded-3xl p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-            {!generatedPasswordResult ? (
-              <>
-                <div className="flex items-center gap-3 mb-4 text-amber-400">
-                  <span className="text-2xl">🔑</span>
-                  <h3 className="text-xl font-bold text-white">Gerar Nova Senha</h3>
-                </div>
-                <p className="text-sm text-[var(--color-text-on-dark)] mb-4">
-                  Deseja gerar uma nova senha temporária para o usuário <strong className="text-white">{genTarget.login}</strong>?
-                </p>
-                <p className="text-xs text-white/60 mb-6 bg-white/5 p-3 rounded-xl border border-white/10">
-                  ⚠️ A senha atual será imediatamente invalidada e o usuário será obrigado a cadastrar uma nova senha no próximo login.
-                </p>
+        <DashboardModal
+          title={generatedPasswordResult ? "Nova Senha Gerada" : "Gerar Nova Senha"}
+          icon={generatedPasswordResult ? <CheckIcon width={18} height={18} /> : <KeyIcon width={18} height={18} />}
+          tone={generatedPasswordResult ? "success" : "warning"}
+          size="sm"
+          onClose={() => { setGenTarget(null); setGeneratedPasswordResult(null); setActionError(""); }}
+        >
+          {!generatedPasswordResult ? (
+            <>
+              <p className="text-sm text-[var(--color-text-on-dark)]">
+                Gerar uma nova senha temporária para <strong className="text-white">{genTarget.login}</strong>?
+              </p>
+              <p className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-200/90">
+                A senha atual deixa de valer na hora e o usuário define outra no próximo login.
+              </p>
 
-                {actionError && (
-                  <p className="text-xs text-red-300 mb-4 p-3 bg-red-950/60 border border-red-500/40 rounded-xl">{actionError}</p>
-                )}
+              {actionError && <p role="alert" className={alertError}>{actionError}</p>}
 
-                <div className="flex justify-end gap-3">
-                  <button
-                    onClick={() => { setGenTarget(null); setActionError(""); }}
-                    disabled={isGenerating}
-                    className="px-5 py-2.5 rounded-full text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={handleConfirmGeneratePassword}
-                    disabled={isGenerating}
-                    className="bg-amber-500 hover:bg-amber-400 text-black px-6 py-2.5 rounded-full text-sm font-semibold transition-opacity disabled:opacity-50 cursor-pointer shadow-lg"
-                  >
-                    {isGenerating ? "Gerando..." : "Confirmar e Gerar"}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center gap-3 mb-3 text-emerald-400">
-                  <span className="text-2xl">✓</span>
-                  <h3 className="text-xl font-bold text-white">Nova Senha Gerada!</h3>
-                </div>
-                <p className="text-sm text-[var(--color-text-on-dark)] mb-4">
-                  A nova senha temporária para <strong className="text-white">{generatedPasswordResult.login}</strong> foi criada com sucesso:
-                </p>
+              <ModalActions>
+                <button
+                  type="button"
+                  onClick={() => { setGenTarget(null); setActionError(""); }}
+                  disabled={isGenerating}
+                  className={ghostButton}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmGeneratePassword}
+                  disabled={isGenerating}
+                  className="inline-flex items-center justify-center rounded-full bg-amber-500 px-6 py-2.5 text-sm font-semibold text-black shadow-lg transition-colors hover:bg-amber-400 disabled:opacity-50"
+                >
+                  {isGenerating ? "Gerando..." : "Confirmar e Gerar"}
+                </button>
+              </ModalActions>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-[var(--color-text-on-dark)]">
+                Senha temporária de <strong className="text-white">{generatedPasswordResult.login}</strong>:
+              </p>
 
-                <div className="mb-4 p-4 rounded-2xl bg-black/40 border border-[var(--color-accent)]/40 flex items-center justify-between">
-                  <code className="text-lg font-mono font-bold text-[var(--color-accent)] select-all tracking-wider">
-                    {generatedPasswordResult.password}
-                  </code>
-                  <button
-                    onClick={handleCopyPassword}
-                    className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-                      copied 
-                        ? 'bg-emerald-500 text-black' 
-                        : 'bg-white/10 hover:bg-white/20 text-white'
-                    }`}
-                  >
-                    {copied ? "✓ Copiado!" : "Copiar"}
-                  </button>
-                </div>
+              <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-[var(--color-accent)]/40 bg-black/40 p-4">
+                <code className="min-w-0 select-all break-all font-mono text-lg font-bold tracking-wider text-[var(--color-accent)]">
+                  {generatedPasswordResult.password}
+                </code>
+                <button
+                  type="button"
+                  onClick={handleCopyPassword}
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all ${
+                    copied
+                      ? "bg-emerald-500 text-black"
+                      : "bg-white/10 text-white hover:bg-white/20"
+                  }`}
+                >
+                  {copied ? <CheckIcon width={14} height={14} /> : <CopyIcon width={14} height={14} />}
+                  {copied ? "Copiado" : "Copiar"}
+                </button>
+              </div>
 
-                <p className="text-xs text-white/60 mb-6">
-                  Copie e envie esta senha para o usuário. Esta ação foi registrada no histórico de auditoria.
-                </p>
-
-                <div className="flex justify-end">
-                  <button
-                    onClick={() => {
-                      setGenTarget(null);
-                      setGeneratedPasswordResult(null);
-                    }}
-                    className="bg-[var(--color-accent)] text-black px-6 py-2.5 rounded-full text-sm font-semibold hover:opacity-90 transition-opacity cursor-pointer"
-                  >
-                    Concluir
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
+              <ModalActions>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGenTarget(null);
+                    setGeneratedPasswordResult(null);
+                  }}
+                  className={primaryButton}
+                >
+                  Concluir
+                </button>
+              </ModalActions>
+            </>
+          )}
+        </DashboardModal>
       )}
 
       {/* Modal: Excluir Usuário */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-[#0D1F0F] border border-red-500/30 rounded-3xl p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center gap-3 mb-4 text-red-400">
-              <span className="text-2xl">🗑️</span>
-              <h3 className="text-xl font-bold text-white">Excluir Usuário</h3>
-            </div>
-            <p className="text-sm text-[var(--color-text-on-dark)] mb-4">
-              Tem certeza que deseja excluir permanentemente o usuário <strong className="text-white">{deleteTarget.login}</strong>?
-            </p>
-            <p className="text-xs text-red-300/80 mb-6 bg-red-950/40 p-3 rounded-xl border border-red-500/20">
-              ⚠️ Esta ação não pode ser desfeita. O usuário perderá o acesso imediatamente.
-            </p>
+        <DashboardModal
+          title="Excluir Usuário"
+          icon={<TrashIcon width={18} height={18} />}
+          tone="danger"
+          size="sm"
+          onClose={() => { setDeleteTarget(null); setActionError(""); }}
+        >
+          <p className="text-sm text-[var(--color-text-on-dark)]">
+            Excluir permanentemente <strong className="text-white">{deleteTarget.login}</strong>?
+          </p>
+          <p className="mt-3 rounded-xl border border-red-500/20 bg-red-950/40 p-3 text-xs text-red-300/90">
+            Não dá para desfazer. O acesso é cortado na hora.
+          </p>
 
-            {actionError && (
-              <p className="text-xs text-red-300 mb-4 p-3 bg-red-950/60 border border-red-500/40 rounded-xl">{actionError}</p>
-            )}
+          {actionError && <p role="alert" className={alertError}>{actionError}</p>}
 
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => { setDeleteTarget(null); setActionError(""); }}
-                disabled={isDeleting}
-                className="px-5 py-2.5 rounded-full text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleConfirmDelete}
-                disabled={isDeleting}
-                className="bg-red-600 hover:bg-red-500 text-white px-6 py-2.5 rounded-full text-sm font-semibold transition-opacity disabled:opacity-50 cursor-pointer shadow-lg"
-              >
-                {isDeleting ? "Excluindo..." : "Confirmar Exclusão"}
-              </button>
-            </div>
-          </div>
-        </div>
+          <ModalActions>
+            <button
+              type="button"
+              onClick={() => { setDeleteTarget(null); setActionError(""); }}
+              disabled={isDeleting}
+              className={ghostButton}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmDelete}
+              disabled={isDeleting}
+              className="inline-flex items-center justify-center rounded-full bg-red-600 px-6 py-2.5 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-red-500 disabled:opacity-50"
+            >
+              {isDeleting ? "Excluindo..." : "Confirmar Exclusão"}
+            </button>
+          </ModalActions>
+        </DashboardModal>
       )}
     </div>
   );
 }
-

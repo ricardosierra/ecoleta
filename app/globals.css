@@ -170,6 +170,19 @@ body {
   border-radius: 4px;
 }
 
+/* Contêiner que só recebe foco por código — o painel de um diálogo, por
+   exemplo — não é um controle: o anel ali emoldura a caixa inteira e não
+   informa nada. Quem precisa do anel são os botões e campos lá dentro, que
+   continuam com ele. `tabindex="-1"` já diz que o elemento está fora da
+   navegação por Tab.
+
+   A regra mora aqui, e não como utilitário na classe do painel, porque esta
+   folha não está em @layer: CSS sem camada vence qualquer utilitário do
+   Tailwind, então `focus-visible:outline-none` no JSX não teria efeito. */
+[tabindex="-1"]:focus-visible {
+  outline: none;
+}
+
 /* Decorative leaves floating animation */
 @keyframes leaf-float {
   0%, 100% {
@@ -200,4 +213,123 @@ body {
 
 @keyframes letter-reveal {
   to { opacity: 1; }
+}
+
+/* ── Dashboard ──────────────────────────────────────────────────────────── */
+
+/* Tabela de dados do painel.
+
+   A partir de 1280px é uma tabela de verdade; abaixo disso cada linha vira um
+   cartão e cada célula mostra, via data-label, o cabeçalho que perdeu. O DOM
+   continua único — nada é renderizado duas vezes.
+
+   O corte é 1280 e não 1024 porque as telas de Configurações gastam 240px com
+   a coluna lateral: em 1024 a tabela não cabia e as colunas Status e Ações
+   saíam da área visível. O trilho .data-table-wrap continua ali como rede de
+   segurança para conteúdo excepcionalmente largo. */
+@layer components {
+  /* Trilho da tabela: no modo tabela ela pode ficar mais larga que a tela, e
+     é aqui que isso vira rolagem lateral em vez de conteúdo cortado. */
+  .data-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+    font-size: 0.875rem;
+  }
+
+  .data-table th {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  @media (min-width: 1280px) {
+    .data-table {
+      min-width: 40rem;
+    }
+
+    .data-table th,
+    .data-table td {
+      padding: 0.875rem 1rem;
+      vertical-align: middle;
+    }
+
+    .data-table th:first-child,
+    .data-table td:first-child {
+      padding-left: 1.25rem;
+    }
+
+    .data-table th:last-child,
+    .data-table td:last-child {
+      padding-right: 1.25rem;
+    }
+
+    .data-table tbody tr + tr {
+      border-top: 1px solid var(--color-border-dark);
+    }
+  }
+
+  @media (max-width: 1279px) {
+    .data-table thead {
+      display: none;
+    }
+
+    .data-table,
+    .data-table tbody,
+    .data-table tr {
+      display: block;
+    }
+
+    .data-table tr {
+      padding: 0.875rem 1rem;
+    }
+
+    .data-table tr + tr {
+      border-top: 1px solid var(--color-border-dark);
+    }
+
+    .data-table td {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.3rem 0;
+    }
+
+    .data-table td[data-label]::before {
+      content: attr(data-label);
+      flex: 0 0 6.5rem;
+      padding-top: 0.15rem;
+      font-size: 0.625rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.45);
+    }
+
+    .data-table td.data-table-actions {
+      justify-content: flex-end;
+      padding-top: 0.75rem;
+    }
+
+    .data-table td.data-table-empty {
+      justify-content: center;
+    }
+  }
+}
+
+/* Na impressão o shell do dashboard não pode limitar a altura nem cortar o
+   que passa da tela: o documento da OS precisa sair inteiro. */
+@media print {
+  .dashboard-shell,
+  .dashboard-main {
+    height: auto !important;
+    overflow: visible !important;
+  }
 }

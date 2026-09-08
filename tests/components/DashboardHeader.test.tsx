@@ -51,3 +51,30 @@ describe("DashboardHeader", () => {
     );
   });
 });
+
+describe("DashboardHeader — menu do celular", () => {
+  it("abre com os mesmos links e o botão Sair, e fecha pelo mesmo botão", async () => {
+    const { default: userEvent } = await import("@testing-library/user-event");
+    const onLogout = vi.fn();
+    render(<DashboardHeader onLogout={onLogout} user={{ id: 1, login: "admin", role: "root" }} />);
+
+    // Fechado: os links existem uma vez só (a navegação de tela grande).
+    expect(screen.getAllByRole("link", { name: "Configurações" })).toHaveLength(1);
+    expect(document.getElementById("dashboard-mobile-menu")).toBeNull();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Abrir menu" }));
+
+    const menu = document.getElementById("dashboard-mobile-menu");
+    expect(menu).not.toBeNull();
+    const { within } = await import("@testing-library/react");
+    expect(within(menu!).getByRole("link", { name: "Configurações" })).toHaveAttribute("href", "/dashboard/configuracoes");
+    expect(within(menu!).getByRole("link", { name: "OS Eletrônica" })).toBeInTheDocument();
+
+    await user.click(within(menu!).getByRole("button", { name: "Sair" }));
+    expect(onLogout).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: "Fechar menu" }));
+    expect(document.getElementById("dashboard-mobile-menu")).toBeNull();
+  });
+});

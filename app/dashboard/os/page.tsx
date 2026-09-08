@@ -3,6 +3,14 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { DashboardGate, useDashboardAuth } from "@/components/DashboardGate";
+import { DashboardModal, ModalActions } from "@/components/DashboardModal";
+import {
+  BotIcon,
+  FileTextIcon,
+  MailIcon,
+  PrinterIcon,
+  SmartphoneIcon,
+} from "@/components/icons";
 import { isAdmin } from "@/lib/authz";
 import { apiPostJson } from "@/lib/dashboard-api";
 import {
@@ -22,6 +30,16 @@ type Feedback = { tone: "ok" | "erro"; text: string };
 
 /** Dados do reenvio pendente de confirmação (resposta 409 de os/whatsapp.php). */
 type ReenvioWhatsApp = { sentAt: string | null; sentTo: string | null };
+
+const inputClass =
+  "mt-1.5 w-full rounded-xl border border-[var(--color-border-dark)] bg-black/30 px-3.5 py-2.5 text-sm text-white outline-none transition-colors placeholder:text-white/30 focus:border-[var(--color-accent)]";
+
+const labelClass = "block text-xs font-semibold uppercase tracking-wider text-[var(--color-text-on-dark)]";
+
+const cardClass = "rounded-2xl border border-[var(--color-border-dark)] bg-[rgba(255,255,255,0.04)]";
+
+const secondaryButton =
+  "inline-flex items-center justify-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20 disabled:opacity-50";
 
 export default function OSPage() {
   return (
@@ -44,6 +62,8 @@ function OSMain() {
   const [bagsCount, setBagsCount] = useState("");
   const [containersCount, setContainersCount] = useState("");
   const [responsible, setResponsible] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [formError, setFormError] = useState("");
 
   const [activeOS, setActiveOS] = useState<ServiceOrder | null>(null);
 
@@ -75,7 +95,7 @@ function OSMain() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!clientId) return;
+    if (!clientId || creating) return;
 
     const payload = {
       client_id: parseInt(clientId),
@@ -86,6 +106,8 @@ function OSMain() {
       responsible
     };
 
+    setCreating(true);
+    setFormError("");
     try {
       const res = await apiPostJson("/api/os/index.php", payload);
       const data = await res.json();
@@ -103,10 +125,12 @@ function OSMain() {
         setContainersCount("");
         setResponsible("");
       } else {
-        setFeedback({ tone: "erro", text: data.error ?? "Não foi possível gerar a OS." });
+        setFormError(data.error ?? "Não foi possível gerar a OS.");
       }
     } catch {
-      setFeedback({ tone: "erro", text: "Não foi possível gerar a OS." });
+      setFormError("Não foi possível gerar a OS.");
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -180,83 +204,96 @@ function OSMain() {
 
   if (!isUserAdmin) return <div className="p-8 text-white">Acesso negado.</div>;
 
+  const janelaAberta = Boolean(activeOS?.whatsapp_window?.open);
+
   return (
-    <div className="max-w-6xl mx-auto p-6 sm:p-8 space-y-8 text-white">
+    <div className="mx-auto max-w-6xl space-y-6 p-4 text-white sm:p-6 lg:p-8">
       <div className="print:hidden">
-        <h1 className="text-3xl font-bold">Ordem de Serviço (OS)</h1>
-        <p className="text-[var(--color-text-on-dark)] mt-2">
-          Gere OS de coleta para clientes fixos.
+        <h1 className="text-2xl font-bold sm:text-3xl">Ordem de Serviço</h1>
+        <p className="mt-1 text-sm text-[var(--color-text-on-dark)]">
+          Gere a OS de coleta e encaminhe ao cliente.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 print:hidden">
+      <div className="grid grid-cols-1 gap-6 print:hidden lg:grid-cols-2">
         {/* Formulário */}
-        <div className="bg-[rgba(255,255,255,0.04)] rounded-2xl border border-[var(--color-border-dark)] p-6">
-          <h2 className="text-xl font-semibold mb-4">Gerar Nova OS</h2>
+        <div className={`${cardClass} p-5 sm:p-6`}>
+          <h2 className="mb-4 text-lg font-semibold">Gerar Nova OS</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm mb-1 text-[var(--color-text-on-dark)]" htmlFor="os-cliente">Cliente *</label>
-              <select id="os-cliente" required value={clientId} onChange={e => setClientId(e.target.value)} className="w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg px-3 py-2 outline-none focus:border-[var(--color-accent)]">
+            <label className={labelClass} htmlFor="os-cliente">Cliente *
+              <select id="os-cliente" required value={clientId} onChange={e => setClientId(e.target.value)} className={inputClass}>
                 <option value="">Selecione...</option>
                 {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
+            </label>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <label className={labelClass} htmlFor="os-data">Data da Coleta
+                <input id="os-data" type="date" value={collectionDate} onChange={e => setCollectionDate(e.target.value)} className={inputClass} />
+              </label>
+              <label className={labelClass} htmlFor="os-peso">Pesagem
+                <input id="os-peso" value={weight} onChange={e => setWeight(e.target.value)} placeholder="150 kg" className={inputClass} />
+              </label>
+              <label className={labelClass} htmlFor="os-sacos">Qtd. Sacos
+                <input id="os-sacos" type="number" inputMode="numeric" min="0" value={bagsCount} onChange={e => setBagsCount(e.target.value)} className={inputClass} />
+              </label>
+              <label className={labelClass} htmlFor="os-containers">Qtd. Contêineres
+                <input id="os-containers" type="number" inputMode="numeric" min="0" value={containersCount} onChange={e => setContainersCount(e.target.value)} className={inputClass} />
+              </label>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm mb-1 text-[var(--color-text-on-dark)]" htmlFor="os-data">Data da Coleta</label>
-                <input id="os-data" type="date" value={collectionDate} onChange={e => setCollectionDate(e.target.value)} className="w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg px-3 py-2 outline-none focus:border-[var(--color-accent)]" />
-              </div>
-              <div>
-                <label className="block text-sm mb-1 text-[var(--color-text-on-dark)]" htmlFor="os-peso">Pesagem</label>
-                <input id="os-peso" value={weight} onChange={e => setWeight(e.target.value)} placeholder="Ex: 150 kg" className="w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg px-3 py-2 outline-none focus:border-[var(--color-accent)]" />
-              </div>
-              <div>
-                <label className="block text-sm mb-1 text-[var(--color-text-on-dark)]" htmlFor="os-sacos">Qtd. Sacos</label>
-                <input id="os-sacos" type="number" value={bagsCount} onChange={e => setBagsCount(e.target.value)} className="w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg px-3 py-2 outline-none focus:border-[var(--color-accent)]" />
-              </div>
-              <div>
-                <label className="block text-sm mb-1 text-[var(--color-text-on-dark)]" htmlFor="os-containers">Qtd. Contêineres</label>
-                <input id="os-containers" type="number" value={containersCount} onChange={e => setContainersCount(e.target.value)} className="w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg px-3 py-2 outline-none focus:border-[var(--color-accent)]" />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm mb-1 text-[var(--color-text-on-dark)]" htmlFor="os-responsavel">Responsável pela Coleta</label>
-              <input id="os-responsavel" value={responsible} onChange={e => setResponsible(e.target.value)} className="w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg px-3 py-2 outline-none focus:border-[var(--color-accent)]" />
-            </div>
-            <button type="submit" className="w-full bg-[var(--color-accent)] text-[var(--color-bg-dark)] px-5 py-3 rounded-full font-semibold hover:opacity-90 transition mt-2">
-              Gerar OS
+            <label className={labelClass} htmlFor="os-responsavel">Responsável pela Coleta
+              <input id="os-responsavel" value={responsible} onChange={e => setResponsible(e.target.value)} className={inputClass} />
+            </label>
+
+            {formError && (
+              <p role="alert" className="rounded-xl border border-red-500/40 bg-red-950/60 p-3 text-sm text-red-200">
+                {formError}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={creating}
+              className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[var(--color-accent)] px-5 py-3 font-semibold text-[var(--color-bg-dark)] transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              <FileTextIcon width={18} height={18} />
+              {creating ? "Gerando…" : "Gerar OS"}
             </button>
           </form>
         </div>
 
         {/* Pré-visualização e Ações */}
-        <div>
+        <div className="min-w-0">
           {activeOS ? (
             <div className="space-y-4">
-              <div className="flex justify-between items-center gap-3">
-                <h2 className="text-xl font-semibold">OS Nº {osNumber(activeOS.id)}</h2>
-                <button onClick={handlePrint} className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-full text-sm font-medium transition whitespace-nowrap">
-                  🖨️ Imprimir / Salvar PDF
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold">
+                  OS <span className="font-mono text-[var(--color-accent)]">Nº {osNumber(activeOS.id)}</span>
+                </h2>
+                <button type="button" onClick={handlePrint} className={secondaryButton}>
+                  <PrinterIcon width={16} height={16} />
+                  Imprimir / PDF
                 </button>
               </div>
 
               {/* Encaminhamento */}
-              <div className="bg-[rgba(255,255,255,0.04)] rounded-2xl border border-[var(--color-border-dark)] p-4 space-y-3">
-                <div className="flex gap-2">
+              <div className={`${cardClass} space-y-3 p-4`}>
+                <div className="flex flex-col gap-2 sm:flex-row">
                   <input
                     type="email"
                     value={emailTo}
                     onChange={e => setEmailTo(e.target.value)}
                     placeholder="e-mail do destinatário"
                     aria-label="E-mail do destinatário"
-                    className="flex-1 min-w-0 bg-black/20 border border-[var(--color-border-dark)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--color-accent)]"
+                    className="min-w-0 flex-1 rounded-xl border border-[var(--color-border-dark)] bg-black/30 px-3.5 py-2 text-sm text-white outline-none transition-colors placeholder:text-white/30 focus:border-[var(--color-accent)]"
                   />
                   <button
+                    type="button"
                     onClick={handleEmail}
                     disabled={sending !== null}
-                    className="bg-[var(--color-accent)] text-[var(--color-bg-dark)] px-4 py-2 rounded-full text-sm font-semibold hover:opacity-90 transition disabled:opacity-50 whitespace-nowrap"
+                    className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-[var(--color-bg-dark)] transition-opacity hover:opacity-90 disabled:opacity-50"
                   >
-                    {sending === "email" ? "Enviando…" : "✉️ E-mail"}
+                    <MailIcon width={16} height={16} />
+                    {sending === "email" ? "Enviando…" : "E-mail"}
                   </button>
                 </div>
 
@@ -264,22 +301,22 @@ function OSMain() {
                   {/* Verde forte = janela de 24h aberta, envio gratuito. O
                       tooltip diz por quê; a cor é o que se lê de longe. */}
                   <button
+                    type="button"
                     onClick={() => handleWhatsAppRobo()}
                     disabled={sending !== null}
                     title={windowTooltip(activeOS.whatsapp_window)}
-                    className={`px-4 py-2 rounded-full text-sm font-semibold hover:opacity-90 transition disabled:opacity-50 ${
-                      activeOS.whatsapp_window?.open
+                    className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${
+                      janelaAberta
                         ? "bg-[var(--color-accent)] text-[var(--color-bg-dark)]"
                         : "bg-white/10 text-white"
                     }`}
                   >
-                    {sending === "whatsapp" ? "Enviando…" : "🤖 WhatsApp do robô"}
+                    <BotIcon width={16} height={16} />
+                    {sending === "whatsapp" ? "Enviando…" : "WhatsApp do robô"}
                   </button>
-                  <button
-                    onClick={handleWhatsAppPessoal}
-                    className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-full text-sm font-medium transition"
-                  >
-                    📱 Meu WhatsApp
+                  <button type="button" onClick={handleWhatsAppPessoal} className={secondaryButton}>
+                    <SmartphoneIcon width={16} height={16} />
+                    Meu WhatsApp
                   </button>
                 </div>
 
@@ -293,37 +330,37 @@ function OSMain() {
                 )}
 
                 {(activeOS.sent_at || activeOS.whatsapp_sent_at) && (
-                  <dl className="text-xs text-[var(--color-text-on-dark)] space-y-1">
+                  <dl className="space-y-1 text-xs text-[var(--color-text-on-dark)]">
                     {activeOS.sent_at && (
-                      <div className="flex gap-2">
-                        <dt>✉️</dt>
-                        <dd>{activeOS.sent_to} · {formatOsDateTime(activeOS.sent_at)}</dd>
+                      <div className="flex items-center gap-2">
+                        <dt><MailIcon width={14} height={14} className="text-white/60" /><span className="sr-only">E-mail</span></dt>
+                        <dd className="min-w-0 break-all">{activeOS.sent_to} · {formatOsDateTime(activeOS.sent_at)}</dd>
                       </div>
                     )}
                     {activeOS.whatsapp_sent_at && (
-                      <div className="flex gap-2">
-                        <dt>🤖</dt>
-                        <dd>{activeOS.whatsapp_sent_to} · {formatOsDateTime(activeOS.whatsapp_sent_at)}</dd>
+                      <div className="flex items-center gap-2">
+                        <dt><BotIcon width={14} height={14} className="text-white/60" /><span className="sr-only">WhatsApp do robô</span></dt>
+                        <dd className="min-w-0 break-all">{activeOS.whatsapp_sent_to} · {formatOsDateTime(activeOS.whatsapp_sent_at)}</dd>
                       </div>
                     )}
                   </dl>
                 )}
               </div>
 
-              {/* Box que será impresso. Uso CSS inline para garantir layout limpo na impressão se preciso, mas Tailwind lida bem com @media print */}
-              <div id="os-print-area" className="bg-white text-black p-8 rounded-lg shadow-xl relative">
-                <div className="flex justify-between items-start border-b-2 border-black/10 pb-6 mb-6">
-                  <Logo variant="dark" height={40} />
+              {/* Documento — é o que sai na impressão. */}
+              <div id="os-print-area" className="relative rounded-2xl bg-white p-5 text-black shadow-xl sm:p-8">
+                <div className="mb-6 flex flex-wrap items-start justify-between gap-4 border-b-2 border-black/10 pb-6">
+                  <Logo variant="dark" height={36} />
                   <div className="text-right">
-                    <h3 className="text-2xl font-bold text-[var(--color-secondary)] uppercase tracking-wider">Ordem de Serviço</h3>
-                    <p className="text-sm text-gray-500 font-mono mt-1">Nº {osNumber(activeOS.id)}</p>
+                    <h3 className="text-xl font-bold uppercase tracking-wider text-[var(--color-secondary)] sm:text-2xl">Ordem de Serviço</h3>
+                    <p className="mt-1 font-mono text-sm text-gray-500">Nº {osNumber(activeOS.id)}</p>
                   </div>
                 </div>
 
-                <div className="space-y-4 text-base">
+                <div className="space-y-3 text-sm sm:text-base">
                   <p><span className="font-semibold text-gray-700">Cliente:</span> {activeOS.client_name}</p>
                   <p><span className="font-semibold text-gray-700">Data da Coleta:</span> {formatOsDate(activeOS.collection_date)}</p>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <p><span className="font-semibold text-gray-700">Pesagem:</span> {osFieldValue(activeOS.weight)}</p>
                     <p><span className="font-semibold text-gray-700">Responsável:</span> {osFieldValue(activeOS.responsible)}</p>
                     <p><span className="font-semibold text-gray-700">Qtd. Sacos:</span> {osFieldValue(activeOS.bags_count)}</p>
@@ -331,7 +368,7 @@ function OSMain() {
                   </div>
                 </div>
 
-                <div className="mt-20 text-center">
+                <div className="mt-14 text-center sm:mt-20">
                   <Image
                     src="/assinatura-responsavel.png"
                     alt=""
@@ -339,7 +376,7 @@ function OSMain() {
                     height={204}
                     className="mx-auto -mb-4 h-20 w-auto"
                   />
-                  <div className="w-64 border-t-2 border-black/30 mx-auto mb-2"></div>
+                  <div className="mx-auto mb-2 w-56 border-t-2 border-black/30 sm:w-64"></div>
                   <p className="font-semibold text-gray-800">
                     {activeOS.signature_text || "Responsável Técnica - ECOLEVA"}
                   </p>
@@ -347,86 +384,103 @@ function OSMain() {
               </div>
             </div>
           ) : (
-            <div className="h-full border-2 border-dashed border-[var(--color-border-dark)] rounded-2xl flex items-center justify-center text-white/30 p-6 text-center">
-              Nenhuma OS selecionada
+            <div className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-[var(--color-border-dark)] p-6 text-center text-white/35 lg:h-full">
+              <FileTextIcon width={36} height={36} className="text-white/20" />
+              <p className="text-sm">Nenhuma OS selecionada</p>
             </div>
           )}
         </div>
       </div>
 
       {/* Histórico */}
-      <div className="bg-[rgba(255,255,255,0.04)] rounded-2xl border border-[var(--color-border-dark)] overflow-hidden print:hidden mt-8">
-        <div className="p-4 border-b border-[var(--color-border-dark)]">
+      <section className={`${cardClass} overflow-hidden print:hidden`}>
+        <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border-dark)] p-4">
           <h3 className="font-semibold">Histórico de OS Geradas</h3>
+          <span className="text-xs text-white/50">{history.length} {history.length === 1 ? "registro" : "registros"}</span>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-black/40 text-[var(--color-text-on-dark)] border-b border-[var(--color-border-dark)]">
-              <tr>
-                <th className="px-6 py-3 font-medium">Nº</th>
-                <th className="px-6 py-3 font-medium">Cliente</th>
-                <th className="px-6 py-3 font-medium">Data</th>
-                <th className="px-6 py-3 font-medium">Contêineres</th>
-                <th className="px-6 py-3 font-medium">Envio</th>
-                <th className="px-6 py-3 font-medium">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--color-border-dark)]">
-              {history.length === 0 ? (
-                <tr><td colSpan={6} className="px-6 py-4 text-center text-white/50">Nenhuma OS encontrada.</td></tr>
-              ) : history.map(os => (
-                <tr key={os.id} className="hover:bg-white/5">
-                  <td className="px-6 py-3">#{osNumber(os.id)}</td>
-                  <td className="px-6 py-3">{os.client_name}</td>
-                  <td className="px-6 py-3">{formatOsDate(os.collection_date)}</td>
-                  <td className="px-6 py-3">{osFieldValue(os.containers_count)}</td>
-                  <td className="px-6 py-3">
-                    <span title={os.sent_to ? `E-mail: ${os.sent_to}` : undefined}>{os.sent_at ? "✉️" : ""}</span>
-                    <span title={os.whatsapp_sent_to ? `WhatsApp: ${os.whatsapp_sent_to}` : undefined}>{os.whatsapp_sent_at ? "🤖" : ""}</span>
-                    {!os.sent_at && !os.whatsapp_sent_at && <span className="text-white/30">—</span>}
+        <div className="data-table-wrap">
+          <table className="data-table text-white/85">
+          <thead className="bg-black/40 text-[var(--color-text-on-dark)]">
+            <tr>
+              <th>Nº</th>
+              <th>Cliente</th>
+              <th>Data</th>
+              <th>Contêineres</th>
+              <th>Envio</th>
+              <th className="text-right">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {history.length === 0 ? (
+              <tr><td colSpan={6} className="data-table-empty py-8 text-center text-sm text-white/50">Nenhuma OS encontrada.</td></tr>
+            ) : history.map(os => {
+              const ativa = activeOS?.id === os.id;
+              return (
+                <tr key={os.id} className={`transition-colors xl:hover:bg-white/5 ${ativa ? "bg-[var(--color-accent-soft)]" : ""}`}>
+                  <td data-label="Nº" className="font-mono text-[var(--color-accent)]">#{osNumber(os.id)}</td>
+                  <td data-label="Cliente" className="font-medium text-white">{os.client_name}</td>
+                  <td data-label="Data" className="whitespace-nowrap">{formatOsDate(os.collection_date)}</td>
+                  <td data-label="Contêineres">{osFieldValue(os.containers_count)}</td>
+                  <td data-label="Envio">
+                    <span className="inline-flex items-center gap-2">
+                      {os.sent_at && (
+                        <span title={os.sent_to ? `E-mail: ${os.sent_to}` : "E-mail"} className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-white/80">
+                          <MailIcon width={14} height={14} />
+                          <span className="sr-only">E-mail enviado</span>
+                        </span>
+                      )}
+                      {os.whatsapp_sent_at && (
+                        <span title={os.whatsapp_sent_to ? `WhatsApp: ${os.whatsapp_sent_to}` : "WhatsApp"} className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[var(--color-accent-soft)] text-[var(--color-accent)]">
+                          <BotIcon width={14} height={14} />
+                          <span className="sr-only">WhatsApp enviado</span>
+                        </span>
+                      )}
+                      {!os.sent_at && !os.whatsapp_sent_at && <span className="text-white/30">—</span>}
+                    </span>
                   </td>
-                  <td className="px-6 py-3">
-                    <button onClick={() => abrirOS(os)} className="text-[var(--color-accent)] hover:underline">Visualizar</button>
+                  <td className="data-table-actions">
+                    <button
+                      type="button"
+                      onClick={() => abrirOS(os)}
+                      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-[var(--color-accent)] transition-colors hover:bg-[var(--color-accent-soft)]"
+                    >
+                      Visualizar
+                    </button>
                   </td>
                 </tr>
-              ))}
-            </tbody>
+              );
+            })}
+          </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
       {/* Confirmação de reenvio pelo robô */}
       {reenvio && activeOS && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="os-reenvio-titulo"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 print:hidden"
+        <DashboardModal
+          title={`OS Nº ${osNumber(activeOS.id)} já enviada`}
+          icon={<BotIcon width={18} height={18} />}
+          tone="warning"
+          size="sm"
+          onClose={() => setReenvio(null)}
         >
-          <div className="bg-[var(--color-bg-dark)] border border-[var(--color-border-dark)] rounded-2xl p-6 max-w-md w-full space-y-4">
-            <h2 id="os-reenvio-titulo" className="text-lg font-semibold">
-              OS Nº {osNumber(activeOS.id)} já enviada
-            </h2>
-            <p className="text-sm text-[var(--color-text-on-dark)]">
-              O robô enviou esta OS para {reenvio.sentTo ?? "o cliente"} em {formatOsDateTime(reenvio.sentAt)}.
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setReenvio(null)}
-                className="px-4 py-2 rounded-full text-sm font-medium bg-white/10 hover:bg-white/20 transition"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={() => handleWhatsAppRobo(true)}
-                disabled={sending !== null}
-                className="px-4 py-2 rounded-full text-sm font-semibold bg-[var(--color-accent)] text-[var(--color-bg-dark)] hover:opacity-90 transition disabled:opacity-50"
-              >
-                {sending === "whatsapp" ? "Enviando…" : "Enviar novamente"}
-              </button>
-            </div>
-          </div>
-        </div>
+          <p className="text-sm text-[var(--color-text-on-dark)]">
+            O robô enviou esta OS para {reenvio.sentTo ?? "o cliente"} em {formatOsDateTime(reenvio.sentAt)}.
+          </p>
+          <ModalActions>
+            <button type="button" onClick={() => setReenvio(null)} className={secondaryButton}>
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => handleWhatsAppRobo(true)}
+              disabled={sending !== null}
+              className="inline-flex items-center justify-center rounded-full bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-[var(--color-bg-dark)] transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {sending === "whatsapp" ? "Enviando…" : "Enviar novamente"}
+            </button>
+          </ModalActions>
+        </DashboardModal>
       )}
 
       {/* Estilos para impressão */}
@@ -434,7 +488,7 @@ function OSMain() {
         @media print {
           body * { visibility: hidden; }
           #os-print-area, #os-print-area * { visibility: visible; }
-          #os-print-area { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none; }
+          #os-print-area { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none; border-radius: 0; }
         }
       `}} />
     </div>
