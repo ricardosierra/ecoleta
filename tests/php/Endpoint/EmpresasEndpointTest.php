@@ -152,7 +152,7 @@ final class EmpresasEndpointTest extends TestCase
 
         $json = $res->json();
         self::assertMatchesRegularExpression(
-            '#^/uploads/logos/cafe-cia-[0-9a-f]{6}\.png$#',
+            '#^/uploads/logos/cafe-cia-[0-9a-f]{6}\.' . preg_quote($this->extensaoDeSaida(), '#') . '$#',
             (string) ($json['logo_url'] ?? '')
         );
 
@@ -167,7 +167,13 @@ final class EmpresasEndpointTest extends TestCase
         self::assertNotFalse($info);
         self::assertLessThanOrEqual(600, $info[0]);
         self::assertLessThanOrEqual(360, $info[1]);
-        self::assertSame(IMAGETYPE_PNG, $info[2]);
+        self::assertSame($this->extensaoDeSaida() === 'webp' ? IMAGETYPE_WEBP : IMAGETYPE_PNG, $info[2]);
+    }
+
+    /** O formato que o endpoint grava depende do GD deste PHP, como no lib. */
+    private function extensaoDeSaida(): string
+    {
+        return function_exists('imagewebp') ? 'webp' : 'png';
     }
 
     public function testCreateMultipartSemCabecalhoContentTypeAindaLeOFormulario(): void
@@ -299,6 +305,67 @@ final class EmpresasEndpointTest extends TestCase
         self::assertSame('Depois', $row['name']);
         self::assertSame('/logos/depois.png', $row['logo_url']);
         self::assertSame(0, (int) $row['is_active']);
+    }
+
+    public function testUpdateComNovaImagemApagaAAnteriorDeUploads(): void
+    {
+        $antiga = $this->uploadsDir . '/antiga-abc123.png';
+        copy($this->criaPngTemporario(300, 120), $antiga);
+        $id = $this->seedEmpresa('Troca', '/uploads/logos/antiga-abc123.png');
+        $envio = $this->criaPngTemporario(300, 120);
+
+        $res = Endpoint::call('site/empresas.php', [
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'post' => ['action' => 'update', 'id' => (string) $id, 'name' => 'Troca'],
+            'files' => [
+                'logo' => [
+                    'name' => 'nova.png',
+                    'type' => 'image/png',
+                    'tmp_name' => $envio,
+                    'error' => UPLOAD_ERR_OK,
+                    'size' => filesize($envio),
+                ],
+            ],
+            'env' => ['ECOLETA_UPLOADS_DIR' => $this->uploadsDir],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(200, $res->status, $res->body);
+
+        $novaUrl = (string) ($res->json()['logo_url'] ?? '');
+        self::assertNotSame('/uploads/logos/antiga-abc123.png', $novaUrl);
+        self::assertFileExists($this->uploadsDir . '/' . basename($novaUrl));
+        // Sem isto o diretório de uploads só cresce: nome com hash nunca volta.
+        self::assertFileDoesNotExist($antiga);
+    }
+
+    public function testUpdateNaoApagaImagemQueOutraEmpresaAindaUsa(): void
+    {
+        $compartilhada = $this->uploadsDir . '/compartilhada-abc123.png';
+        copy($this->criaPngTemporario(300, 120), $compartilhada);
+        $id = $this->seedEmpresa('Primeira', '/uploads/logos/compartilhada-abc123.png');
+        $this->seedEmpresa('Segunda', '/uploads/logos/compartilhada-abc123.png');
+        $envio = $this->criaPngTemporario(300, 120);
+
+        $res = Endpoint::call('site/empresas.php', [
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'post' => ['action' => 'update', 'id' => (string) $id, 'name' => 'Primeira'],
+            'files' => [
+                'logo' => [
+                    'name' => 'nova.png',
+                    'type' => 'image/png',
+                    'tmp_name' => $envio,
+                    'error' => UPLOAD_ERR_OK,
+                    'size' => filesize($envio),
+                ],
+            ],
+            'env' => ['ECOLETA_UPLOADS_DIR' => $this->uploadsDir],
+        ]);
+
+        self::assertSame(200, $res->status, $res->body);
+        self::assertFileExists($compartilhada);
     }
 
     public function testUpdateRejectsDuplicateName(): void

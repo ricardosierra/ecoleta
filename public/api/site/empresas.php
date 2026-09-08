@@ -125,7 +125,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
-        // Keep the old file: another company can share the same logo URL.
+        // Trocar a imagem deixava a anterior para sempre em uploads/logos/, e
+        // nome com hash nunca é reaproveitado: sem isto o diretório só cresce.
+        // A conferência antes de apagar existe porque logo_url também aceita
+        // caminho digitado à mão, que duas empresas podem compartilhar.
+        if ($existing && $hasFile) {
+            $anterior = (string) ($existing['logo_url'] ?? '');
+            if ($anterior !== $logoUrl && str_starts_with($anterior, ECOLETA_LOGO_PUBLIC_PREFIX)) {
+                $emUso = $db->prepare('SELECT 1 FROM site_clients WHERE logo_url = ? LIMIT 1');
+                $emUso->execute([$anterior]);
+                if (!$emUso->fetch()) {
+                    ecoletaLogoDeleteByUrl($anterior);
+                }
+            }
+        }
+
         logActivity(
             $db,
             null,

@@ -5,7 +5,7 @@ declare(strict_types=1);
  * Upload e tratamento das logos de empresas parceiras.
  *
  * O arquivo enviado nunca é movido para o webroot como veio: a imagem é
- * decodificada pelo GD, tratada e re-encodada em um PNG novo. O tratamento:
+ * decodificada pelo GD, tratada e re-encodada do zero. O tratamento:
  *
  *  1. tudo vira truecolor com canal alfa — inclusive PNG de paleta e PNG RGB
  *     com cor transparente (tRNS), que o GD reamostra como fundo preto sólido
@@ -14,9 +14,15 @@ declare(strict_types=1);
  *     cantos são brancos (fundo colorido de propósito fica como está);
  *  3. o resultado é reduzido (nunca ampliado) para caber em 600×360.
  *
+ * A saída é WebP, que nas imagens reais deste repositório sai de 3 a 6 vezes
+ * menor que o PNG equivalente — a logo da Heineken cai de 20,7 KB para 5,3 KB.
+ * Como o site é export estático, o next/image roda `unoptimized`: não existe
+ * nenhuma camada depois desta para reduzir a imagem, o peso que sair daqui é o
+ * peso que o visitante baixa. Servidor sem WebP no GD volta a gravar PNG.
+ *
  * Isso normaliza o formato, descarta metadados e elimina qualquer payload
- * embutido no arquivo original. Os PNGs finais moram em uploads/logos/ dentro
- * do webroot — fora de out/, que é o que o deploy FTP sobrescreve, então
+ * embutido no arquivo original. Os arquivos finais moram em uploads/logos/
+ * dentro do webroot — fora de out/, que é o que o deploy FTP sobrescreve, então
  * sobrevivem a qualquer publicação.
  */
 
@@ -24,6 +30,13 @@ const ECOLETA_LOGO_MAX_BYTES = 4 * 1024 * 1024;
 const ECOLETA_LOGO_MAX_WIDTH = 600;
 const ECOLETA_LOGO_MAX_HEIGHT = 360;
 const ECOLETA_LOGO_PUBLIC_PREFIX = '/uploads/logos/';
+
+/**
+ * Qualidade do WebP. 90 mantém borda de letra e de traço sem franja visível e
+ * ainda fica bem abaixo do PNG; 82 economiza pouco mais e já suja contorno de
+ * logo vetorial, que é o caso mais comum aqui.
+ */
+const ECOLETA_LOGO_WEBP_QUALITY = 90;
 
 /** Lado máximo antes da varredura de margens — limita o custo pixel a pixel. */
 const ECOLETA_LOGO_SCAN_MAX_SIDE = 1200;
@@ -53,6 +66,16 @@ function ecoletaLogoUploadsDir(): string
 function ecoletaLogoServerSupportsImages(): bool
 {
     return function_exists('imagecreatetruecolor') && function_exists('imagepng');
+}
+
+/**
+ * Extensão do arquivo gravado: 'webp' quando o GD deste servidor sabe escrever
+ * WebP, 'png' quando não sabe. É o único ponto que decide o formato — quem
+ * apaga (ecoletaLogoDeleteByUrl) trabalha por basename e não se importa.
+ */
+function ecoletaLogoOutputExtension(): string
+{
+    return function_exists('imagewebp') ? 'webp' : 'png';
 }
 
 /**
@@ -332,8 +355,8 @@ function ecoletaLogoCrop(GdImage $src, array $box): GdImage
 }
 
 /**
- * Decodifica, trata (alfa → aparar margens → caber em 600×360) e grava o PNG
- * em $destDir com nome derivado da empresa.
+ * Decodifica, trata (alfa → aparar margens → caber em 600×360) e grava em
+ * $destDir, com nome derivado da empresa e no formato de ecoletaLogoOutputExtension().
  *
  * @return array{ok: true, filename: string}|array{ok: false, error: string}
  */
@@ -384,12 +407,16 @@ function ecoletaLogoProcess(string $tmpPath, string $destDir, string $companyNam
         return ['ok' => false, 'error' => 'O servidor não tem permissão de escrita em uploads/logos.'];
     }
 
-    $filename = ecoletaLogoSlug($companyName) . '-' . bin2hex(random_bytes(3)) . '.png';
-    $saved = @imagepng($dst, $destDir . '/' . $filename, 9);
+    $extension = ecoletaLogoOutputExtension();
+    $filename = ecoletaLogoSlug($companyName) . '-' . bin2hex(random_bytes(3)) . '.' . $extension;
+    $path = $destDir . '/' . $filename;
+    $saved = $extension === 'webp'
+        ? @imagewebp($dst, $path, ECOLETA_LOGO_WEBP_QUALITY)
+        : @imagepng($dst, $path, 9);
     imagedestroy($dst);
 
     if (!$saved) {
-        error_log("logo_lib: imagepng falhou em {$destDir}/{$filename}.");
+        error_log("logo_lib: não consegui gravar {$path} como {$extension}.");
 
         return ['ok' => false, 'error' => 'Não consegui gravar a imagem no servidor.'];
     }

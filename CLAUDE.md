@@ -146,12 +146,24 @@ O tratamento tem dois lados, e eles fazem coisas diferentes:
   enquadra a logo numa moldura 5:2 — a mesma proporção da caixa do carrossel —
   com zoom e arrasto. O que sai é um PNG do recorte. A geometria mora em
   `logo-crop.ts`, sem DOM, que é a parte testável.
-- **Servidor** (`public/api/site/logo_lib.php`): re-encoda como PNG novo,
-  converte para alfa de verdade (PNG de paleta e PNG com `tRNS` viram fundo
-  preto sólido se ninguém converter antes de reamostrar), apara margens
-  transparentes ou brancas e limita a 600×360.
+- **Servidor** (`public/api/site/logo_lib.php`): re-encoda do zero, converte
+  para alfa de verdade (PNG de paleta e PNG com `tRNS` viram fundo preto sólido
+  se ninguém converter antes de reamostrar), apara margens transparentes ou
+  brancas e limita a 600×360.
 
 Fundo colorido não é aparado — na Vibra o verde é a marca, não margem.
+
+O formato gravado é **WebP** quando o GD do servidor sabe escrever, PNG quando
+não sabe (`ecoletaLogoOutputExtension()`); nas imagens reais deste repositório
+o WebP sai de 3 a 6 vezes menor. Nada supõe a extensão — `logo_url` guarda o
+caminho inteiro e quem apaga trabalha por basename. Como o site é export
+estático com `next/image` em `unoptimized`, **não existe camada depois desta**:
+o peso que sai do PHP é o peso que o visitante baixa.
+
+Atenção ao ponto em aberto: os dois lados enquadram. O servidor apara margens
+depois do recorte, então uma logo de fundo transparente ou branco chega ao site
+com proporção diferente da que o operador viu na prévia; só o fundo colorido
+preserva o enquadramento 5:2.
 
 Os arquivos vão para `public/uploads/logos/`, **fora de `out/`**, então
 sobrevivem ao deploy. O `.htaccess` de lá bloqueia execução e faz o FTP criar o

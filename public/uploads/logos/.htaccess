@@ -1,5 +1,6 @@
 # Diretório das logos enviadas pelo dashboard (api/site/empresas.php).
-# Só entram PNGs re-encodados pelo GD — nada aqui pode ser executado.
+# Só entram imagens re-encodadas pelo GD (WebP, ou PNG onde o servidor não
+# tem WebP) — nada aqui pode ser executado.
 # O arquivo também faz o deploy por FTP criar o diretório antes do primeiro upload.
 <IfModule mod_authz_core.c>
   <FilesMatch "\.(php|phtml|phar|php[0-9]|cgi|pl|py|sh)$">

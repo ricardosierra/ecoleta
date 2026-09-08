@@ -80,16 +80,32 @@ final class LogoLibTest extends TestCase
         self::assertSame([180, 90], [$info[0], $info[1]]);
     }
 
-    public function testJpegEReencodadoComoPng(): void
+    public function testJpegEReencodadoNoFormatoDeSaidaDoServidor(): void
     {
         $origem = $this->criaJpeg(300, 200);
 
         $res = ecoletaLogoProcess($origem, $this->workDir, 'Empresa JPEG');
 
         self::assertTrue($res['ok']);
-        self::assertStringEndsWith('.png', $res['filename']);
+        // WebP onde o GD sabe escrever, PNG onde não sabe — nos dois casos o
+        // que chega ao disco é um arquivo novo, não o JPEG enviado.
+        $extensao = ecoletaLogoOutputExtension();
+        self::assertStringEndsWith('.' . $extensao, $res['filename']);
         $info = getimagesize($this->workDir . '/' . $res['filename']);
-        self::assertSame(IMAGETYPE_PNG, $info[2]);
+        self::assertSame($extensao === 'webp' ? IMAGETYPE_WEBP : IMAGETYPE_PNG, $info[2]);
+    }
+
+    public function testSaiEmWebpQuandoOServidorSabeEscreverWebp(): void
+    {
+        if (!function_exists('imagewebp')) {
+            self::markTestSkipped('GD deste PHP não escreve WebP');
+        }
+
+        $res = ecoletaLogoProcess($this->criaPng(400, 200), $this->workDir, 'Empresa WebP');
+
+        self::assertTrue($res['ok'], $res['error'] ?? '');
+        self::assertStringEndsWith('.webp', $res['filename']);
+        self::assertSame(IMAGETYPE_WEBP, getimagesize($this->workDir . '/' . $res['filename'])[2]);
     }
 
     public function testNomeDeArquivoSaiDoNomeDaEmpresaSemAcentosNemEspacos(): void
@@ -99,7 +115,10 @@ final class LogoLibTest extends TestCase
         $res = ecoletaLogoProcess($origem, $this->workDir, 'Café & Cia Ltda.');
 
         self::assertTrue($res['ok']);
-        self::assertMatchesRegularExpression('/^cafe-cia-ltda-[0-9a-f]{6}\.png$/', $res['filename']);
+        self::assertMatchesRegularExpression(
+            '/^cafe-cia-ltda-[0-9a-f]{6}\.' . preg_quote(ecoletaLogoOutputExtension(), '/') . '$/',
+            $res['filename']
+        );
     }
 
     public function testArquivoQueNaoEImagemERecusadoNaValidacao(): void
@@ -143,6 +162,17 @@ final class LogoLibTest extends TestCase
         imagedestroy($img);
 
         return $path;
+    }
+
+    /** Abre o arquivo gravado sem supor o formato — pode ser WebP ou PNG. */
+    private function abreSaida(array $res): GdImage
+    {
+        $conteudo = file_get_contents($this->workDir . '/' . $res['filename']);
+        self::assertNotFalse($conteudo);
+        $img = imagecreatefromstring($conteudo);
+        self::assertInstanceOf(GdImage::class, $img);
+
+        return $img;
     }
 
     private function dimensoes(array $res): array
@@ -223,8 +253,8 @@ final class LogoLibTest extends TestCase
 
         self::assertSame([50, 20], $this->dimensoes($res));
 
-        // O PNG final tem alfa de verdade: canto transparente, miolo opaco.
-        $saida = imagecreatefrompng($this->workDir . '/' . $res['filename']);
+        // A imagem final tem alfa de verdade: canto transparente, miolo opaco.
+        $saida = $this->abreSaida($res);
         self::assertTrue(imageistruecolor($saida));
         self::assertSame(0, (imagecolorat($saida, 25, 10) >> 24) & 0x7F);
     }
@@ -251,7 +281,7 @@ final class LogoLibTest extends TestCase
         $res = ecoletaLogoProcess($path, $this->workDir, 'tRNS');
 
         self::assertSame([50, 20], $this->dimensoes($res));
-        $saida = imagecreatefrompng($this->workDir . '/' . $res['filename']);
+        $saida = $this->abreSaida($res);
         self::assertSame(0, (imagecolorat($saida, 25, 10) >> 24) & 0x7F);
     }
 
