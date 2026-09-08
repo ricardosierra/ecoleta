@@ -127,6 +127,134 @@ final class LogoLibTest extends TestCase
         self::assertSame('Imagem muito grande — o limite é 4 MB.', $erro);
     }
 
+    /** Canvas truecolor com alfa, todo transparente, com um retângulo opaco. */
+    private function criaPngComRetangulo(int $width, int $height, ?array $bg, int $x, int $y, int $w, int $h): string
+    {
+        $img = imagecreatetruecolor($width, $height);
+        imagealphablending($img, false);
+        imagesavealpha($img, true);
+        $fundo = $bg === null
+            ? imagecolorallocatealpha($img, 0, 0, 0, 127)
+            : imagecolorallocate($img, $bg[0], $bg[1], $bg[2]);
+        imagefill($img, 0, 0, (int) $fundo);
+        imagefilledrectangle($img, $x, $y, $x + $w - 1, $y + $h - 1, (int) imagecolorallocate($img, 200, 30, 30));
+        $path = $this->workDir . '/retangulo.png';
+        imagepng($img, $path);
+        imagedestroy($img);
+
+        return $path;
+    }
+
+    private function dimensoes(array $res): array
+    {
+        self::assertTrue($res['ok'], $res['error'] ?? '');
+        $info = getimagesize($this->workDir . '/' . $res['filename']);
+        self::assertNotFalse($info);
+
+        return [$info[0], $info[1]];
+    }
+
+    public function testMargensTransparentesSaoAparadas(): void
+    {
+        $origem = $this->criaPngComRetangulo(400, 300, null, 50, 100, 100, 50);
+
+        $res = ecoletaLogoProcess($origem, $this->workDir, 'Transparente');
+
+        self::assertSame([100, 50], $this->dimensoes($res));
+    }
+
+    public function testMargensBrancasSaoAparadas(): void
+    {
+        $origem = $this->criaPngComRetangulo(300, 200, [255, 255, 255], 20, 30, 60, 40);
+
+        $res = ecoletaLogoProcess($origem, $this->workDir, 'Fundo Branco');
+
+        self::assertSame([60, 40], $this->dimensoes($res));
+    }
+
+    public function testFundoQuaseBrancoTambemConta(): void
+    {
+        $origem = $this->criaPngComRetangulo(300, 200, [247, 247, 247], 20, 30, 60, 40);
+
+        $res = ecoletaLogoProcess($origem, $this->workDir, 'Fundo Cinza Claro');
+
+        self::assertSame([60, 40], $this->dimensoes($res));
+    }
+
+    public function testFundoColoridoFicaComoEsta(): void
+    {
+        // Caixa verde é parte da marca (caso Vibra): nada é aparado.
+        $origem = $this->criaPngComRetangulo(300, 200, [96, 229, 50], 20, 30, 60, 40);
+
+        $res = ecoletaLogoProcess($origem, $this->workDir, 'Fundo Verde');
+
+        self::assertSame([300, 200], $this->dimensoes($res));
+    }
+
+    public function testImagemSemConteudoNaoEAparada(): void
+    {
+        // Tudo transparente: nada a recortar, sai inteira em vez de dar erro.
+        $img = imagecreatetruecolor(200, 100);
+        imagealphablending($img, false);
+        imagesavealpha($img, true);
+        imagefill($img, 0, 0, (int) imagecolorallocatealpha($img, 0, 0, 0, 127));
+        $path = $this->workDir . '/vazia.png';
+        imagepng($img, $path);
+        imagedestroy($img);
+
+        $res = ecoletaLogoProcess($path, $this->workDir, 'Vazia');
+
+        self::assertSame([200, 100], $this->dimensoes($res));
+    }
+
+    public function testPngDePaletaComCorTransparenteViraAlfa(): void
+    {
+        // Magenta é a cor transparente da paleta. Sem converter para alfa, o
+        // GD reamostraria como magenta sólido — e nada seria aparado.
+        $img = imagecreate(200, 100);
+        $fundo = imagecolorallocate($img, 255, 0, 255);
+        imagecolortransparent($img, (int) $fundo);
+        imagefilledrectangle($img, 75, 40, 124, 59, (int) imagecolorallocate($img, 20, 20, 20));
+        $path = $this->workDir . '/paleta.png';
+        imagepng($img, $path);
+        imagedestroy($img);
+
+        $res = ecoletaLogoProcess($path, $this->workDir, 'Paleta');
+
+        self::assertSame([50, 20], $this->dimensoes($res));
+
+        // O PNG final tem alfa de verdade: canto transparente, miolo opaco.
+        $saida = imagecreatefrompng($this->workDir . '/' . $res['filename']);
+        self::assertTrue(imageistruecolor($saida));
+        self::assertSame(0, (imagecolorat($saida, 25, 10) >> 24) & 0x7F);
+    }
+
+    public function testPngRgbComCorTransparenteViraAlfa(): void
+    {
+        // PNG RGB com chunk tRNS (fundo preto marcado como transparente): é o
+        // formato das logos versionadas do site. imagecopyresampled ignora a
+        // marca em imagem truecolor e devolveria um bloco preto.
+        $img = imagecreatetruecolor(200, 100);
+        $preto = imagecolorallocate($img, 0, 0, 0);
+        imagefill($img, 0, 0, (int) $preto);
+        imagecolortransparent($img, (int) $preto);
+        imagefilledrectangle($img, 75, 40, 124, 59, (int) imagecolorallocate($img, 200, 30, 30));
+        $path = $this->workDir . '/trns.png';
+        imagepng($img, $path);
+        imagedestroy($img);
+
+        $recarregada = imagecreatefrompng($path);
+        if (imagecolortransparent($recarregada) < 0) {
+            self::markTestSkipped('este GD não preserva tRNS em PNG truecolor');
+        }
+
+        $res = ecoletaLogoProcess($path, $this->workDir, 'tRNS');
+
+        self::assertSame([50, 20], $this->dimensoes($res));
+        $saida = imagecreatefrompng($this->workDir . '/' . $res['filename']);
+        self::assertSame(0, (imagecolorat($saida, 25, 10) >> 24) & 0x7F);
+    }
+
     public function testDeleteSoAlcancaArquivosDeDentroDeUploads(): void
     {
         $uploadsDir = $this->workDir . '/uploads';

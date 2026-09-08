@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import EmpresasPage from "@/app/dashboard/configuracoes/empresas/page";
 
 const EMPRESAS = "/api/site/empresas.php";
@@ -63,12 +63,54 @@ function instalaFetch(postBody: unknown = { ok: true }, postStatus = 200) {
   };
 }
 
+const descritoresOriginais = {
+  src: Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, "src"),
+  naturalWidth: Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, "naturalWidth"),
+  naturalHeight: Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, "naturalHeight"),
+};
+
+/**
+ * O jsdom não decodifica imagem nem desenha canvas. Para o editor de recorte:
+ * setar `src` dispara "load" com um tamanho fixo, e o canvas devolve um
+ * contexto vazio e um Blob PNG reconhecível.
+ */
+function simulaImagemECanvas() {
+  Object.defineProperty(HTMLImageElement.prototype, "src", {
+    configurable: true,
+    get() {
+      return this.getAttribute("src") ?? "";
+    },
+    set(value: string) {
+      this.setAttribute("src", value);
+      setTimeout(() => this.dispatchEvent(new Event("load")), 0);
+    },
+  });
+  Object.defineProperty(HTMLImageElement.prototype, "naturalWidth", { configurable: true, get: () => 800 });
+  Object.defineProperty(HTMLImageElement.prototype, "naturalHeight", { configurable: true, get: () => 500 });
+
+  const drawImage = vi.fn();
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(
+    () => ({ drawImage, imageSmoothingEnabled: true, imageSmoothingQuality: "high" }) as unknown as CanvasRenderingContext2D
+  );
+  vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(function (callback) {
+    callback(new Blob(["png-recortado"], { type: "image/png" }));
+  });
+
+  return { drawImage };
+}
+
 beforeEach(() => {
   // jsdom não implementa object URLs; o preview da logo depende dos dois.
   vi.stubGlobal("URL", Object.assign(URL, {
     createObjectURL: vi.fn(() => "blob:mock-preview"),
     revokeObjectURL: vi.fn(),
   }));
+});
+
+afterEach(() => {
+  for (const [nome, descritor] of Object.entries(descritoresOriginais)) {
+    if (descritor) Object.defineProperty(HTMLImageElement.prototype, nome, descritor);
+  }
 });
 
 describe("/dashboard/configuracoes/empresas", () => {
@@ -107,19 +149,28 @@ describe("/dashboard/configuracoes/empresas", () => {
     expect(api.gets()).toHaveLength(1);
   });
 
-  it("cadastra com upload mandando multipart com o arquivo", async () => {
+  it("abre o editor de recorte ao escolher a imagem e envia o PNG recortado", async () => {
+    const { drawImage } = simulaImagemECanvas();
     const api = instalaFetch({ ok: true, id: 3, logo_url: "/uploads/logos/vibra-abc123.png" });
     render(<EmpresasPage />);
     await screen.findByText("Heineken");
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "+ Nova Empresa" }));
+    await user.click(screen.getByRole("button", { name: "Nova Empresa" }));
     await user.type(screen.getByLabelText(/Nome da Empresa/), "Vibra");
 
     const arquivo = new File(["png-fake"], "vibra.png", { type: "image/png" });
     await user.upload(screen.getByLabelText(/Imagem da Logo/), arquivo);
 
+    // O editor abre sozinho; "Aplicar" só libera com a imagem carregada.
+    const dialogo = await screen.findByRole("dialog", { name: "Ajustar logo" });
+    const aplicar = within(dialogo).getByRole("button", { name: "Aplicar" });
+    await waitFor(() => expect(aplicar).toBeEnabled());
+    await user.click(aplicar);
+
     expect(await screen.findByAltText("Prévia da logo")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(drawImage).toHaveBeenCalledTimes(1);
 
     await user.click(screen.getByRole("button", { name: "Salvar Empresa" }));
 
@@ -132,7 +183,63 @@ describe("/dashboard/configuracoes/empresas", () => {
     const form = post.body as FormData;
     expect(form.get("action")).toBe("create");
     expect(form.get("name")).toBe("Vibra");
-    expect(form.get("logo")).toBeInstanceOf(File);
+
+    // O que vai para o servidor é o PNG que saiu do canvas, não o arquivo original.
+    const logo = form.get("logo") as File;
+    expect(logo).toBeInstanceOf(File);
+    expect(logo.name).toBe("logo.png");
+    expect(logo.type).toBe("image/png");
+    // No jsdom o File não tem .text() e o Response o converte para string;
+    // FileReader é o caminho que lê o conteúdo de verdade.
+    const conteudo = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.readAsText(logo);
+    });
+    expect(conteudo).toBe("png-recortado");
+  });
+
+  it("cancelar o recorte descarta o arquivo escolhido", async () => {
+    simulaImagemECanvas();
+    const api = instalaFetch();
+    render(<EmpresasPage />);
+    await screen.findByText("Heineken");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Nova Empresa" }));
+    await user.type(screen.getByLabelText(/Nome da Empresa/), "Vibra");
+    await user.upload(screen.getByLabelText(/Imagem da Logo/), new File(["png-fake"], "vibra.png", { type: "image/png" }));
+
+    const dialogo = await screen.findByRole("dialog", { name: "Ajustar logo" });
+    await user.click(within(dialogo).getByRole("button", { name: "Cancelar" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByAltText("Prévia da logo")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Salvar Empresa" }));
+    expect(await screen.findByText("Envie a imagem da logo ou informe um caminho.")).toBeVisible();
+    expect(api.posts()).toHaveLength(0);
+  });
+
+  it("mostra o status HTTP quando o servidor não responde JSON", async () => {
+    const api = instalaFetch();
+    api.fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (url.startsWith(ME)) return Response.json({ ok: true, csrf_token: "a".repeat(64) });
+      if (url.startsWith(EMPRESAS) && method === "GET") return Response.json(listaInicial);
+      return new Response("<html>Internal Server Error</html>", { status: 500 });
+    });
+    render(<EmpresasPage />);
+    await screen.findByText("Heineken");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Nova Empresa" }));
+    await user.type(screen.getByLabelText(/Nome da Empresa/), "Vibra");
+    await user.type(screen.getByLabelText(/Caminho da Logo/), "/logos/vibra.png");
+    await user.click(screen.getByRole("button", { name: "Salvar Empresa" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("HTTP 500");
   });
 
   it("sem arquivo e sem caminho, avisa e não chama a API", async () => {
@@ -141,7 +248,7 @@ describe("/dashboard/configuracoes/empresas", () => {
     await screen.findByText("Heineken");
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "+ Nova Empresa" }));
+    await user.click(screen.getByRole("button", { name: "Nova Empresa" }));
     await user.type(screen.getByLabelText(/Nome da Empresa/), "Sem Logo");
     await user.click(screen.getByRole("button", { name: "Salvar Empresa" }));
 

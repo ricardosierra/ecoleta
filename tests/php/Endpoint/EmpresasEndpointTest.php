@@ -170,6 +170,34 @@ final class EmpresasEndpointTest extends TestCase
         self::assertSame(IMAGETYPE_PNG, $info[2]);
     }
 
+    public function testCreateMultipartSemCabecalhoContentTypeAindaLeOFormulario(): void
+    {
+        // Nem todo SAPI expõe CONTENT_TYPE; com $_POST/$_FILES preenchidos o
+        // corpo era um formulário de qualquer jeito.
+        $envio = $this->criaPngTemporario(300, 120);
+
+        $res = Endpoint::call('site/empresas.php', [
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'post' => ['action' => 'create', 'name' => 'Sem Cabeçalho'],
+            'files' => [
+                'logo' => [
+                    'name' => 'logo.png',
+                    'type' => 'image/png',
+                    'tmp_name' => $envio,
+                    'error' => UPLOAD_ERR_OK,
+                    'size' => filesize($envio),
+                ],
+            ],
+            'server' => ['CONTENT_TYPE' => ''],
+            'env' => ['ECOLETA_UPLOADS_DIR' => $this->uploadsDir],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(200, $res->status, $res->body);
+        self::assertStringStartsWith('/uploads/logos/sem-cabecalho-', (string) ($res->json()['logo_url'] ?? ''));
+    }
+
     public function testCreateMultipartRecusaArquivoQueNaoEImagem(): void
     {
         $falso = $this->uploadsDir . '/falso.png';

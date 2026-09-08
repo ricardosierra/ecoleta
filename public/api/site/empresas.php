@@ -22,9 +22,14 @@ $operatorId = (int) $operator['id'];
 $operatorLogin = (string) $operator['login'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // create com arquivo chega como multipart/form-data ($_POST + $_FILES);
-    // as demais ações seguem no corpo JSON de sempre.
-    $isMultipart = str_starts_with($_SERVER['CONTENT_TYPE'] ?? '', 'multipart/form-data');
+    // create/update com arquivo chega como multipart/form-data ($_POST +
+    // $_FILES); as demais ações seguem no corpo JSON de sempre. A decisão não
+    // depende só do cabeçalho: nem todo SAPI expõe CONTENT_TYPE, e se o PHP já
+    // preencheu $_POST/$_FILES o corpo era um formulário.
+    $contentType = strtolower((string) ($_SERVER['CONTENT_TYPE'] ?? $_SERVER['HTTP_CONTENT_TYPE'] ?? ''));
+    $isMultipart = str_starts_with($contentType, 'multipart/form-data')
+        || $_FILES !== []
+        || ($_POST !== [] && !str_contains($contentType, 'json'));
     $body = $isMultipart
         ? $_POST
         : (json_decode((string) file_get_contents('php://input'), true) ?? []);
@@ -78,7 +83,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
 
-            $processed = ecoletaLogoProcess((string) $file['tmp_name'], ecoletaLogoUploadsDir(), $name);
+            // Qualquer estouro do GD (memória, função ausente) vira JSON com
+            // motivo em vez de página em branco que o navegador não sabe ler.
+            try {
+                $processed = ecoletaLogoProcess((string) $file['tmp_name'], ecoletaLogoUploadsDir(), $name);
+            } catch (Throwable $e) {
+                error_log('empresas.php: falha ao tratar a logo: ' . $e->getMessage());
+                $processed = ['ok' => false, 'error' => 'Não consegui tratar a imagem no servidor. Tente outra imagem ou um PNG menor.'];
+            }
             if (!$processed['ok']) {
                 http_response_code(422);
                 echo json_encode(['error' => $processed['error']]);
