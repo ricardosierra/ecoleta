@@ -66,11 +66,13 @@ components/                Componentes reutilizáveis (16)
   ContactForm · DonutChart · MetricCard
   ProcessSteps · LogoCarousel · DynamicWord · Gallery
   Logo · icons.tsx
+  DashboardModal · LogoCropper          (dashboard)
 
 lib/                       Utilitários e configuração
   site.config.ts           URLs, contatos, navegação (com placeholders)
   contact-schema.ts        Schema Zod do formulário
   os-share.ts              Mensagem de WhatsApp e datas da OS
+  logo-crop.ts             Geometria do recorte de logo (sem DOM)
   whatsapp.ts              Janela de 24h e formatação do painel
   phone.ts                 Normalização de telefone (espelho de phone_lib.php)
   rate-limit.ts            Rate limit em memória (5 req/min/IP)
@@ -119,6 +121,41 @@ Tipografia: **Montserrat** apenas (400/500/600/700). Não introduzir outras font
 - **Botões** sempre via `<Button>` (5 variantes, 3 tamanhos). Mantém o radius pílula consistente.
 - **Eyebrows** (rótulos pequenos acima do título) seguem o utilitário `.eyebrow` ou `<Eyebrow>`. Sempre uppercase com tracking ampliado.
 - **Animações** via `<Reveal>` — degradação progressiva (renderiza visível por padrão, anima só com JS+IO+sem reduced-motion).
+
+### Dashboard: tabelas e diálogos
+
+- **Tabela de dados**: use a classe `.data-table` (definida em `globals.css`) em
+  vez de montar `<table>` com classes ad-hoc, e envolva-a em
+  `.data-table-wrap`. A partir de 1280px ela é uma tabela; abaixo disso cada
+  linha vira um cartão e cada `<td data-label="…">` mostra o cabeçalho que
+  perdeu. O DOM é um só — nada é renderizado duas vezes.
+  O corte é 1280 e não 1024 porque as telas de Configurações gastam 240px com a
+  coluna lateral: em 1024 as colunas Status e Ações saíam da área visível.
+- **Rolagem**: quem rola é o `<main>` do `DashboardGate` (`.dashboard-main`).
+  Nenhuma tela deve criar a própria área rolável com `h-full overflow-y-auto` —
+  duas áreas roláveis aninhadas foi o que fez o scroll parar de responder.
+- **Diálogos** sempre via `<DashboardModal>`: fundo escurecido, Esc fecha,
+  clique fora fecha e foco no painel ao abrir. O anel de foco global não
+  aparece no painel por causa da regra `[tabindex="-1"]:focus-visible`.
+
+### Logo de empresa parceira
+
+O tratamento tem dois lados, e eles fazem coisas diferentes:
+
+- **Cliente** (`components/LogoCropper.tsx` + `lib/logo-crop.ts`): o operador
+  enquadra a logo numa moldura 5:2 — a mesma proporção da caixa do carrossel —
+  com zoom e arrasto. O que sai é um PNG do recorte. A geometria mora em
+  `logo-crop.ts`, sem DOM, que é a parte testável.
+- **Servidor** (`public/api/site/logo_lib.php`): re-encoda como PNG novo,
+  converte para alfa de verdade (PNG de paleta e PNG com `tRNS` viram fundo
+  preto sólido se ninguém converter antes de reamostrar), apara margens
+  transparentes ou brancas e limita a 600×360.
+
+Fundo colorido não é aparado — na Vibra o verde é a marca, não margem.
+
+Os arquivos vão para `public/uploads/logos/`, **fora de `out/`**, então
+sobrevivem ao deploy. O `.htaccess` de lá bloqueia execução e faz o FTP criar o
+diretório antes do primeiro upload.
 
 ### WhatsApp
 
@@ -230,3 +267,10 @@ Conteúdo dinâmico que precisa ser editado no código:
 
 `https://ecolevaeco.com/` (em migração — atualmente `econformidade.com.br`).
 E-mail em migração: `@econformidade` → `@ecolevaeco`.
+
+## Uso restrito de APIs / Modelos GPT (OpenAI)
+
+- As APIs do GPT (OpenAI) devem ser usadas **exclusivamente** para:
+  1. **Geração de imagens** (chamadas/scripts diretos como DALL-E / Image Generation, sem instanciar subagentes ou loops analíticos de chat).
+  2. **Tradução de idiomas e localização**.
+- É **terminantemente proibido** usar APIs ou chamadas do GPT para raciocínio, análise de código, planejamento de tarefas, testes ou orquestração geral. Toda análise e raciocínio são de responsabilidade do próprio ambiente de trabalho/modelo primário.
