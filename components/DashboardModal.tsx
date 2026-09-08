@@ -32,9 +32,22 @@ const sizeClass: Record<NonNullable<DashboardModalProps["size"]>, string> = {
 };
 
 /**
+ * Seletor do que recebe foco por Tab dentro do painel. `[tabindex="-1"]` fica
+ * de fora de propósito: é o próprio painel, que só recebe foco por código.
+ */
+const FOCAVEIS =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
  * Caixa de diálogo do dashboard: fundo escurecido, Esc fecha, clique fora
  * fecha, foco vai para o painel ao abrir. Todo modal das telas administrativas
  * passa por aqui para ter a mesma aparência e o mesmo comportamento.
+ *
+ * `aria-modal="true"` promete que o resto da página está fora de alcance. Para
+ * o leitor de tela isso basta, mas o Tab do teclado não obedece ao atributo:
+ * sem prender o ciclo aqui, quem navega por teclado sai do diálogo para a
+ * página atrás dele e continua "dentro" de um modal que não vê mais. Por isso
+ * o Tab dá a volta no painel, e ao fechar o foco volta para quem abriu.
  */
 export function DashboardModal({
   title,
@@ -57,13 +70,48 @@ export function DashboardModal({
   });
 
   useEffect(() => {
+    const anterior = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCloseRef.current();
+      if (event.key === "Escape") {
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const painel = panelRef.current;
+      if (!painel) return;
+
+      const alvos = Array.from(painel.querySelectorAll<HTMLElement>(FOCAVEIS));
+      if (alvos.length === 0) {
+        event.preventDefault();
+        painel.focus();
+        return;
+      }
+
+      const primeiro = alvos[0];
+      const ultimo = alvos[alvos.length - 1];
+      const atual = document.activeElement;
+
+      // Vindo do próprio painel, Shift+Tab volta para o fim em vez de sair.
+      if (event.shiftKey && (atual === primeiro || atual === painel)) {
+        event.preventDefault();
+        ultimo.focus();
+      } else if (!event.shiftKey && atual === ultimo) {
+        event.preventDefault();
+        primeiro.focus();
+      }
     };
+
     document.addEventListener("keydown", onKey);
     panelRef.current?.focus();
 
-    return () => document.removeEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      // Quem abriu o diálogo recebe o foco de volta; se saiu do DOM enquanto
+      // o modal estava aberto, focus() não faz nada e o navegador decide.
+      anterior?.focus();
+    };
   }, []);
 
   // O painel recebe foco ao abrir só para o Esc e o teclado terem um ponto de

@@ -223,7 +223,10 @@ export function LogoCropper({ file, onCancel, onApply }: LogoCropperProps) {
     >
       <div
         ref={measureFrame}
-        role="img"
+        // Não é `role="img"`: o elemento recebe foco e responde a arraste,
+        // setas e zoom. Anunciar como imagem estática mente sobre o que dá
+        // para fazer aqui — group descreve um contêiner operável.
+        role="group"
         aria-label="Área de recorte da logo"
         tabIndex={0}
         onPointerDown={onPointerDown}
