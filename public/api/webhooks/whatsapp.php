@@ -26,6 +26,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../whatsapp_store.php';
+require_once __DIR__ . '/../whatsapp/bot.php';
 
 /** Resposta curta e encerramento. A Meta não lê o corpo, só o status. */
 function waWebhookRespond(int $status, string $body = ''): void
@@ -197,6 +198,9 @@ foreach ($evento['entry'] as $entrada) {
 
                 if ($gravada !== null) {
                     $recebidas++;
+                    
+                    // Auto-resposta do QR Code caso seja uma mensagem recebida
+                    waAutoReplyWithPix($db, $from, (string)waExtractBody($mensagem));
                 }
             } catch (\Throwable $e) {
                 // Uma mensagem problemática não pode derrubar as outras do lote.

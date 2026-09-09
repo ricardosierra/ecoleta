@@ -237,3 +237,35 @@ function waExtractSentMessageId(array $response): ?string
 
     return is_string($id) && $id !== '' ? $id : null;
 }
+
+/**
+ * Faz upload de mídia para a API do WhatsApp.
+ * Retorna o ID da mídia para ser usado no envio.
+ */
+function waUploadMedia(string $filePath, string $mimeType): string
+{
+    $phoneId = apiSecret('WHATSAPP_PHONE_ID');
+    $token = apiSecret('WHATSAPP_ACCESS_TOKEN');
+
+    if ($phoneId === '' || $token === '') {
+        throw new RuntimeException('WhatsApp não configurado (Phone ID ou Token).');
+    }
+
+    $ch = curl_init("https://graph.facebook.com/v20.0/$phoneId/media");
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, [
+        'file' => new CURLFile($filePath, $mimeType, basename($filePath)),
+        'messaging_product' => 'whatsapp'
+    ]);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ["Authorization: Bearer $token"]);
+
+    $response = curl_exec($ch);
+    $statusCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    if ($statusCode !== 200) {
+        throw new RuntimeException('Falha ao subir mídia: ' . $response);
+    }
+    return json_decode($response, true)['id'] ?? '';
+}
