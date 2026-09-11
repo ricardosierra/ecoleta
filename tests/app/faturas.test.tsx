@@ -31,4 +31,15 @@ describe("Faturas", () => {
     await user.click(await screen.findByRole("button", { name: "Tentar envios pendentes" }));
     expect(await screen.findByRole("status")).toHaveTextContent("Fatura registrada. Há falha no envio: Template pendente.");
   });
+  it("cancela a fatura pendente com confirmação e envia action cancel", async () => {
+    const posts = mockApi();
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<FaturasPage />);
+    const cancelBtn = await screen.findByRole("button", { name: "Cancelar" });
+    await user.click(cancelBtn);
+    expect(confirmSpy).toHaveBeenCalled();
+    await waitFor(() => expect(posts).toEqual([{ action: "cancel", id: 1 }]));
+    confirmSpy.mockRestore();
+  });
 });

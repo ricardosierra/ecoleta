@@ -40,6 +40,8 @@ function asaasRequest(string $endpoint, string $method = 'GET', array $data = []
     if ($method === 'POST') {
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    } elseif ($method === 'DELETE') {
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
     }
     
     $response = curl_exec($ch);
@@ -110,4 +112,9 @@ function asaasGetPixQrCode(string $paymentId): array
         'payload' => $response['payload'],
         'encodedImage' => $response['encodedImage']
     ];
+}
+
+function asaasDeletePayment(string $paymentId): array
+{
+    return asaasRequest('/payments/' . rawurlencode($paymentId), 'DELETE');
 }

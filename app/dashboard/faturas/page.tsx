@@ -41,14 +41,23 @@ function FaturasMain() {
     try {
       const res = await apiPostJson("/api/invoices/index.php", body);
       const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error || "Não foi possível gerar a fatura.");
-      const problems = Object.values(data.delivery?.errors ?? {}).join(" ");
-      setFeedback(problems ? `Fatura registrada. Há falha no envio: ${problems}` : "Fatura registrada e notificações processadas.");
+      if (!res.ok || !data.ok) throw new Error(data.error || "Não foi possível processar a fatura.");
+      if (body.action === "cancel") {
+        setFeedback(data.message || "Fatura cancelada com sucesso.");
+      } else {
+        const problems = Object.values(data.delivery?.errors ?? {}).join(" ");
+        setFeedback(problems ? `Fatura registrada. Há falha no envio: ${problems}` : "Fatura registrada e notificações processadas.");
+      }
       const list = await fetch("/api/invoices/index.php");
       const result = await list.json();
       if (list.ok && result.ok) setInvoices(result.invoices);
     } catch (e) { setFeedback(e instanceof Error ? e.message : "Erro de conexão."); }
     finally { setBusy(false); }
+  }
+
+  async function handleCancel(id: number) {
+    if (!window.confirm("Deseja realmente cancelar esta fatura? A cobrança será cancelada no Asaas.")) return;
+    await submit({ action: "cancel", id });
   }
 
   useEffect(() => {
@@ -86,7 +95,7 @@ function FaturasMain() {
             {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </label>
-        <label>Valor (R$)<input required type="number" min="5" step="0.01" value={value} onChange={e => setValue(e.target.value)} className="block mt-2 w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg p-2" /></label>
+        <label>Valor (R$)<input required type="number" min="5" step="0.01" value={value} onChange={e => setValue(e.target.value)} onWheel={e => e.currentTarget.blur()} className="block mt-2 w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg p-2" /></label>
         <label>Vencimento<input required type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="block mt-2 w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg p-2" /></label>
         <p className="sm:col-span-3 text-sm text-[var(--color-text-on-dark)]">Gera a cobrança no Asaas e envia por e-mail e WhatsApp conforme o cadastro. Uma fatura já existente para o mesmo cliente e vencimento é reutilizada.</p>
         <button disabled={busy} className="rounded-full bg-[var(--color-accent)] text-[var(--color-bg-dark)] px-5 py-2 font-semibold">{busy ? "Processando..." : "Gerar e enviar fatura"}</button>
@@ -117,13 +126,23 @@ function FaturasMain() {
                   <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
                     inv.status === 'RECEIVED' ? 'bg-green-500/20 text-green-400' :
                     inv.status === 'OVERDUE' ? 'bg-red-500/20 text-red-400' :
+                    inv.status === 'DELETED' ? 'bg-zinc-500/20 text-zinc-400' :
                     'bg-yellow-500/20 text-yellow-400'
                   }`}>
                     {{ RECEIVED: 'PAGO', CONFIRMED: 'CONFIRMADO', OVERDUE: 'VENCIDA', PENDING: 'PENDENTE', DELETED: 'CANCELADA', REFUNDED: 'ESTORNADA', CHARGEBACK_REQUESTED: 'CONTESTADA' }[inv.status] ?? inv.status}
                   </span>
                 </td>
                 <td className="px-6 py-4 text-right">
-                  {['PENDING', 'OVERDUE'].includes(inv.status) && <button disabled={busy} onClick={() => void submit({ action: "send", id: inv.id })} className="mr-4 text-xs text-[var(--color-accent)]">Tentar envios pendentes</button>}
+                  {['PENDING', 'OVERDUE'].includes(inv.status) && (
+                    <>
+                      <button disabled={busy} onClick={() => void submit({ action: "send", id: inv.id })} className="mr-4 text-xs text-[var(--color-accent)] hover:underline">
+                        Tentar envios pendentes
+                      </button>
+                      <button disabled={busy} onClick={() => void handleCancel(inv.id)} className="mr-4 text-xs text-red-400 hover:text-red-300 hover:underline">
+                        Cancelar
+                      </button>
+                    </>
+                  )}
                   {inv.invoice_url && (
                     <a href={inv.invoice_url} target="_blank" rel="noreferrer" className="text-[var(--color-accent)] hover:underline text-xs">
                       Ver Fatura

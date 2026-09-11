@@ -315,4 +315,125 @@ final class BillingEndpointsTest extends TestCase
         self::assertSame(500, $res->status, $res->body);
         self::assertStringContainsString('Erro ao atualizar no Asaas: ASAAS_API_KEY não configurada.', (string) ($res->json()['error'] ?? ''));
     }
+
+    public function testConsultaClientePorIdRetornaDadosDoCliente(): void
+    {
+        $clientId = $this->db->seedClient('Cliente Especifico', 350.0, 15, 'active', '5511999999999', null, '12345678901');
+
+        $res = Endpoint::call('clients/index.php', [
+            'method' => 'GET',
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'query' => ['id' => $clientId],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(200, $res->status, $res->body);
+        $json = $res->json();
+        self::assertTrue($json['ok'] ?? false);
+        self::assertSame($clientId, (int) ($json['client']['id'] ?? 0));
+        self::assertSame('Cliente Especifico', $json['client']['name'] ?? '');
+        self::assertSame(350.0, (float) ($json['client']['monthly_value'] ?? 0));
+        self::assertSame(15, (int) ($json['client']['due_day'] ?? 0));
+    }
+
+    public function testConsultaClientePorIdInexistenteRetorna404(): void
+    {
+        $res = Endpoint::call('clients/index.php', [
+            'method' => 'GET',
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'query' => ['id' => 9999],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(404, $res->status, $res->body);
+        self::assertFalse($res->json()['ok'] ?? true);
+    }
+
+    public function testCancelarFaturaRecusaContaComum(): void
+    {
+        $clientId = $this->db->seedClient('Cliente Cancelamento');
+        $invoiceId = $this->db->seedInvoice($clientId, 'pay_test1');
+
+        $res = Endpoint::call('invoices/index.php', [
+            'method' => 'POST',
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoLogada(),
+            'body' => ['action' => 'cancel', 'id' => $invoiceId],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(403, $res->status, $res->body);
+    }
+
+    public function testCancelarFaturaInexistenteRetorna404(): void
+    {
+        $res = Endpoint::call('invoices/index.php', [
+            'method' => 'POST',
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'body' => ['action' => 'cancel', 'id' => 99999],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(404, $res->status, $res->body);
+        self::assertStringContainsString('Fatura não encontrada.', (string) ($res->json()['error'] ?? ''));
+    }
+
+    public function testCancelarFaturaJaPagaRetorna400(): void
+    {
+        $clientId = $this->db->seedClient('Cliente Pago');
+        $invoiceId = $this->db->seedInvoice($clientId, 'pay_pago', 100.0, '2026-10-10', 'RECEIVED');
+
+        $res = Endpoint::call('invoices/index.php', [
+            'method' => 'POST',
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'body' => ['action' => 'cancel', 'id' => $invoiceId],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(400, $res->status, $res->body);
+        self::assertStringContainsString('Não é possível cancelar uma fatura já paga.', (string) ($res->json()['error'] ?? ''));
+    }
+
+    public function testCancelarFaturaPendenteAtualizaStatusParaDeleted(): void
+    {
+        $clientId = $this->db->seedClient('Cliente Cancel');
+        // Invoice sem asaas_payment_id simula fatura sem ID de gateway para teste puro de status
+        $invoiceId = $this->db->seedInvoice($clientId, '', 100.0, '2026-10-10', 'PENDING');
+
+        $res = Endpoint::call('invoices/index.php', [
+            'method' => 'POST',
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'body' => ['action' => 'cancel', 'id' => $invoiceId],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(200, $res->status, $res->body);
+        self::assertTrue($res->json()['ok'] ?? false);
+
+        $row = $this->db->rows('invoices', 'id')[0] ?? [];
+        self::assertSame('DELETED', $row['status'] ?? '');
+    }
+
+    public function testCancelarFaturaComAsaasIdSemChaveRetorna502(): void
+    {
+        $clientId = $this->db->seedClient('Cliente Asaas');
+        $invoiceId = $this->db->seedInvoice($clientId, 'pay_test_chave', 100.0, '2026-10-10', 'PENDING');
+
+        $res = Endpoint::call('invoices/index.php', [
+            'method' => 'POST',
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'body' => ['action' => 'cancel', 'id' => $invoiceId],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(502, $res->status, $res->body);
+        self::assertStringContainsString('ASAAS_API_KEY não configurada.', (string) ($res->json()['error'] ?? ''));
+    }
 }
+

@@ -27,7 +27,7 @@ final class TestDatabase
      * Versão de schema que este espelho reproduz. Precisa acompanhar
      * ECOLETA_SCHEMA_VERSION — SchemaMirrorTest garante isso.
      */
-    public const MIRRORED_VERSION = 15;
+    public const MIRRORED_VERSION = 16;
 
     private string $path;
 
@@ -133,18 +133,25 @@ final class TestDatabase
         ?string $shareToken = null,
         ?string $collectionDate = '2026-09-03',
         ?string $whatsappSentAt = null,
-        ?string $whatsappSentTo = null
+        ?string $whatsappSentTo = null,
+        ?string $collectionAddress = 'Av. das Américas, 500',
+        ?string $approximateTime = '14:30',
+        ?string $materialCollected = 'Óleo vegetal usado'
     ): int {
         $stmt = $this->pdo()->prepare(
             'INSERT INTO service_orders
-                (client_id, weight, collection_date, bags_count, containers_count, responsible,
+                (client_id, collection_address, weight, collection_date, approximate_time,
+                 material_collected, bags_count, containers_count, responsible,
                  share_token, whatsapp_sent_at, whatsapp_sent_to)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         );
         $stmt->execute([
             $clientId,
+            $collectionAddress,
             '150 kg',
             $collectionDate,
+            $approximateTime,
+            $materialCollected,
             12,
             2,
             'Equipe A',
@@ -152,6 +159,23 @@ final class TestDatabase
             $whatsappSentAt,
             $whatsappSentTo,
         ]);
+
+        return (int) $this->pdo()->lastInsertId();
+    }
+
+    public function seedInvoice(
+        int $clientId,
+        string $asaasPaymentId = 'pay_test123',
+        float $value = 100.0,
+        string $dueDate = '2026-10-10',
+        string $status = 'PENDING',
+        ?string $invoiceUrl = 'https://example.com/invoice'
+    ): int {
+        $stmt = $this->pdo()->prepare(
+            'INSERT INTO invoices (client_id, asaas_payment_id, value, due_date, status, invoice_url)
+             VALUES (?, ?, ?, ?, ?, ?)'
+        );
+        $stmt->execute([$clientId, $asaasPaymentId, $value, $dueDate, $status, $invoiceUrl]);
 
         return (int) $this->pdo()->lastInsertId();
     }
@@ -280,12 +304,15 @@ final class TestDatabase
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )');
 
-        // 008_create_service_orders.sql + 014_service_order_share.sql
+        // 008_create_service_orders.sql + 014_service_order_share.sql + 016_add_os_collection_fields.sql
         $pdo->exec('CREATE TABLE service_orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             client_id INTEGER NOT NULL,
+            collection_address TEXT NULL,
             weight TEXT NULL,
             collection_date TEXT NULL,
+            approximate_time TEXT NULL,
+            material_collected TEXT NULL,
             bags_count INTEGER NULL,
             containers_count INTEGER NULL,
             responsible TEXT NULL,

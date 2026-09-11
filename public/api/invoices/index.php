@@ -36,6 +36,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!is_array($body)) apiJsonResponse(400, ['error' => 'Dados inválidos.']);
     $action = $body['action'] ?? 'create';
     try {
+        if ($action === 'cancel') {
+            require_once __DIR__ . '/../asaas_lib.php';
+            $stmt = $db->prepare('SELECT * FROM invoices WHERE id = ?');
+            $stmt->execute([(int) ($body['id'] ?? 0)]);
+            $invoice = $stmt->fetch();
+            if (!$invoice) apiJsonResponse(404, ['error' => 'Fatura não encontrada.']);
+            if ($invoice['status'] === 'DELETED') {
+                apiJsonResponse(200, ['ok' => true, 'message' => 'Fatura já se encontra cancelada.']);
+            }
+            if (in_array($invoice['status'], ['RECEIVED', 'CONFIRMED'], true)) {
+                apiJsonResponse(400, ['error' => 'Não é possível cancelar uma fatura já paga.']);
+            }
+
+            if (!empty($invoice['asaas_payment_id'])) {
+                try {
+                    asaasDeletePayment((string) $invoice['asaas_payment_id']);
+                } catch (Throwable $e) {
+                    $msg = $e->getMessage();
+                    if (stripos($msg, 'não encontrada') === false && stripos($msg, 'removida') === false) {
+                        throw $e;
+                    }
+                }
+            }
+
+            $update = $db->prepare("UPDATE invoices SET status = 'DELETED' WHERE id = ?");
+            $update->execute([$invoice['id']]);
+
+            try {
+                $log = $db->prepare("INSERT INTO activity_logs (action, description, performed_by_login, ip_address, user_agent) VALUES ('invoice_cancelled', ?, ?, ?, ?)");
+                $log->execute([
+                    'Fatura #' . $invoice['id'] . ' (Asaas: ' . $invoice['asaas_payment_id'] . ') cancelada',
+                    $operator['login'] ?? 'admin',
+                    apiClientIp(),
+                    'EcoletaDashboard/1.0'
+                ]);
+            } catch (Throwable $e) {
+                // Log não bloqueia a resposta
+            }
+
+            apiJsonResponse(200, ['ok' => true, 'message' => 'Fatura cancelada com sucesso.']);
+        }
+
         if ($action === 'send') {
             $stmt = $db->prepare('SELECT * FROM invoices WHERE id = ?');
             $stmt->execute([(int) ($body['id'] ?? 0)]);
