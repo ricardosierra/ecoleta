@@ -18,8 +18,11 @@ export type ServiceOrder = {
   client_name: string;
   client_email?: string | null;
   client_whatsapp?: string | null;
+  collection_address?: string | null;
   weight?: string | null;
   collection_date?: string | null;
+  approximate_time?: string | null;
+  material_collected?: string | null;
   bags_count?: string | number | null;
   containers_count?: string | number | null;
   responsible?: string | null;
@@ -90,7 +93,10 @@ export function osShareMessage(os: ServiceOrder): string {
     `*Ordem de Serviço Nº ${osNumber(os.id)}* — Ecoleva`,
     "",
     `Cliente: ${osFieldValue(os.client_name)}`,
+    `Endereço da coleta: ${osFieldValue(os.collection_address)}`,
     `Data da coleta: ${formatOsDate(os.collection_date)}`,
+    `Horário aproximado: ${osFieldValue(os.approximate_time)}`,
+    `Material coletado: ${osFieldValue(os.material_collected)}`,
     `Pesagem: ${osFieldValue(os.weight)}`,
     `Qtd. sacos: ${osFieldValue(os.bags_count)}`,
     `Qtd. contêineres: ${osFieldValue(os.containers_count)}`,
@@ -100,6 +106,8 @@ export function osShareMessage(os: ServiceOrder): string {
   if (os.share_url) {
     linhas.push("", `Abrir e imprimir: ${os.share_url}`);
   }
+
+  linhas.push("", "Caso precise, envie WhatsApp para (21) 99152-9383.");
 
   return linhas.join("\n");
 }

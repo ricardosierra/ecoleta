@@ -26,7 +26,8 @@ $db = getDbConnection();
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $stmt = $db->query('
-        SELECT o.id, o.client_id, o.weight, o.collection_date, o.bags_count, o.containers_count,
+        SELECT o.id, o.client_id, o.collection_address, o.weight, o.collection_date,
+               o.approximate_time, o.material_collected, o.bags_count, o.containers_count,
                o.responsible, o.signature_text, o.share_token, o.sent_at, o.sent_to,
                o.whatsapp_sent_at, o.whatsapp_sent_to, o.created_at,
                c.name AS client_name, c.email AS client_email, c.whatsapp AS client_whatsapp
@@ -58,8 +59,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $clientId = (int) ($body['client_id'] ?? 0);
+    $collectionAddress = trim((string) ($body['collection_address'] ?? ''));
     $weight = trim((string) ($body['weight'] ?? ''));
     $collectionDate = trim((string) ($body['collection_date'] ?? ''));
+    $approximateTime = trim((string) ($body['approximate_time'] ?? ''));
+    $materialCollected = trim((string) ($body['material_collected'] ?? ''));
     $bagsCount = isset($body['bags_count']) && $body['bags_count'] !== '' ? (int) $body['bags_count'] : null;
     $containersCount = isset($body['containers_count']) && $body['containers_count'] !== '' ? (int) $body['containers_count'] : null;
     $responsible = trim((string) ($body['responsible'] ?? ''));
@@ -89,13 +93,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $stmt = $db->prepare('
             INSERT INTO service_orders
-                (client_id, weight, collection_date, bags_count, containers_count, responsible, share_token)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (client_id, collection_address, weight, collection_date, approximate_time,
+                 material_collected, bags_count, containers_count, responsible, share_token)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ');
         $stmt->execute([
             $clientId,
+            $collectionAddress !== '' ? $collectionAddress : null,
             $weight,
             $colDate,
+            $approximateTime !== '' ? $approximateTime : null,
+            $materialCollected !== '' ? $materialCollected : null,
             $bagsCount,
             $containersCount,
             $responsible,

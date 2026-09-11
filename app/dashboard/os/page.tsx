@@ -57,8 +57,11 @@ function OSMain() {
 
   // Form fields
   const [clientId, setClientId] = useState("");
+  const [collectionAddress, setCollectionAddress] = useState("");
   const [weight, setWeight] = useState("");
   const [collectionDate, setCollectionDate] = useState("");
+  const [approximateTime, setApproximateTime] = useState("");
+  const [materialCollected, setMaterialCollected] = useState("");
   const [bagsCount, setBagsCount] = useState("");
   const [containersCount, setContainersCount] = useState("");
   const [responsible, setResponsible] = useState("");
@@ -99,8 +102,11 @@ function OSMain() {
 
     const payload = {
       client_id: parseInt(clientId),
+      collection_address: collectionAddress,
       weight,
       collection_date: collectionDate,
+      approximate_time: approximateTime,
+      material_collected: materialCollected,
       bags_count: bagsCount,
       containers_count: containersCount,
       responsible
@@ -119,8 +125,11 @@ function OSMain() {
         abrirOS(criada);
 
         // Clear form
+        setCollectionAddress("");
         setWeight("");
         setCollectionDate("");
+        setApproximateTime("");
+        setMaterialCollected("");
         setBagsCount("");
         setContainersCount("");
         setResponsible("");
@@ -226,9 +235,18 @@ function OSMain() {
                 {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </label>
+            <label className={labelClass} htmlFor="os-endereco">Endereço da Coleta
+              <input id="os-endereco" value={collectionAddress} onChange={e => setCollectionAddress(e.target.value)} placeholder="Ex: Av. das Américas, 500 - Barra da Tijuca" className={inputClass} />
+            </label>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <label className={labelClass} htmlFor="os-data">Data da Coleta
                 <input id="os-data" type="date" value={collectionDate} onChange={e => setCollectionDate(e.target.value)} className={inputClass} />
+              </label>
+              <label className={labelClass} htmlFor="os-horario">Horário Aproximado
+                <input id="os-horario" value={approximateTime} onChange={e => setApproximateTime(e.target.value)} placeholder="Ex: 10:00 ou Manhã" className={inputClass} />
+              </label>
+              <label className={labelClass} htmlFor="os-material">Material Coletado
+                <input id="os-material" value={materialCollected} onChange={e => setMaterialCollected(e.target.value)} placeholder="Ex: Óleo vegetal usado" className={inputClass} />
               </label>
               <label className={labelClass} htmlFor="os-peso">Pesagem
                 <input id="os-peso" value={weight} onChange={e => setWeight(e.target.value)} placeholder="150 kg" className={inputClass} />
@@ -359,8 +377,11 @@ function OSMain() {
 
                 <div className="space-y-3 text-sm sm:text-base">
                   <p><span className="font-semibold text-gray-700">Cliente:</span> {activeOS.client_name}</p>
-                  <p><span className="font-semibold text-gray-700">Data da Coleta:</span> {formatOsDate(activeOS.collection_date)}</p>
+                  <p><span className="font-semibold text-gray-700">Endereço da Coleta:</span> {osFieldValue(activeOS.collection_address)}</p>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <p><span className="font-semibold text-gray-700">Data da Coleta:</span> {formatOsDate(activeOS.collection_date)}</p>
+                    <p><span className="font-semibold text-gray-700">Horário Aproximado:</span> {osFieldValue(activeOS.approximate_time)}</p>
+                    <p><span className="font-semibold text-gray-700">Material Coletado:</span> {osFieldValue(activeOS.material_collected)}</p>
                     <p><span className="font-semibold text-gray-700">Pesagem:</span> {osFieldValue(activeOS.weight)}</p>
                     <p><span className="font-semibold text-gray-700">Responsável:</span> {osFieldValue(activeOS.responsible)}</p>
                     <p><span className="font-semibold text-gray-700">Qtd. Sacos:</span> {osFieldValue(activeOS.bags_count)}</p>
@@ -379,6 +400,9 @@ function OSMain() {
                   <div className="mx-auto mb-2 w-56 border-t-2 border-black/30 sm:w-64"></div>
                   <p className="font-semibold text-gray-800">
                     {activeOS.signature_text || "Responsável Técnica - ECOLEVA"}
+                  </p>
+                  <p className="mt-8 text-xs text-gray-500">
+                    Caso precise de suporte ou esclarecimentos, envie WhatsApp para <strong>(21) 99152-9383</strong>
                   </p>
                 </div>
               </div>

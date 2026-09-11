@@ -10,6 +10,10 @@
   RewriteCond %{HTTPS} off
   RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
 
+  # Rotas de visualização de Ordem de Serviço (com ou sem .php)
+  RewriteRule ^api/os/view/?$ /api/os/view.php [QSA,L]
+  RewriteRule ^os/view/?$ /api/os/view.php [QSA,L]
+
   # Serve /path/index.html internally for /path (no extra redirect)
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{DOCUMENT_ROOT}%{REQUEST_URI}/index.html -f

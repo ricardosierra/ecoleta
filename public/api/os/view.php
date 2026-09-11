@@ -45,7 +45,9 @@ if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'GET') {
 }
 
 $id = (int) ($_GET['id'] ?? 0);
-$token = (string) ($_GET['t'] ?? '');
+$token = trim((string) ($_GET['t'] ?? ''));
+// Sanitiza o token contra pontuação anexada por clientes de mensagem (ex.: ponto final colado na URL)
+$token = rtrim($token, ".,;:!?)]}\"'");
 
 // Token fora do formato nem chega ao banco.
 if ($id <= 0 || preg_match('/^[0-9a-f]{64}$/', $token) !== 1) {

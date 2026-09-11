@@ -145,8 +145,11 @@ function osPresent(array $row, ?string $baseUrl = null, ?array $whatsappWindow =
         'client_name' => (string) ($row['client_name'] ?? ''),
         'client_email' => $row['client_email'] ?? null,
         'client_whatsapp' => $row['client_whatsapp'] ?? null,
+        'collection_address' => $row['collection_address'] ?? null,
         'weight' => $row['weight'] ?? null,
         'collection_date' => $row['collection_date'] ?? null,
+        'approximate_time' => $row['approximate_time'] ?? null,
+        'material_collected' => $row['material_collected'] ?? null,
         'bags_count' => $row['bags_count'] ?? null,
         'containers_count' => $row['containers_count'] ?? null,
         'responsible' => $row['responsible'] ?? null,
@@ -209,7 +212,10 @@ function osDocumentHtml(array $os, string $baseUrl): string
 {
     $numero = osNumber((int) $os['id']);
     $cliente = osEsc((string) ($os['client_name'] ?? ''));
+    $endereco = osField($os['collection_address'] ?? null);
     $data = osFormatDate(isset($os['collection_date']) ? (string) $os['collection_date'] : null);
+    $horario = osField($os['approximate_time'] ?? null);
+    $material = osField($os['material_collected'] ?? null);
     $peso = osField($os['weight'] ?? null);
     $responsavel = osField($os['responsible'] ?? null);
     $sacos = osField($os['bags_count'] ?? null);
@@ -221,7 +227,10 @@ function osDocumentHtml(array $os, string $baseUrl): string
     $linhas = '';
     $campos = [
         'Cliente' => $cliente,
+        'Endereço da coleta' => $endereco,
         'Data da coleta' => $data,
+        'Horário aproximado' => $horario,
+        'Material coletado' => $material,
         'Pesagem' => $peso,
         'Responsável pela coleta' => $responsavel,
         'Qtd. sacos' => $sacos,
@@ -258,6 +267,14 @@ function osDocumentHtml(array $os, string $baseUrl): string
         <img src="{$rubrica}" alt="" width="220" style="display:block;width:220px;height:auto;margin:0 auto -14px;border:0;">
         <div style="width:280px;margin:0 auto;border-top:1px solid #242424;"></div>
         <div style="font-size:13px;font-weight:600;color:#242424;padding-top:8px;">{$assinatura}</div>
+      </td>
+    </tr>
+  </table>
+
+  <table role="presentation" style="width:100%;border-collapse:collapse;margin-top:40px;border-top:1px solid #ECF5FB;">
+    <tr>
+      <td style="padding-top:16px;text-align:center;font-size:12px;color:#5A5A5A;">
+        Caso precise de suporte ou esclarecimentos, envie mensagem para nosso WhatsApp: <strong>(21) 99152-9383</strong>
       </td>
     </tr>
   </table>
@@ -342,7 +359,10 @@ function osEmailText(array $os, string $shareUrl): string
         'ORDEM DE SERVIÇO Nº ' . osNumber((int) $os['id']),
         '',
         'Cliente: ' . trim((string) ($os['client_name'] ?? '')),
+        'Endereço da coleta: ' . osPlainField($os['collection_address'] ?? null),
         'Data da coleta: ' . osFormatDate(isset($os['collection_date']) ? (string) $os['collection_date'] : null),
+        'Horário aproximado: ' . osPlainField($os['approximate_time'] ?? null),
+        'Material coletado: ' . osPlainField($os['material_collected'] ?? null),
         'Pesagem: ' . osPlainField($os['weight'] ?? null),
         'Responsável pela coleta: ' . osPlainField($os['responsible'] ?? null),
         'Qtd. sacos: ' . osPlainField($os['bags_count'] ?? null),
@@ -371,7 +391,10 @@ function osWhatsAppText(array $os, string $shareUrl): string
         '*Ordem de Serviço Nº ' . osNumber((int) $os['id']) . '* — Ecoleva',
         '',
         'Cliente: ' . osPlainField($os['client_name'] ?? null),
+        'Endereço da coleta: ' . osPlainField($os['collection_address'] ?? null),
         'Data da coleta: ' . osFormatDate(isset($os['collection_date']) ? (string) $os['collection_date'] : null),
+        'Horário aproximado: ' . osPlainField($os['approximate_time'] ?? null),
+        'Material coletado: ' . osPlainField($os['material_collected'] ?? null),
         'Pesagem: ' . osPlainField($os['weight'] ?? null),
         'Qtd. sacos: ' . osPlainField($os['bags_count'] ?? null),
         'Qtd. contêineres: ' . osPlainField($os['containers_count'] ?? null),
@@ -382,6 +405,9 @@ function osWhatsAppText(array $os, string $shareUrl): string
         $linhas[] = '';
         $linhas[] = 'Abrir e imprimir: ' . $shareUrl;
     }
+
+    $linhas[] = '';
+    $linhas[] = 'Caso precise, envie WhatsApp para (21) 99152-9383.';
 
     return implode("\n", $linhas);
 }

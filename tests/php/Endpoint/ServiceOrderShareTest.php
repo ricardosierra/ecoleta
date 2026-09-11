@@ -105,8 +105,11 @@ final class ServiceOrderShareTest extends TestCase
             'session' => $this->sessaoAdmin(),
             'body' => [
                 'client_id' => $this->clientId,
+                'collection_address' => 'Av. das Américas, 500',
                 'weight' => '150 kg',
                 'collection_date' => '2026-09-03',
+                'approximate_time' => '14:30',
+                'material_collected' => 'Óleo vegetal usado',
                 'bags_count' => '12',
                 'containers_count' => '2',
                 'responsible' => 'Equipe A',
@@ -116,12 +119,19 @@ final class ServiceOrderShareTest extends TestCase
         self::assertNull($res->fatal, (string) $res->fatal);
         self::assertSame(200, $res->status, $res->body);
 
-        $token = (string) $this->db->rows('service_orders')[0]['share_token'];
+        $linha = $this->db->rows('service_orders')[0];
+        $token = (string) $linha['share_token'];
         self::assertMatchesRegularExpression('/^[0-9a-f]{64}$/', $token);
+        self::assertSame('Av. das Américas, 500', $linha['collection_address']);
+        self::assertSame('14:30', $linha['approximate_time']);
+        self::assertSame('Óleo vegetal usado', $linha['material_collected']);
 
         $criada = $res->json()['service_order'] ?? [];
         self::assertStringContainsString('api/os/view.php?id=', (string) ($criada['share_url'] ?? ''));
         self::assertStringContainsString('t=' . $token, (string) ($criada['share_url'] ?? ''));
+        self::assertSame('Av. das Américas, 500', $criada['collection_address']);
+        self::assertSame('14:30', $criada['approximate_time']);
+        self::assertSame('Óleo vegetal usado', $criada['material_collected']);
     }
 
     public function testDuasOrdensNaoCompartilhamOMesmoToken(): void
@@ -157,6 +167,9 @@ final class ServiceOrderShareTest extends TestCase
         self::assertStringContainsString('Ordem de Serviço', $res->body);
         self::assertStringContainsString('assinatura-responsavel.png', $res->body, 'a assinatura precisa aparecer no documento');
         self::assertStringContainsString('03/09/2026', $res->body);
+        self::assertStringContainsString('Av. das Américas, 500', $res->body);
+        self::assertStringContainsString('14:30', $res->body);
+        self::assertStringContainsString('Óleo vegetal usado', $res->body);
     }
 
     public function testLinkPublicoRecusaTokenErrado(): void

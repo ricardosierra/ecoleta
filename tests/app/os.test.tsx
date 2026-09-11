@@ -16,8 +16,11 @@ const ordem = {
   client_name: "Heineken",
   client_email: "contato@heineken.exemplo",
   client_whatsapp: "5521999887766",
+  collection_address: "Av. das Américas, 500",
   weight: "150 kg",
   collection_date: "2026-09-03",
+  approximate_time: "14:30",
+  material_collected: "Óleo vegetal usado",
   bags_count: 12,
   containers_count: 2,
   responsible: "Equipe A",
@@ -46,6 +49,17 @@ async function abrirOS(user: ReturnType<typeof userEvent.setup>) {
 describe("/dashboard/os — encaminhamento", () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("mostra os campos de endereço, horário aproximado e material coletado no documento", async () => {
+    montar();
+    render(<OSPage />);
+    await abrirOS(userEvent.setup());
+
+    const documento = document.querySelector("#os-print-area");
+    expect(documento?.textContent).toContain("Endereço da Coleta: Av. das Américas, 500");
+    expect(documento?.textContent).toContain("Horário Aproximado: 14:30");
+    expect(documento?.textContent).toContain("Material Coletado: Óleo vegetal usado");
   });
 
   it("mostra a assinatura da responsável no documento", async () => {

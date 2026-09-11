@@ -14,8 +14,11 @@ const OS: ServiceOrder = {
   client_name: "Heineken",
   client_email: "contato@heineken.exemplo",
   client_whatsapp: "5521999887766",
+  collection_address: "Av. das Américas, 500",
   weight: "150 kg",
   collection_date: "2026-09-03",
+  approximate_time: "14:30",
+  material_collected: "Óleo vegetal usado",
   bags_count: 12,
   containers_count: 2,
   responsible: "Equipe A",
@@ -90,7 +93,10 @@ describe("osShareMessage", () => {
 
     expect(texto).toContain("*Ordem de Serviço Nº 00042*");
     expect(texto).toContain("Cliente: Heineken");
+    expect(texto).toContain("Endereço da coleta: Av. das Américas, 500");
     expect(texto).toContain("Data da coleta: 03/09/2026");
+    expect(texto).toContain("Horário aproximado: 14:30");
+    expect(texto).toContain("Material coletado: Óleo vegetal usado");
     expect(texto).toContain("Pesagem: 150 kg");
     expect(texto).toContain("Qtd. contêineres: 2");
     expect(texto).toContain("Abrir e imprimir: https://ecolevaeco.com/api/os/view.php?id=42&t=abc");
