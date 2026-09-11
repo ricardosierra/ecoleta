@@ -125,6 +125,24 @@ function billingDeliverInvoice(PDO $db, array $invoice, array $client, string $e
                         'type' => $open ? 'text' : 'template', 'status' => 'accepted',
                         'body' => $text, 'raw_payload' => $response,
                     ]);
+                    if ($open && !empty($invoice['pix_qrcode_text'])) {
+                        try {
+                            $pixPayloadMsg = ['messaging_product' => 'whatsapp', 'to' => $destination, 'type' => 'text', 'text' => ['body' => (string) $invoice['pix_qrcode_text']]];
+                            $respPix = $whatsapp($pixPayloadMsg);
+                            if ($conversationId !== null && is_array($respPix)) {
+                                waRecordMessage($db, $conversationId, [
+                                    'wa_message_id' => waExtractSentMessageId($respPix),
+                                    'direction' => 'outgoing',
+                                    'type' => 'text',
+                                    'status' => 'accepted',
+                                    'body' => (string) $invoice['pix_qrcode_text'],
+                                    'raw_payload' => $respPix,
+                                ]);
+                            }
+                        } catch (Throwable $e) {
+                            error_log('Falha ao enviar mensagem avulsa com código Pix: ' . $e->getMessage());
+                        }
+                    }
                 }
                 $complete = $db->prepare("UPDATE activity_logs SET action = 'billing_delivery', target_login = ? WHERE id = ?");
                 $complete->execute([$messageId, $attemptId]);

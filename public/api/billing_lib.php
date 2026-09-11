@@ -214,6 +214,9 @@ function billingInvoiceEmailText(
     }
 
     $linhas[] = '';
+    $linhas[] = 'Caso precise, envie WhatsApp para (21) 99152-9383.';
+
+    $linhas[] = '';
     $linhas[] = 'ECOLEVA SOLUCOES AMBIENTAIS LTDA. — 57.772.812/0001-72';
 
     return implode("\n", $linhas);

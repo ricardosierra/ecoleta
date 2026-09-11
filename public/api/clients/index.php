@@ -25,6 +25,23 @@ $operator = apiRequireAdmin();
 $db = getDbConnection();
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+    if ($id > 0) {
+        $stmt = $db->prepare("SELECT id, name, email, whatsapp, document, monthly_value, due_day, status, asaas_customer_id, created_at FROM clients WHERE id = ? LIMIT 1");
+        $stmt->execute([$id]);
+        $client = $stmt->fetch();
+        if (!$client) {
+            http_response_code(404);
+            echo json_encode(['ok' => false, 'error' => 'Cliente não encontrado.']);
+            exit;
+        }
+        $client['id'] = (int)$client['id'];
+        $client['monthly_value'] = (float)$client['monthly_value'];
+        $client['due_day'] = (int)$client['due_day'];
+        echo json_encode(['ok' => true, 'client' => $client]);
+        exit;
+    }
+
     $stmt = $db->query("SELECT id, name, email, whatsapp, document, monthly_value, due_day, status, asaas_customer_id, created_at FROM clients ORDER BY id DESC");
     echo json_encode(['ok' => true, 'clients' => $stmt->fetchAll()]);
     exit;

@@ -3,6 +3,7 @@
 import { createContext, FormEvent, useContext, useEffect, useState } from "react";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { PowerBIViewer } from "@/components/PowerBIViewer";
+import { EyeIcon, EyeOffIcon } from "@/components/icons";
 import { apiFetch, apiPostJson, clearCsrfToken, setCsrfToken } from "@/lib/dashboard-api";
 
 export type DashboardUser = {
@@ -40,6 +41,10 @@ export function DashboardGate({ children }: { children?: React.ReactNode }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [firstAccessEmail, setFirstAccessEmail] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -117,6 +122,11 @@ export function DashboardGate({ children }: { children?: React.ReactNode }) {
       return;
     }
 
+    if (newPassword !== confirmPassword) {
+      setError("A confirmação não confere com a nova senha digitada.");
+      return;
+    }
+
     // Contas criadas sem e-mail informam um agora, no primeiro acesso.
     const needsEmail = !user?.email;
     if (needsEmail && !firstAccessEmail.trim()) {
@@ -141,6 +151,7 @@ export function DashboardGate({ children }: { children?: React.ReactNode }) {
           email: needsEmail ? firstAccessEmail.trim() : prev.email,
         } : null);
         setNewPassword("");
+        setConfirmPassword("");
         setFirstAccessEmail("");
       } else {
         setError(data.error || "Erro ao trocar senha.");
@@ -179,11 +190,32 @@ export function DashboardGate({ children }: { children?: React.ReactNode }) {
               <input id="dashboard-user" autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} className="mt-2 w-full rounded-xl border border-[var(--color-border-dark)] bg-black/20 px-4 py-3 text-white outline-none focus:border-[var(--color-accent)]" required />
             </label>
             <label className="block text-sm font-medium" htmlFor="dashboard-password">Senha
-              <input id="dashboard-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-2 w-full rounded-xl border border-[var(--color-border-dark)] bg-black/20 px-4 py-3 text-white outline-none focus:border-[var(--color-accent)]" required />
+              <div className="relative mt-2">
+                <input
+                  id="dashboard-password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full rounded-xl border border-[var(--color-border-dark)] bg-black/20 px-4 py-3 pr-11 text-white outline-none focus:border-[var(--color-accent)]"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white transition-colors cursor-pointer"
+                  title={showPassword ? "Ocultar senha" : "Ver senha"}
+                  aria-label={showPassword ? "Ocultar senha" : "Ver senha"}
+                >
+                  {showPassword ? <EyeOffIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+                </button>
+              </div>
             </label>
           </div>
           {error && <p role="alert" className="mt-4 text-sm text-red-300">{error}</p>}
-          <button type="submit" disabled={isSubmitting} className="mt-6 w-full rounded-full bg-[var(--color-accent)] px-5 py-3 text-sm font-semibold text-[var(--color-bg-dark)] transition-opacity hover:opacity-90 disabled:opacity-50">Entrar no dashboard</button>
+          <button type="submit" disabled={isSubmitting} className="mt-6 w-full rounded-full bg-[var(--color-accent)] px-5 py-3 text-sm font-semibold text-[var(--color-bg-dark)] transition-opacity hover:opacity-90 disabled:opacity-50 cursor-pointer">
+            {isSubmitting ? "Entrando..." : "Entrar no dashboard"}
+          </button>
         </form>
       </main>
     );
@@ -203,11 +235,55 @@ export function DashboardGate({ children }: { children?: React.ReactNode }) {
               </label>
             )}
             <label className="block text-sm font-medium" htmlFor="new-password">Nova Senha
-              <input id="new-password" type="password" minLength={6} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="mt-2 w-full rounded-xl border border-[var(--color-border-dark)] bg-black/20 px-4 py-3 text-white outline-none focus:border-[var(--color-accent)]" required />
+              <div className="relative mt-2">
+                <input
+                  id="new-password"
+                  type={showNewPassword ? "text" : "password"}
+                  minLength={6}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full rounded-xl border border-[var(--color-border-dark)] bg-black/20 px-4 py-3 pr-11 text-white outline-none focus:border-[var(--color-accent)]"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPassword((prev) => !prev)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white transition-colors cursor-pointer"
+                  title={showNewPassword ? "Ocultar senha" : "Ver senha"}
+                  aria-label={showNewPassword ? "Ocultar senha" : "Ver senha"}
+                >
+                  {showNewPassword ? <EyeOffIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+                </button>
+              </div>
+            </label>
+
+            <label className="block text-sm font-medium" htmlFor="confirm-password">Confirmar Nova Senha
+              <div className="relative mt-2">
+                <input
+                  id="confirm-password"
+                  type={showConfirmPassword ? "text" : "password"}
+                  minLength={6}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full rounded-xl border border-[var(--color-border-dark)] bg-black/20 px-4 py-3 pr-11 text-white outline-none focus:border-[var(--color-accent)]"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword((prev) => !prev)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white transition-colors cursor-pointer"
+                  title={showConfirmPassword ? "Ocultar confirmação de senha" : "Ver confirmação de senha"}
+                  aria-label={showConfirmPassword ? "Ocultar confirmação de senha" : "Ver confirmação de senha"}
+                >
+                  {showConfirmPassword ? <EyeOffIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+                </button>
+              </div>
             </label>
           </div>
           {error && <p role="alert" className="mt-4 text-sm text-red-300">{error}</p>}
-          <button type="submit" disabled={isSubmitting} className="mt-6 w-full rounded-full bg-[var(--color-accent)] px-5 py-3 text-sm font-semibold text-[var(--color-bg-dark)] transition-opacity hover:opacity-90 disabled:opacity-50">Salvar nova senha</button>
+          <button type="submit" disabled={isSubmitting} className="mt-6 w-full rounded-full bg-[var(--color-accent)] px-5 py-3 text-sm font-semibold text-[var(--color-bg-dark)] transition-opacity hover:opacity-90 disabled:opacity-50 cursor-pointer">
+            {isSubmitting ? "Salvando nova senha..." : "Salvar nova senha"}
+          </button>
         </form>
       </main>
     );
