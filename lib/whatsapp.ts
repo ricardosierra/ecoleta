@@ -41,6 +41,23 @@ export type WhatsAppMessage = {
   error_message?: string | null;
   message_at: string | null;
   service_order_id?: number | null;
+  media_url?: string | null;
+};
+
+export type WhatsAppClientOption = {
+  id: number;
+  name: string;
+  phone: string;
+};
+
+export type WhatsAppTemplate = {
+  name: string;
+  language: string;
+  category?: string;
+  status?: string;
+  body_text: string;
+  params_count: number;
+  param_labels?: string[];
 };
 
 /** Como a faixa no topo da conversa e o botão do robô devem se apresentar. */
@@ -238,4 +255,22 @@ function diffInDays(date: Date, today: Date): number {
   const b = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
   return Math.round((b.getTime() - a.getTime()) / 86400000);
+}
+
+/** Formata milissegundos para "00:05", "01:23", etc. para o gravador de áudio. */
+export function formatAudioDuration(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
+  const seconds = String(totalSeconds % 60).padStart(2, "0");
+
+  return `${minutes}:${seconds}`;
+}
+
+/** Identifica categoria de mídia pelo MIME type. */
+export function mimeTypeToCategory(mimeType: string): "image" | "audio" | "document" | "video" {
+  const lower = mimeType.toLowerCase();
+  if (lower.startsWith("image/")) return "image";
+  if (lower.startsWith("audio/")) return "audio";
+  if (lower.startsWith("video/")) return "video";
+  return "document";
 }

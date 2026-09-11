@@ -251,12 +251,14 @@ function waUploadMedia(string $filePath, string $mimeType): string
         throw new RuntimeException('WhatsApp não configurado (Phone ID ou Token).');
     }
 
-    $ch = curl_init("https://graph.facebook.com/v20.0/$phoneId/media");
+    $version = WHATSAPP_API_VERSION;
+    $ch = curl_init("https://graph.facebook.com/{$version}/{$phoneId}/media");
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, [
         'file' => new CURLFile($filePath, $mimeType, basename($filePath)),
-        'messaging_product' => 'whatsapp'
+        'messaging_product' => 'whatsapp',
+        'type' => $mimeType,
     ]);
     curl_setopt($ch, CURLOPT_HTTPHEADER, ["Authorization: Bearer $token"]);
 

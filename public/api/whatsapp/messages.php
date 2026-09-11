@@ -15,24 +15,108 @@ declare(strict_types=1);
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../authz.php';
 require_once __DIR__ . '/../whatsapp_store.php';
+require_once __DIR__ . '/../whatsapp_lib.php';
 
 startSecureSession();
 apiRequireCsrfToken();
 apiSendJsonHeaders();
 
 $db = getDbConnection();
-waRequirePanelAccess($db);
+$actor = waRequirePanelAccess($db);
 
 $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
 
 if ($method === 'POST') {
     $body = json_decode((string) file_get_contents('php://input'), true);
-    $conversationId = (int) (is_array($body) ? ($body['conversation_id'] ?? 0) : 0);
+    if (!is_array($body)) {
+        apiJsonResponse(400, ['error' => 'Payload JSON inválido.']);
+    }
 
+    $conversationId = (int) ($body['conversation_id'] ?? 0);
     if ($conversationId <= 0) {
         apiJsonResponse(400, ['error' => 'Conversa inválida.']);
     }
 
+    $action = (string) ($body['action'] ?? '');
+    $textBody = isset($body['body']) ? trim((string) $body['body']) : '';
+
+    if ($action === 'mark_unread') {
+        $stmt = $db->prepare('UPDATE whatsapp_conversations SET unread_count = unread_count + 1, updated_at = ? WHERE id = ?');
+        $stmt->execute([waNow(), $conversationId]);
+
+        apiJsonResponse(200, ['ok' => true]);
+    }
+
+    if ($action === 'reply' || ($action === '' && $textBody !== '')) {
+        if ($textBody === '') {
+            apiJsonResponse(400, ['error' => 'A mensagem não pode estar vazia.']);
+        }
+
+        $stmt = $db->prepare('SELECT * FROM whatsapp_conversations WHERE id = ? LIMIT 1');
+        $stmt->execute([$conversationId]);
+        $conversa = $stmt->fetch();
+        if (!$conversa) {
+            apiJsonResponse(404, ['error' => 'Conversa não encontrada.']);
+        }
+
+        if (!waWindowIsOpen($conversa['service_window_expires_at'])) {
+            apiJsonResponse(400, [
+                'error' => 'A janela de 24 horas para resposta livre está fechada. Envie um template aprovado para retomar o contato.',
+                'code' => 'window_closed',
+            ]);
+        }
+
+        if (!waIsConfigured()) {
+            apiJsonResponse(503, [
+                'error' => 'O WhatsApp do robô não está configurado neste servidor.',
+                'code' => 'whatsapp_not_configured',
+            ]);
+        }
+
+        $destinatario = preg_replace('/\D+/', '', (string) $conversa['phone']) ?? '';
+        $payload = [
+            'messaging_product' => 'whatsapp',
+            'to' => $destinatario,
+            'type' => 'text',
+            'text' => ['preview_url' => false, 'body' => $textBody],
+        ];
+
+        try {
+            $response = waRequest($payload);
+        } catch (\Throwable $e) {
+            apiJsonResponse(502, ['error' => 'Falha no envio pelo WhatsApp: ' . $e->getMessage()]);
+        }
+
+        $waMessageId = waExtractSentMessageId($response);
+        $nowUtc = waNow();
+
+        $msgId = waRecordMessage($db, $conversationId, [
+            'wa_message_id' => $waMessageId,
+            'direction' => 'outgoing',
+            'type' => 'text',
+            'status' => 'accepted',
+            'body' => $textBody,
+            'raw_payload' => $response,
+            'message_at' => $nowUtc,
+            'sent_by_user_id' => $actor['id'] ?? null,
+        ]);
+
+        apiJsonResponse(200, [
+            'ok' => true,
+            'message' => [
+                'id' => $msgId,
+                'direction' => 'outgoing',
+                'type' => 'text',
+                'status' => 'accepted',
+                'body' => $textBody,
+                'error_message' => null,
+                'message_at' => waToIso($nowUtc),
+                'service_order_id' => null,
+            ],
+        ]);
+    }
+
+    // Marcação como lida (zerar contador)
     $stmt = $db->prepare('UPDATE whatsapp_conversations SET unread_count = 0, updated_at = ? WHERE id = ?');
     $stmt->execute([waNow(), $conversationId]);
 

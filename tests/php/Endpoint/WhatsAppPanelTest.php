@@ -34,6 +34,8 @@ final class WhatsAppPanelTest extends TestCase
         return [
             'conversas' => ['whatsapp/conversations.php'],
             'mensagens' => ['whatsapp/messages.php'],
+            'midia'     => ['whatsapp/media.php'],
+            'templates' => ['whatsapp/templates.php'],
         ];
     }
 
@@ -210,6 +212,74 @@ final class WhatsAppPanelTest extends TestCase
 
         self::assertSame(403, $res->status, $res->body);
         self::assertSame(5, (int) $this->db->rows('whatsapp_conversations')[0]['unread_count']);
+    }
+
+    public function testMarcarComoNaoLida(): void
+    {
+        $sessao = $this->sessaoPermitida();
+        $conversaId = $this->semearConversa(null, null, 0);
+
+        $res = Endpoint::call('whatsapp/messages.php', [
+            'method' => 'POST',
+            'dsn' => $this->db->dsn(),
+            'session' => $sessao,
+            'body' => ['action' => 'mark_unread', 'conversation_id' => $conversaId],
+        ]);
+
+        self::assertSame(200, $res->status, $res->body);
+        self::assertSame(1, (int) $this->db->rows('whatsapp_conversations')[0]['unread_count']);
+    }
+
+    public function testAlternarStatusConversa(): void
+    {
+        $sessao = $this->sessaoPermitida();
+        $conversaId = $this->semearConversa(null, null, 0);
+
+        // De open para closed
+        $res = Endpoint::call('whatsapp/conversations.php', [
+            'method' => 'POST',
+            'dsn' => $this->db->dsn(),
+            'session' => $sessao,
+            'body' => ['action' => 'toggle_status', 'conversation_id' => $conversaId],
+        ]);
+
+        self::assertSame(200, $res->status, $res->body);
+        self::assertSame('closed', $res->json()['status']);
+        self::assertSame('closed', $this->db->rows('whatsapp_conversations')[0]['status']);
+
+        // De closed de volta para open
+        $res2 = Endpoint::call('whatsapp/conversations.php', [
+            'method' => 'POST',
+            'dsn' => $this->db->dsn(),
+            'session' => $sessao,
+            'body' => ['action' => 'toggle_status', 'conversation_id' => $conversaId],
+        ]);
+
+        self::assertSame(200, $res2->status, $res2->body);
+        self::assertSame('open', $res2->json()['status']);
+    }
+
+    public function testIniciarNovaConversaComCliente(): void
+    {
+        $sessao = $this->sessaoPermitida();
+        $clientId = $this->db->seedClient('Ambev', 800.0, 15, 'active', '5521988887777');
+
+        $res = Endpoint::call('whatsapp/conversations.php', [
+            'method' => 'POST',
+            'dsn' => $this->db->dsn(),
+            'session' => $sessao,
+            'body' => [
+                'action' => 'start',
+                'phone' => '21 98888-7777',
+                'client_id' => $clientId,
+            ],
+        ]);
+
+        self::assertSame(200, $res->status, $res->body);
+        $conversa = $res->json()['conversation'];
+        self::assertSame('5521988887777', $conversa['phone']);
+        self::assertSame($clientId, $conversa['client_id']);
+        self::assertSame('open', $conversa['status']);
     }
 
     private function semearConversa(?int $clientId, ?string $janela, int $naoLidas): int

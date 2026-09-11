@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import WhatsAppPage from "@/app/dashboard/whatsapp/page";
@@ -221,3 +221,95 @@ describe("/dashboard/whatsapp — mensagem que falhou", () => {
     expect(within(erro.parentElement as HTMLElement).getByText("!")).toBeVisible();
   });
 });
+
+describe("/dashboard/whatsapp — composer e ações", () => {
+  it("permite digitar e enviar resposta de texto na janela aberta", async () => {
+    const novaMensagem = {
+      id: 99,
+      direction: "outgoing",
+      type: "text",
+      status: "sent",
+      body: "Olá!",
+      message_at: new Date().toISOString(),
+      service_order_id: null,
+    };
+
+    const api = montar();
+    const defaultFetch = api.fetch.getMockImplementation();
+    api.fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      const path = url.split("?")[0];
+      if (path === MESSAGES && init?.method === "POST") {
+        const body = JSON.parse(String(init.body || "{}"));
+        if (body.body) {
+          return new Response(JSON.stringify({ ok: true, message: novaMensagem }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      }
+      return defaultFetch!(input, init);
+    });
+
+    render(<WhatsAppPage />);
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByText("Heineken"));
+
+    const input = await screen.findByPlaceholderText("Digite uma mensagem...");
+    expect(input).toBeVisible();
+    fireEvent.change(input, { target: { value: "Olá!" } });
+
+    const botaoEnviar = await screen.findByRole("button", { name: /Enviar mensagem/i });
+    await waitFor(() => {
+      expect(botaoEnviar).not.toBeDisabled();
+    });
+    fireEvent.click(botaoEnviar);
+
+    await waitFor(() => {
+      const posts = api.fetch.mock.calls.filter(
+        ([url, init]) => String(url) === MESSAGES && init?.method === "POST"
+      );
+      const replyCall = posts.find(([, init]) => {
+        const payload = JSON.parse(String(init?.body || "{}"));
+        return payload.body === "Olá!";
+      });
+      expect(replyCall).toBeDefined();
+    });
+
+    const matches = await screen.findAllByText("Olá!");
+    expect(matches.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("abre o modal de nova conversa ao clicar em Nova conversa", async () => {
+    montar();
+    render(<WhatsAppPage />);
+
+    const user = userEvent.setup();
+    const btnNovo = await screen.findByTitle("Nova conversa");
+    await user.click(btnNovo);
+
+    expect(await screen.findByText("Iniciar Nova Conversa")).toBeVisible();
+    expect(screen.getByPlaceholderText("Ex: 21 99919-3898")).toBeVisible();
+  });
+
+  it("oferece botão de template quando a janela está fechada", async () => {
+    const vencida = {
+      ...conversa,
+      window: { open: false, expires_at: "2026-09-01T10:00:00Z", minutes_left: 0 },
+    };
+
+    montar({
+      [CONVERSATIONS]: { body: { ok: true, conversations: [vencida] } },
+      [MESSAGES]: { body: { ok: true, conversation: vencida, messages: [] } },
+    });
+    render(<WhatsAppPage />);
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByText("Heineken"));
+
+    const btnTemplate = await screen.findByRole("button", { name: /Retomar com template/i });
+    expect(btnTemplate).toBeVisible();
+  });
+});
+

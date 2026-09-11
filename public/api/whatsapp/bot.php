@@ -30,45 +30,109 @@ function waAutoReplyWithPix(PDO $db, string $from, string $body): void
     try {
         $pix = asaasGetPixQrCode($invoice['asaas_payment_id']);
         
-        if (empty($pix['encodedImage'])) {
+        if (empty($pix['payload'])) {
             return;
         }
 
-        // Salvar a imagem temporariamente
-        $tmpDir = sys_get_temp_dir();
-        $imagePath = $tmpDir . '/pix_' . $invoice['asaas_payment_id'] . '.png';
-        
-        $base64 = preg_replace('#^data:image/\w+;base64,#i', '', $pix['encodedImage']);
-        file_put_contents($imagePath, base64_decode($base64));
+        $conversationId = waEnsureConversation($db, $from, ['client_id' => $invoice['client_id'] ?? null]);
 
-        // Upload no Meta
-        $mediaId = waUploadMedia($imagePath, 'image/png');
-        
-        // Remove tmp
-        unlink($imagePath);
+        // QR Code impresso/imagem: apenas se o cliente pedir explicitamente
+        $pediuQrCode = (bool) preg_match('/(qr\s*code|qrcode|qr\b|imagem|foto|impresso)/i', $body);
 
-        // Enviar a Imagem
-        waRequest([
-            'messaging_product' => 'whatsapp',
-            'to' => $from,
-            'type' => 'image',
-            'image' => [
-                'id' => $mediaId,
-                'caption' => 'Aqui está o QR Code para o pagamento da sua fatura pendente!'
-            ]
-        ]);
+        if ($pediuQrCode && !empty($pix['encodedImage'])) {
+            $tmpDir = sys_get_temp_dir();
+            $imagePath = $tmpDir . '/pix_' . $invoice['asaas_payment_id'] . '.png';
+            $base64 = preg_replace('#^data:image/\w+;base64,#i', '', $pix['encodedImage']);
+            file_put_contents($imagePath, base64_decode($base64));
 
-        // Enviar o Pix Copia e Cola
-        waRequest([
+            $mediaId = waUploadMedia($imagePath, 'image/png');
+            unlink($imagePath);
+
+            $respImg = waRequest([
+                'messaging_product' => 'whatsapp',
+                'to' => $from,
+                'type' => 'image',
+                'image' => [
+                    'id' => $mediaId,
+                    'caption' => 'Aqui está a imagem do QR Code para o pagamento da sua fatura!'
+                ]
+            ]);
+            if ($conversationId !== null) {
+                waRecordMessage($db, $conversationId, [
+                    'wa_message_id' => waExtractSentMessageId($respImg),
+                    'direction' => 'outgoing',
+                    'type' => 'image',
+                    'status' => 'accepted',
+                    'body' => '[imagem QR Code Pix]',
+                    'raw_payload' => $respImg,
+                ]);
+            }
+        }
+
+        // Mensagem de cobrança com dados da fatura e instrução do Pix Copia e Cola direto
+        $valor = number_format((float) ($invoice['value'] ?? 0), 2, ',', '.');
+        $venc = date('d/m/Y', strtotime((string) $invoice['due_date']));
+        $nome = trim((string) ($invoice['client_name'] ?? ''));
+
+        $linhas = [
+            $nome !== '' ? "Olá, {$nome}." : "Olá.",
+            "",
+            "Sua fatura da Ecoleva no valor de *R$ {$valor}* vence em *{$venc}*.",
+            "",
+            "Pix Copia e Cola:",
+            $pix['payload'],
+        ];
+
+        if (!$pediuQrCode) {
+            $linhas[] = "";
+            $linhas[] = "_(Caso prefira a imagem do QR Code para escanear, basta responder *QR Code*.)_";
+        }
+
+        $linhas[] = "";
+        $linhas[] = "Caso precise, envie WhatsApp para (21) 99152-9383.";
+
+        $avisoTexto = implode("\n", $linhas);
+
+        $respAviso = waRequest([
             'messaging_product' => 'whatsapp',
             'to' => $from,
             'type' => 'text',
             'text' => [
-                'body' => "Pix Copia e Cola:\n\n" . $pix['payload']
+                'body' => $avisoTexto
             ]
         ]);
+        if ($conversationId !== null) {
+            waRecordMessage($db, $conversationId, [
+                'wa_message_id' => waExtractSentMessageId($respAviso),
+                'direction' => 'outgoing',
+                'type' => 'text',
+                'status' => 'accepted',
+                'body' => $avisoTexto,
+                'raw_payload' => $respAviso,
+            ]);
+        }
+
+        // Mensagem com o código Pix puro para o cliente copiar com um toque no celular
+        $respPix = waRequest([
+            'messaging_product' => 'whatsapp',
+            'to' => $from,
+            'type' => 'text',
+            'text' => [
+                'body' => $pix['payload']
+            ]
+        ]);
+        if ($conversationId !== null) {
+            waRecordMessage($db, $conversationId, [
+                'wa_message_id' => waExtractSentMessageId($respPix),
+                'direction' => 'outgoing',
+                'type' => 'text',
+                'status' => 'accepted',
+                'body' => $pix['payload'],
+                'raw_payload' => $respPix,
+            ]);
+        }
 
     } catch (Throwable $e) {
-        error_log('Falha ao auto-responder QR Code: ' . $e->getMessage());
+        error_log('Falha ao auto-responder cobrança / Pix: ' . $e->getMessage());
     }
 }
