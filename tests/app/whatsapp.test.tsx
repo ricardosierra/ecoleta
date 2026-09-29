@@ -74,8 +74,15 @@ describe("/dashboard/whatsapp — acesso", () => {
     expect(await screen.findByText("Acesso negado.")).toBeVisible();
   });
 
-  it("nega para master mesmo com o e-mail da lista", async () => {
-    montar({}, sessionOf("master", { email: "sierra.csi@gmail.com" }));
+  it("autoriza conta com papel master", async () => {
+    montar({}, sessionOf("master", { email: "cliente@ecolevaeco.com" }));
+    render(<WhatsAppPage />);
+
+    expect(await screen.findByText("Heineken")).toBeVisible();
+  });
+
+  it("nega para user mesmo com o e-mail da lista", async () => {
+    montar({}, sessionOf("user", { email: "sierra.csi@gmail.com" }));
     render(<WhatsAppPage />);
 
     expect(await screen.findByText("Acesso negado.")).toBeVisible();

@@ -15,7 +15,7 @@ if (!isset($_SESSION['user_id'])) {
 
 $db = getDbConnection();
 $stmt = $db->prepare("
-    SELECT u.id, u.login, u.email, u.role, u.group_id, u.force_password_change,
+    SELECT u.id, u.login, u.email, u.role, u.group_id, u.force_password_change, u.password_locked,
            g.name AS group_name, g.powerbi_url AS group_powerbi_url
     FROM users u
     LEFT JOIN `groups` g ON u.group_id = g.id
@@ -42,5 +42,6 @@ apiJsonResponse(200, [
         'group_name' => $user['group_name'] ?? null,
         'group_powerbi_url' => $user['group_powerbi_url'] ?? null,
         'force_password_change' => (bool) $user['force_password_change'],
+        'password_locked' => (bool) ($user['password_locked'] ?? false),
     ],
 ]);

@@ -71,15 +71,15 @@ final class WhatsAppPanelTest extends TestCase
         self::assertSame(403, $res->status, $res->body);
     }
 
-    /** Master administra usuários, mas não lê conversa de cliente. */
+    /** Master agora tem acesso ao painel de WhatsApp. */
     #[DataProvider('endpointsDoPainel')]
-    public function testMasterNaoEntra(string $script): void
+    public function testMasterEntra(string $script): void
     {
         $id = $this->db->seedUser('gerente', 'senha-master-123', 'master', 'gerente@exemplo.com');
 
         $res = $this->chamar($script, ['user_id' => $id, 'role' => 'master', 'login' => 'gerente']);
 
-        self::assertSame(403, $res->status, $res->body);
+        self::assertNotSame(403, $res->status, $res->body);
     }
 
     /** Ser root não basta: o e-mail precisa estar na lista. */
@@ -318,5 +318,42 @@ final class WhatsAppPanelTest extends TestCase
              VALUES (?, ?, ?, ?, ?, ?, ?)'
         );
         $stmt->execute([$conversaId, $direcao, 'text', 'delivered', $corpo, $quando, gmdate('Y-m-d H:i:s')]);
+    }
+
+    public function testBackfillDeOsApareceNoHistorico(): void
+    {
+        $sessao = $this->sessaoPermitida();
+        $clientId = $this->db->seedClient('Ambev', 500.0, 10, 'active', '5521988887777');
+
+        // Cria uma OS enviada por WhatsApp no passado
+        $stmt = $this->db->pdo()->prepare('
+            INSERT INTO service_orders
+                (client_id, collection_date, whatsapp_sent_at, whatsapp_sent_to, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        ');
+        $stmt->execute([
+            $clientId,
+            '2026-03-01',
+            '2026-03-01 10:00:00',
+            '5521988887777',
+            '2026-03-01 10:00:00',
+        ]);
+        $osId = (int) $this->db->pdo()->lastInsertId();
+
+        // Ao abrir a lista de conversas, o backfill processa a OS
+        $resList = $this->chamar('whatsapp/conversations.php', $sessao);
+        self::assertSame(200, $resList->status);
+        $conversas = $resList->json()['conversations'];
+        self::assertNotEmpty($conversas);
+
+        $conversaId = $conversas[0]['id'];
+
+        // Ao abrir as mensagens da conversa, a OS aparece com o service_order_id
+        $resMsg = $this->chamar('whatsapp/messages.php', $sessao, ['conversation_id' => $conversaId]);
+        self::assertSame(200, $resMsg->status);
+        $msgs = $resMsg->json()['messages'];
+        self::assertCount(1, $msgs);
+        self::assertSame($osId, $msgs[0]['service_order_id']);
+        self::assertStringContainsString((string) $osId, $msgs[0]['body']);
     }
 }

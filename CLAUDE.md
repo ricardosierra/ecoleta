@@ -41,11 +41,12 @@ monta o documento HTML da página pública e do e-mail; `lib/os-share.ts` monta
 a mensagem de WhatsApp e as datas do dashboard. Os dois entregam o mesmo
 documento ao cliente — mexeu em um, olhe o outro.
 
-O painel de WhatsApp (`/dashboard/whatsapp`) só abre para `root` **e** e-mail na
-lista de `apiRoleCanViewWhatsAppPanel()` (authz.php) / `canViewWhatsAppPanel()`
-(authz.ts). A lista está no código nos dois lados de propósito: um valor de env
-não atravessa para o navegador, e sem a regra no cliente o menu desenharia um
-link que a API recusa.
+O painel de WhatsApp (`/dashboard/whatsapp`) está liberado para contas de papel
+`master` (a cliente) e para `root` com e-mail na lista de
+`apiRoleCanViewWhatsAppPanel()` (authz.php) / `canViewWhatsAppPanel()` (authz.ts).
+A lista de e-mails root está no código nos dois lados de propósito: um valor de env
+não atravessa para o navegador, e sem a regra no cliente o menu desenharia um link
+que a API recusa.
 
 ## Estrutura
 

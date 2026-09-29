@@ -159,6 +159,22 @@ final class ChangePasswordTest extends TestCase
         self::assertSame('joao', $auditoria[0]['performed_by_login']);
     }
 
+    /** A linha que o trigger grava ganha autoria: troca pela aplicação nunca fica como 'db_trigger'. */
+    public function testHistoricoDeHashRecebeAutoriaDaTroca(): void
+    {
+        $this->call($this->comoJoao(), ['new_password' => 'senha-nova-456']);
+
+        $stmt = $this->db->pdo()->prepare('SELECT * FROM password_hash_history WHERE user_id = ? ORDER BY id DESC');
+        $stmt->execute([$this->joaoId]);
+        $rows = $stmt->fetchAll();
+
+        self::assertCount(2, $rows, 'criação + troca: o trigger grava uma linha por evento e a aplicação a enriquece, sem duplicar');
+        self::assertSame('change_password', $rows[0]['change_type']);
+        self::assertSame('joao', $rows[0]['changed_by_login']);
+        self::assertSame($this->joaoId, (int) $rows[0]['changed_by_user_id']);
+        self::assertSame($this->hashDe($this->joaoId), $rows[0]['new_hash']);
+    }
+
     /** Conta criada sem e-mail: o primeiro acesso exige informar um. */
     public function testPrimeiroAcessoSemEmailExigeEmail(): void
     {
@@ -264,5 +280,21 @@ final class ChangePasswordTest extends TestCase
             'body' => ['username' => 'joao', 'password' => 'senha-antiga-123'],
         ]);
         self::assertSame(401, $comAntiga->status);
+    }
+
+    public function testUsuarioComTrocaBloqueadaNaoConsegueTrocarASenha(): void
+    {
+        $this->db->pdo()->exec("UPDATE users SET password_locked = 1 WHERE id = {$this->joaoId}");
+        $antes = $this->hashDe($this->joaoId);
+
+        $resposta = $this->call($this->comoJoao(), ['new_password' => 'senha-proibida-999']);
+
+        self::assertSame(403, $resposta->status);
+        self::assertStringContainsString('bloqueada', $resposta->json()['error'] ?? '');
+        self::assertSame($antes, $this->hashDe($this->joaoId));
+
+        // Verifica que o evento de bloqueio foi registrado no histórico
+        $stmt = $this->db->pdo()->query("SELECT COUNT(*) AS total FROM activity_logs WHERE action = 'change_password_blocked'");
+        self::assertSame(1, (int) $stmt->fetch()['total']);
     }
 }

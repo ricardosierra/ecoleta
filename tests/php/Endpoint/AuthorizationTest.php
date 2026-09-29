@@ -83,6 +83,7 @@ final class AuthorizationTest extends TestCase
             'editar usuário' => ['users/edit.php', ['user_id' => 1, 'login' => 'x', 'email' => 'x@y.z']],
             'excluir usuário' => ['users/delete.php', ['user_id' => 1]],
             'gerar senha' => ['users/generate_password.php', ['user_id' => 1]],
+            'conferir senha antiga' => ['users/password_history_check.php', ['user_id' => 1, 'password' => 'x']],
             'listar grupos' => ['groups/index.php', []],
             'editar grupo' => ['groups/edit.php', ['group_id' => 1, 'name' => 'x']],
             'excluir grupo' => ['groups/delete.php', ['group_id' => 1]],

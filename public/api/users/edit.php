@@ -2,6 +2,8 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../authz.php';
+require_once __DIR__ . '/../security_alerts.php';
+require_once __DIR__ . '/../auth/password_audit_lib.php';
 
 startSecureSession();
 apiRequireCsrfToken();
@@ -38,7 +40,7 @@ if (!$targetUserId || !$login || !$email) {
 $db = getDbConnection();
 
 // Busca o usuário alvo
-$stmt = $db->prepare("SELECT id, login, email, role, group_id FROM users WHERE id = ? LIMIT 1");
+$stmt = $db->prepare("SELECT id, login, email, role, group_id, password_locked FROM users WHERE id = ? LIMIT 1");
 $stmt->execute([$targetUserId]);
 $targetUser = $stmt->fetch();
 
@@ -96,9 +98,33 @@ if ($duplicate) {
     exit;
 }
 
+$passwordLocked = (int) ($targetUser['password_locked'] ?? 0);
+if ($operatorRole === API_ROLE_ROOT && isset($body['password_locked'])) {
+    $passwordLocked = !empty($body['password_locked']) ? 1 : 0;
+}
+
 $newPassword = trim($body['new_password'] ?? '');
 $generateNewPassword = !empty($body['generate_password']);
 $generatedPassword = null;
+
+// Se a conta estiver bloqueada e houver tentativa de alterar/gerar senha:
+if (!empty($targetUser['password_locked']) && ($generateNewPassword || $newPassword)) {
+    if ($operatorRole !== API_ROLE_ROOT || $passwordLocked === 1) {
+        apiSendSecurityAlert(
+            'Tentativa Bloqueada de Alterar Senha',
+            "Tentativa de alterar senha do usuário '{$targetUser['login']}' com trava ativada",
+            [
+                'Usuário Alvo' => $targetUser['login'],
+                'E-mail Alvo' => $targetUser['email'] ?? 'Não cadastrado',
+                'Solicitante' => "{$operatorLogin} ({$operatorRole})",
+                'Status' => 'BLOQUEADO (Conta com trava ativada)',
+            ]
+        );
+        http_response_code(403);
+        echo json_encode(['error' => 'A troca de senha deste usuário está bloqueada pelo administrador. Desbloqueie a conta antes de alterar a senha.']);
+        exit;
+    }
+}
 
 try {
     if ($generateNewPassword) {
@@ -111,10 +137,11 @@ try {
         $hash = password_hash($generatedPassword, PASSWORD_DEFAULT);
         $updateStmt = $db->prepare("
             UPDATE users 
-            SET login = ?, email = ?, role = ?, group_id = ?, password_hash = ?, force_password_change = 1 
+            SET login = ?, email = ?, role = ?, group_id = ?, password_hash = ?, force_password_change = 1, password_locked = ? 
             WHERE id = ?
         ");
-        $updateStmt->execute([$login, $email, $role, $groupId, $hash, $targetUserId]);
+        $updateStmt->execute([$login, $email, $role, $groupId, $hash, $passwordLocked, $targetUserId]);
+        attributePasswordHashChange($db, (int) $targetUserId, $hash, 'reset_password', (int) $operatorId, (string) $operatorLogin);
     } elseif ($newPassword) {
         if (strlen($newPassword) < 6) {
             http_response_code(400);
@@ -124,30 +151,61 @@ try {
         $hash = password_hash($newPassword, PASSWORD_DEFAULT);
         $updateStmt = $db->prepare("
             UPDATE users 
-            SET login = ?, email = ?, role = ?, group_id = ?, password_hash = ?, force_password_change = 1 
+            SET login = ?, email = ?, role = ?, group_id = ?, password_hash = ?, force_password_change = 1, password_locked = ? 
             WHERE id = ?
         ");
-        $updateStmt->execute([$login, $email, $role, $groupId, $hash, $targetUserId]);
+        $updateStmt->execute([$login, $email, $role, $groupId, $hash, $passwordLocked, $targetUserId]);
+        attributePasswordHashChange($db, (int) $targetUserId, $hash, 'change_password', (int) $operatorId, (string) $operatorLogin);
     } else {
         $updateStmt = $db->prepare("
             UPDATE users 
-            SET login = ?, email = ?, role = ?, group_id = ? 
+            SET login = ?, email = ?, role = ?, group_id = ?, password_locked = ? 
             WHERE id = ?
         ");
-        $updateStmt->execute([$login, $email, $role, $groupId, $targetUserId]);
+        $updateStmt->execute([$login, $email, $role, $groupId, $passwordLocked, $targetUserId]);
     }
 
     $groupDesc = $groupName ? " no grupo '{$groupName}'" : " (sem grupo)";
     $pwdDesc = $generateNewPassword ? " com nova senha temporária gerada" : ($newPassword ? " com senha redefinida" : "");
+    $lockDesc = ($passwordLocked !== (int)($targetUser['password_locked'] ?? 0))
+        ? ($passwordLocked === 1 ? " (trava de senha ativada)" : " (trava de senha desativada)")
+        : "";
     logActivity(
         $db,
         $targetUserId,
         'edit_user',
-        "Dados do usuário '{$login}' ({$role}) atualizados por {$operatorLogin} ({$operatorRole}){$groupDesc}{$pwdDesc}",
+        "Dados do usuário '{$login}' ({$role}) atualizados por {$operatorLogin} ({$operatorRole}){$groupDesc}{$pwdDesc}{$lockDesc}",
         $operatorId,
         $operatorLogin,
         $login
     );
+
+    if ($generateNewPassword || $newPassword) {
+        apiSendSecurityAlert(
+            'Senha do Usuário Alterada pelo Painel',
+            "A senha do usuário '{$login}' foi alterada por {$operatorLogin} ({$operatorRole})",
+            [
+                'Usuário Alvo' => $login,
+                'E-mail Alvo' => $email,
+                'Executor' => "{$operatorLogin} ({$operatorRole})",
+                'Status' => $generateNewPassword ? 'Nova senha temporária gerada' : 'Senha redefinida',
+            ]
+        );
+    }
+
+    if ($passwordLocked !== (int) ($targetUser['password_locked'] ?? 0)) {
+        $lockState = $passwordLocked === 1 ? 'bloqueada' : 'desbloqueada';
+        apiSendSecurityAlert(
+            'Status da Trava de Senha Alterado',
+            "A troca de senha do usuário '{$login}' foi {$lockState} por {$operatorLogin} ({$operatorRole})",
+            [
+                'Usuário Alvo' => $login,
+                'E-mail Alvo' => $email,
+                'Executor' => "{$operatorLogin} ({$operatorRole})",
+                'Novo Status' => $passwordLocked === 1 ? 'TRAVA ATIVADA' : 'TRAVA DESATIVADA',
+            ]
+        );
+    }
 
     echo json_encode([
         'ok' => true,
@@ -157,7 +215,8 @@ try {
             'email' => $email,
             'role' => $role,
             'group_id' => $groupId,
-            'group_name' => $groupName
+            'group_name' => $groupName,
+            'password_locked' => (bool) $passwordLocked
         ],
         'generated_password' => $generatedPassword,
         'message' => 'Usuário atualizado com sucesso.'

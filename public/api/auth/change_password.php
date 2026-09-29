@@ -2,6 +2,8 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../authz.php';
+require_once __DIR__ . '/../security_alerts.php';
+require_once __DIR__ . '/password_audit_lib.php';
 
 startSecureSession();
 apiRequireCsrfToken();
@@ -33,12 +35,39 @@ if (strlen($newPassword) < 6) {
 
 $db = getDbConnection();
 
-// E-mail é pedido no primeiro acesso de quem foi criado sem um. Se a conta já
-// tem e-mail, tentativas de alterá-lo por aqui são rejeitadas — a troca é do
-// próprio usuário, e a alteração de e-mail é feita na gestão de usuários.
-$stmtCurrent = $db->prepare("SELECT email FROM users WHERE id = ? LIMIT 1");
+// Busca e-mail e status de bloqueio da conta
+$stmtCurrent = $db->prepare("SELECT email, password_locked FROM users WHERE id = ? LIMIT 1");
 $stmtCurrent->execute([$actor['id']]);
-$currentEmail = $stmtCurrent->fetchColumn();
+$userRow = $stmtCurrent->fetch();
+$currentEmail = $userRow['email'] ?? null;
+$passwordLocked = (bool) ($userRow['password_locked'] ?? false);
+
+if ($passwordLocked) {
+    apiSendSecurityAlert(
+        'Tentativa Bloqueada de Troca de Senha',
+        'Tentativa de alteração de senha em conta com troca bloqueada',
+        [
+            'Usuário' => $actor['login'],
+            'E-mail da Conta' => $currentEmail ?: 'Não cadastrado',
+            'Papel' => $actor['role'],
+            'Status' => 'BLOQUEADO (Conta com trava ativada)',
+        ]
+    );
+
+    logActivity(
+        $db,
+        $actor['id'],
+        'change_password_blocked',
+        'Tentativa de troca de senha bloqueada (conta travada)',
+        $actor['id'],
+        $actor['login'],
+        $actor['login']
+    );
+
+    http_response_code(403);
+    echo json_encode(['error' => 'A troca de senha desta conta está bloqueada pelo administrador.']);
+    exit;
+}
 $missingEmail = $currentEmail === null || $currentEmail === '';
 
 $emailToStore = null;
@@ -80,6 +109,7 @@ if ($emailToStore !== null) {
     $stmt = $db->prepare("UPDATE users SET password_hash = ?, force_password_change = 0 WHERE id = ?");
     $stmt->execute([$hash, $actor['id']]);
 }
+attributePasswordHashChange($db, (int) $actor['id'], $hash, 'change_password', (int) $actor['id'], (string) $actor['login']);
 
 // Troca de senha é mudança de privilégio: novo ID de sessão e novo token CSRF.
 apiRegenerateSession();
@@ -94,6 +124,18 @@ logActivity(
     $actor['id'],
     $actor['login'],
     $actor['login']
+);
+
+// Notifica o administrador técnico por e-mail
+apiSendSecurityAlert(
+    'Senha Alterada pelo Usuário',
+    "A senha do usuário '{$actor['login']}' foi alterada com sucesso",
+    [
+        'Usuário' => $actor['login'],
+        'E-mail' => $emailToStore ?? $currentEmail ?? 'Não cadastrado',
+        'Papel' => $actor['role'],
+        'Status' => 'Senha alterada com sucesso pelo próprio usuário',
+    ]
 );
 
 apiJsonResponse(200, ['ok' => true, 'csrf_token' => $csrfToken]);

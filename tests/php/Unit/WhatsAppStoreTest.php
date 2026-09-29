@@ -115,4 +115,19 @@ final class WhatsAppStoreTest extends TestCase
     {
         self::assertSame(86400, WA_SERVICE_WINDOW_SECONDS);
     }
+
+    public function testPhoneVariantsParaCelularBrasileiro(): void
+    {
+        // 13 dígitos (com 9) gera variante de 12 dígitos (sem 9)
+        self::assertSame(['5521999887766', '552199887766'], waPhoneVariants('5521999887766'));
+
+        // 12 dígitos (sem 9) gera variante de 13 dígitos (com 9)
+        self::assertSame(['552199887766', '5521999887766'], waPhoneVariants('552199887766'));
+
+        // Número fixo (12 dígitos com início 2, 3, 4, 5) não gera variante com 9
+        self::assertSame(['552133445566'], waPhoneVariants('552133445566'));
+
+        // Entrada vazia
+        self::assertSame([], waPhoneVariants(''));
+    }
 }

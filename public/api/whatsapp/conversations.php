@@ -126,7 +126,94 @@ if ($method !== 'GET') {
     apiJsonResponse(405, ['error' => 'Método não permitido.'], ['Allow: GET, POST']);
 }
 
-// ── Sincronização automática de clientes com WhatsApp cadastrado ─────────────
+// ── 1. Unificação de conversas duplicadas (12 e 13 dígitos para o mesmo celular) ──
+try {
+    $dupQuery = $db->query("
+        SELECT c1.id AS id1, c1.phone AS phone1, c1.client_id AS client1,
+               c2.id AS id2, c2.phone AS phone2, c2.client_id AS client2
+          FROM whatsapp_conversations c1
+          JOIN whatsapp_conversations c2 
+            ON c1.id < c2.id 
+           AND c1.phone LIKE '55%' AND c2.phone LIKE '55%'
+           AND (
+               (LENGTH(c1.phone) = 13 AND LENGTH(c2.phone) = 12 AND SUBSTR(c1.phone, 1, 4) = SUBSTR(c2.phone, 1, 4) AND SUBSTR(c1.phone, 6) = SUBSTR(c2.phone, 5))
+               OR
+               (LENGTH(c1.phone) = 12 AND LENGTH(c2.phone) = 13 AND SUBSTR(c1.phone, 1, 4) = SUBSTR(c2.phone, 1, 4) AND SUBSTR(c1.phone, 5) = SUBSTR(c2.phone, 6))
+           )
+    ");
+    if ($dupQuery) {
+        foreach ($dupQuery->fetchAll() as $dup) {
+            $idManter = (int) $dup['id1'];
+            $idDescartar = (int) $dup['id2'];
+
+            $upMsgs = $db->prepare('UPDATE whatsapp_messages SET conversation_id = ? WHERE conversation_id = ?');
+            $upMsgs->execute([$idManter, $idDescartar]);
+
+            if ($dup['client2'] !== null && $dup['client1'] === null) {
+                $db->prepare('UPDATE whatsapp_conversations SET client_id = ? WHERE id = ?')
+                    ->execute([(int) $dup['client2'], $idManter]);
+            }
+
+            $stmtLast = $db->prepare('
+                SELECT message_at, body, type, direction 
+                  FROM whatsapp_messages 
+                 WHERE conversation_id = ? 
+                 ORDER BY message_at DESC, id DESC 
+                 LIMIT 1
+            ');
+            $stmtLast->execute([$idManter]);
+            $last = $stmtLast->fetch();
+            if ($last) {
+                $db->prepare('UPDATE whatsapp_conversations SET last_message_at = ?, last_message_preview = ?, last_message_direction = ? WHERE id = ?')
+                    ->execute([$last['message_at'], waPreview($last['body'], $last['type']), $last['direction'], $idManter]);
+            }
+
+            $db->prepare('DELETE FROM whatsapp_conversations WHERE id = ?')->execute([$idDescartar]);
+        }
+    }
+} catch (\Throwable $e) {
+    error_log('Falha na deduplicação de conversas WhatsApp: ' . $e->getMessage());
+}
+
+// ── 2. Backfill de OSs enviadas por WhatsApp para o histórico de mensagens ─────
+try {
+    $osBackfill = $db->query("
+        SELECT s.id, s.client_id, s.whatsapp_sent_at, s.whatsapp_sent_to, c.name AS client_name
+          FROM service_orders s
+          LEFT JOIN clients c ON c.id = s.client_id
+         WHERE s.whatsapp_sent_at IS NOT NULL 
+           AND s.whatsapp_sent_to IS NOT NULL AND s.whatsapp_sent_to != ''
+           AND NOT EXISTS (
+               SELECT 1 FROM whatsapp_messages wm WHERE wm.service_order_id = s.id
+           )
+         ORDER BY s.id ASC
+         LIMIT 50
+    ");
+    if ($osBackfill) {
+        foreach ($osBackfill->fetchAll() as $os) {
+            $dest = (string) $os['whatsapp_sent_to'];
+            $convId = waEnsureConversation($db, $dest, [
+                'client_id' => $os['client_id'] !== null ? (int) $os['client_id'] : null,
+                'profile_name' => (string) ($os['client_name'] ?? ''),
+            ]);
+            if ($convId !== null) {
+                $msgAt = (string) $os['whatsapp_sent_at'];
+                waRecordMessage($db, $convId, [
+                    'direction' => 'outgoing',
+                    'type' => 'template',
+                    'status' => 'delivered',
+                    'body' => sprintf('Ordem de Serviço Nº %05d enviada por WhatsApp.', (int) $os['id']),
+                    'message_at' => $msgAt,
+                    'service_order_id' => (int) $os['id'],
+                ]);
+            }
+        }
+    }
+} catch (\Throwable $e) {
+    error_log('Falha no backfill de OS para WhatsApp: ' . $e->getMessage());
+}
+
+// ── 3. Sincronização automática de clientes com WhatsApp cadastrado ───────────
 try {
     $syncStmt = $db->query("
         SELECT c.id, c.name, c.whatsapp

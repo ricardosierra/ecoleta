@@ -22,6 +22,7 @@ import {
   canEditUser,
   canGeneratePassword,
   canManageUsers,
+  canTogglePasswordLock,
   normalizeRole,
   requiresGroup,
 } from "@/lib/authz";
@@ -46,6 +47,8 @@ const ACTION_BADGES: Record<string, { label: string; tone: string; dot: string }
   create_user: { label: "Conta Criada", tone: "border-purple-500/30 bg-purple-500/15 text-purple-300", dot: "bg-purple-400" },
   edit_user: { label: "Edição de Cadastro", tone: "border-sky-500/30 bg-sky-500/15 text-sky-300", dot: "bg-sky-400" },
   delete_user: { label: "Exclusão", tone: "border-red-500/30 bg-red-500/15 text-red-300", dot: "bg-red-400" },
+  change_password_blocked: { label: "Troca Bloqueada", tone: "border-red-500/30 bg-red-500/15 text-red-300", dot: "bg-red-400" },
+  reset_password_blocked: { label: "Reset Bloqueado", tone: "border-red-500/30 bg-red-500/15 text-red-300", dot: "bg-red-400" },
 };
 
 function ActionBadge({ action }: { action: string }) {
@@ -88,6 +91,7 @@ type User = {
   group_id: number | null;
   group_name: string | null;
   force_password_change?: boolean;
+  password_locked?: boolean;
   created_at: string;
 };
 
@@ -130,7 +134,9 @@ function UsuarioDetails() {
   const [editEmail, setEditEmail] = useState("");
   const [editRole, setEditRole] = useState("user");
   const [editGroupId, setEditGroupId] = useState<number | "">("");
+  const [editPasswordLocked, setEditPasswordLocked] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [isLocking, setIsLocking] = useState(false);
 
   // Modal Gerar Senha
   const [showGenModal, setShowGenModal] = useState(false);
@@ -183,6 +189,7 @@ function UsuarioDetails() {
   const mayEditUser = user ? canEditUser(currentUser, user) : false;
   const mayGeneratePassword = user ? canGeneratePassword(currentUser, user) : false;
   const mayDeleteUser = user ? canDeleteUser(currentUser, user) : false;
+  const mayToggleLock = canTogglePasswordLock(currentUser);
   const editableRoles = user ? assignableRolesOnEdit(currentUser, user) : [];
 
   const openEditModal = () => {
@@ -191,8 +198,37 @@ function UsuarioDetails() {
     setEditEmail(user.email || "");
     setEditRole(user.role);
     setEditGroupId(user.group_id ?? (groups.length > 0 ? groups[0].id : ""));
+    setEditPasswordLocked(Boolean(user.password_locked));
     setActionError("");
     setShowEditModal(true);
+  };
+
+  const handleToggleLock = async () => {
+    if (!user || isLocking) return;
+    setIsLocking(true);
+    setActionError("");
+
+    try {
+      const res = await apiPostJson("/api/users/edit.php", {
+        user_id: user.id,
+        login: user.login,
+        email: user.email || "",
+        role: user.role,
+        group_id: user.group_id,
+        password_locked: !user.password_locked,
+      });
+      const data = await res.json();
+
+      if (res.ok && data.ok) {
+        fetchUserData();
+      } else {
+        alert(data.error || "Erro ao alterar trava de senha.");
+      }
+    } catch {
+      alert("Erro de conexão ao alterar trava de senha.");
+    } finally {
+      setIsLocking(false);
+    }
   };
 
   const handleConfirmEdit = async (e: FormEvent) => {
@@ -208,13 +244,19 @@ function UsuarioDetails() {
     setActionError("");
 
     try {
-      const res = await apiPostJson("/api/users/edit.php", {
+      const payload: Record<string, unknown> = {
         user_id: user.id,
         login: editLogin,
         email: editEmail,
         role: editRole,
         group_id: editGroupId ? Number(editGroupId) : null,
-      });
+      };
+
+      if (mayToggleLock) {
+        payload.password_locked = editPasswordLocked;
+      }
+
+      const res = await apiPostJson("/api/users/edit.php", payload);
       const data = await res.json();
 
       if (res.ok && data.ok) {
@@ -332,6 +374,17 @@ function UsuarioDetails() {
                   {user.group_name}
                 </span>
               )}
+              {user.password_locked ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/30 bg-red-500/15 px-2.5 py-1 text-xs font-semibold text-red-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
+                  Troca de senha bloqueada
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                  Troca de senha liberada
+                </span>
+              )}
               {user.force_password_change && (
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/15 px-2.5 py-1 text-xs font-semibold text-amber-300">
                   <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
@@ -350,6 +403,22 @@ function UsuarioDetails() {
 
         {/* Ações de administrador */}
         <div className="flex flex-wrap items-center gap-2">
+          {mayToggleLock && (
+            <button
+              type="button"
+              onClick={handleToggleLock}
+              disabled={isLocking}
+              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold transition-colors disabled:opacity-50 sm:text-sm ${
+                user.password_locked
+                  ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25"
+                  : "border-red-500/40 bg-red-500/15 text-red-300 hover:bg-red-500/25"
+              }`}
+            >
+              <KeyIcon width={15} height={15} />
+              {user.password_locked ? "Desbloquear Troca" : "Bloquear Troca"}
+            </button>
+          )}
+
           {mayEditUser && (
             <button
               type="button"
@@ -361,7 +430,7 @@ function UsuarioDetails() {
             </button>
           )}
 
-          {mayGeneratePassword && (
+          {mayGeneratePassword ? (
             <button
               type="button"
               onClick={() => {
@@ -374,7 +443,11 @@ function UsuarioDetails() {
               <KeyIcon width={15} height={15} />
               Nova Senha
             </button>
-          )}
+          ) : user.password_locked ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-2 text-xs font-medium text-white/50">
+              Nova senha bloqueada
+            </span>
+          ) : null}
 
           {mayDeleteUser && (
             <button
@@ -521,6 +594,21 @@ function UsuarioDetails() {
                 </select>
               </label>
             </div>
+
+            {mayToggleLock && (
+              <label className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-white cursor-pointer hover:bg-black/30">
+                <input
+                  type="checkbox"
+                  checked={editPasswordLocked}
+                  onChange={(e) => setEditPasswordLocked(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-white/20 bg-black/40 text-[var(--color-accent)] focus:ring-0"
+                />
+                <div>
+                  <span className="font-semibold text-white">Bloquear troca de senha</span>
+                  <p className="mt-0.5 text-white/50">Impede que o próprio usuário ou outros administradores alterem a senha da conta sem autorização prévia.</p>
+                </div>
+              </label>
+            )}
 
             {mayGeneratePassword && (
               <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-4">

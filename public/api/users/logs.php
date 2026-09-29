@@ -29,7 +29,7 @@ $db = getDbConnection();
 
 // Busca dados do usuário
 $userStmt = $db->prepare("
-    SELECT u.id, u.login, u.email, u.role, u.group_id, g.name AS group_name, u.force_password_change, u.created_at 
+    SELECT u.id, u.login, u.email, u.role, u.group_id, g.name AS group_name, u.force_password_change, u.password_locked, u.created_at 
     FROM users u 
     LEFT JOIN `groups` g ON u.group_id = g.id 
     WHERE u.id = ?
@@ -42,6 +42,8 @@ if (!$user) {
     echo json_encode(['error' => 'Usuário não encontrado.']);
     exit;
 }
+
+$user['password_locked'] = (bool) ($user['password_locked'] ?? false);
 
 // Busca histórico completo de atividades
 $stmt = $db->prepare("
@@ -68,8 +70,25 @@ if (empty($logs)) {
     $logs = $legacyStmt->fetchAll();
 }
 
+// Busca histórico de auditoria de hash de senha (capturado por trigger MySQL ou ações do sistema)
+$passwordHistory = [];
+try {
+    $pwdStmt = $db->prepare("
+        SELECT id, user_id, old_hash, new_hash, change_type, changed_by_login, ip_address, user_agent, created_at 
+        FROM password_hash_history 
+        WHERE user_id = ? 
+        ORDER BY created_at DESC, id DESC 
+        LIMIT 50
+    ");
+    $pwdStmt->execute([$userId]);
+    $passwordHistory = $pwdStmt->fetchAll();
+} catch (\Throwable $e) {
+    $passwordHistory = [];
+}
+
 echo json_encode([
     'ok' => true,
     'user' => $user,
-    'logs' => $logs
+    'logs' => $logs,
+    'password_history' => $passwordHistory,
 ]);

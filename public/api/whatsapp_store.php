@@ -122,6 +122,39 @@ function waWindowState(?string $expiresAtUtc, ?string $nowUtc = null): array
 }
 
 /**
+ * Devolve o número normalizado e sua variante com/sem o 9º dígito (para celulares do Brasil).
+ *
+ * No Brasil, a Meta Webhook muitas vezes envia wa_id de contas antigas com 12 dígitos (sem o 9,
+ * ex: 552199887766), enquanto cadastros no sistema possuem 13 dígitos (com o 9, ex: 5521999887766).
+ * Considerar ambas as variantes evita conversas duplicadas e perda de vínculo com o cliente.
+ *
+ * @return string[]
+ */
+function waPhoneVariants(string $phone): array
+{
+    $phone = normalizePhone($phone);
+    if ($phone === '') {
+        return [];
+    }
+
+    $variants = [$phone];
+
+    if (str_starts_with($phone, '55')) {
+        $ddd = substr($phone, 2, 2);
+        // 13 dígitos: 55 + DDD + 9 + 8 dígitos (celular padrão). Variante sem o 9 (12 dígitos).
+        if (strlen($phone) === 13 && $phone[4] === '9') {
+            $variants[] = '55' . $ddd . substr($phone, 5);
+        }
+        // 12 dígitos: 55 + DDD + 8 dígitos de celular (iniciados em 6, 7, 8 ou 9). Variante com o 9 (13 dígitos).
+        elseif (strlen($phone) === 12 && in_array($phone[4], ['6', '7', '8', '9'], true)) {
+            $variants[] = '55' . $ddd . '9' . substr($phone, 4);
+        }
+    }
+
+    return array_values(array_unique($variants));
+}
+
+/**
  * Acha (ou cria) a conversa de um número.
  *
  * O número é normalizado antes de qualquer coisa: o mesmo telefone escrito como
@@ -136,8 +169,11 @@ function waEnsureConversation(PDO $db, string $phone, array $extra = []): ?int
         return null;
     }
 
-    $stmt = $db->prepare('SELECT id FROM whatsapp_conversations WHERE phone = ? LIMIT 1');
-    $stmt->execute([$phone]);
+    $variants = waPhoneVariants($phone);
+    $placeholders = implode(',', array_fill(0, count($variants), '?'));
+
+    $stmt = $db->prepare("SELECT id FROM whatsapp_conversations WHERE phone IN ($placeholders) ORDER BY (last_message_at IS NOT NULL) DESC, id ASC LIMIT 1");
+    $stmt->execute($variants);
     $id = $stmt->fetchColumn();
 
     if ($id !== false && $id !== null) {
@@ -200,8 +236,8 @@ function waUpdateConversationIdentity(PDO $db, int $conversationId, array $extra
 /**
  * O cliente da Ecoleta dono de um número, se houver.
  *
- * A comparação é feita sobre o valor normalizado dos dois lados porque o
- * cadastro antigo pode ter guardado o telefone com máscara.
+ * A comparação é feita sobre o valor normalizado dos dois lados e considera
+ * variações com e sem o 9º dígito.
  */
 function waFindClientIdByPhone(PDO $db, string $phone): ?int
 {
@@ -210,9 +246,12 @@ function waFindClientIdByPhone(PDO $db, string $phone): ?int
         return null;
     }
 
+    $variants = waPhoneVariants($phone);
+
     $stmt = $db->query('SELECT id, whatsapp FROM clients WHERE whatsapp IS NOT NULL AND whatsapp <> \'\'');
     foreach ($stmt ? $stmt->fetchAll() : [] as $linha) {
-        if (normalizePhone((string) $linha['whatsapp']) === $phone) {
+        $clientPhone = normalizePhone((string) $linha['whatsapp']);
+        if (in_array($clientPhone, $variants, true)) {
             return (int) $linha['id'];
         }
     }
@@ -386,8 +425,11 @@ function waFindConversationByPhone(PDO $db, string $phone): ?array
         return null;
     }
 
-    $stmt = $db->prepare('SELECT * FROM whatsapp_conversations WHERE phone = ? LIMIT 1');
-    $stmt->execute([$phone]);
+    $variants = waPhoneVariants($phone);
+    $placeholders = implode(',', array_fill(0, count($variants), '?'));
+
+    $stmt = $db->prepare("SELECT * FROM whatsapp_conversations WHERE phone IN ($placeholders) ORDER BY (last_message_at IS NOT NULL) DESC, id ASC LIMIT 1");
+    $stmt->execute($variants);
     $linha = $stmt->fetch();
 
     return is_array($linha) ? $linha : null;
@@ -404,19 +446,21 @@ function waFindConversationByPhone(PDO $db, string $phone): ?array
  */
 function waWindowsByPhone(PDO $db, array $phones): array
 {
-    $normalizados = [];
+    $mapaBusca = [];
     foreach ($phones as $phone) {
         $normalizado = normalizePhone((string) $phone);
         if ($normalizado !== '') {
-            $normalizados[$normalizado] = true;
+            foreach (waPhoneVariants($normalizado) as $v) {
+                $mapaBusca[$v] = $normalizado;
+            }
         }
     }
 
-    if ($normalizados === []) {
+    if ($mapaBusca === []) {
         return [];
     }
 
-    $lista = array_keys($normalizados);
+    $lista = array_keys($mapaBusca);
     $marcadores = implode(',', array_fill(0, count($lista), '?'));
 
     $stmt = $db->prepare(
@@ -427,10 +471,14 @@ function waWindowsByPhone(PDO $db, array $phones): array
     $agora = waNow();
     $janelas = [];
     foreach ($stmt->fetchAll() as $linha) {
-        $janelas[(string) $linha['phone']] = waWindowState(
+        $dbPhone = (string) $linha['phone'];
+        $original = $mapaBusca[$dbPhone] ?? $dbPhone;
+        $estado = waWindowState(
             $linha['service_window_expires_at'] === null ? null : (string) $linha['service_window_expires_at'],
             $agora
         );
+        $janelas[$dbPhone] = $estado;
+        $janelas[$original] = $estado;
     }
 
     return $janelas;

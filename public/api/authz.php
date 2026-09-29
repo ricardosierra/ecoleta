@@ -90,6 +90,11 @@ function apiRoleCanGeneratePassword(?string $actorRole, ?string $targetRole): bo
     return apiRoleCanActOnUser($actorRole, $targetRole);
 }
 
+function apiRoleCanTogglePasswordLock(?string $actorRole): bool
+{
+    return apiNormalizeRole($actorRole) === API_ROLE_ROOT;
+}
+
 /** Excluir exige o mesmo que editar, mais a trava de não apagar a si próprio. */
 function apiRoleCanDeleteUser(?string $actorRole, int $actorId, ?string $targetRole, int $targetId): bool
 {
@@ -177,15 +182,16 @@ function apiRoleRequiresGroup($role): bool
 const API_WHATSAPP_PANEL_EMAILS = ['sierra.csi@gmail.com'];
 
 /**
- * Painel de WhatsApp: exige `root` E estar na lista acima.
- *
- * As duas condições juntas de propósito. Só o papel deixaria qualquer root
- * futuro lendo conversa de cliente; só o e-mail daria acesso a uma conta que
- * foi rebaixada e continua com o mesmo endereço.
+ * Painel de WhatsApp: liberado para `master` (cliente) e `root` na lista.
  */
 function apiRoleCanViewWhatsAppPanel(?string $role, ?string $email): bool
 {
-    if (apiNormalizeRole($role) !== API_ROLE_ROOT) {
+    $role = apiNormalizeRole($role);
+    if ($role === API_ROLE_MASTER) {
+        return true;
+    }
+
+    if ($role !== API_ROLE_ROOT) {
         return false;
     }
 

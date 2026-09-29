@@ -11,6 +11,10 @@
 # existem e o dashboard responde 503 até alguém rodar a migration. Ver
 # docs/deploy.md.
 #
+# Sem SSH (hospedagem compartilhada): com CRON_SECRET e SITE_BASE_URL no .env,
+# este script sobe db/migrations junto e chama api/migrate.php logo após o
+# envio, que aplica só as pendentes pelo usuário MySQL da aplicação.
+#
 # Uso: npm run deploy:ftp
 #      MIGRATIONS_APPLIED=1 npm run deploy:ftp    (CI / não interativo)
 set -euo pipefail
@@ -54,7 +58,16 @@ REQUIRED_SCHEMA_VERSION="$(
 )"
 REQUIRED_SCHEMA_VERSION="${REQUIRED_SCHEMA_VERSION:-?}"
 
-if [[ "${MIGRATIONS_APPLIED:-}" != "1" ]]; then
+# Com CRON_SECRET e SITE_BASE_URL no .env, api/migrate.php aplica as pendentes
+# logo depois do envio — o banco fica atrás do código só pelos segundos entre
+# o último arquivo e essa chamada.
+AUTO_MIGRATE=0
+if [[ -n "${CRON_SECRET:-}" && -n "${SITE_BASE_URL:-}" ]]; then
+  AUTO_MIGRATE=1
+  echo "Migrations pendentes serão aplicadas por api/migrate.php após o envio (schema ${REQUIRED_SCHEMA_VERSION})."
+fi
+
+if [[ "$AUTO_MIGRATE" != "1" && "${MIGRATIONS_APPLIED:-}" != "1" ]]; then
   echo
   echo "Esta build exige o schema na versão ${REQUIRED_SCHEMA_VERSION}."
   echo "Antes de publicar os arquivos, aplique as migrations no servidor:"
@@ -155,6 +168,14 @@ echo "Gerando out/api/env.php..."
 mkdir -p "$ROOT_DIR/out/api"
 cp "$ROOT_DIR/public/api/env.php" "$ROOT_DIR/out/api/env.php"
 
+# api/migrate.php lê as migrations de api/migrations/ no servidor; o .htaccess
+# impede que alguém baixe o DDL pelo navegador.
+echo "Copiando db/migrations para out/api/migrations..."
+rm -rf "$ROOT_DIR/out/api/migrations"
+mkdir -p "$ROOT_DIR/out/api/migrations"
+cp "$ROOT_DIR"/db/migrations/*.sql "$ROOT_DIR/out/api/migrations/"
+printf 'Require all denied\n' > "$ROOT_DIR/out/api/migrations/.htaccess"
+
 echo "Validando acesso FTP..."
 validation_url="$FTP_HOST/"
 if [[ "$FTP_UPLOAD_PATH" != "." ]]; then
@@ -185,6 +206,14 @@ find "$ROOT_DIR/out" -type f -print0 | while IFS= read -r -d '' file; do
     --upload-file "$file" \
     "$remote_url/$(basename "$file")"
 done
+
+if [[ "$AUTO_MIGRATE" == "1" ]]; then
+  echo "Aplicando migrations pendentes em ${SITE_BASE_URL%/}/api/migrate.php..."
+  curl --fail --silent --show-error --max-time 300 \
+    -H "X-Deploy-Token: $CRON_SECRET" \
+    "${SITE_BASE_URL%/}/api/migrate.php"
+  echo
+fi
 
 echo "Publicação concluída com sucesso no destino FTP configurado!"
 

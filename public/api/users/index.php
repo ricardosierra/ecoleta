@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../authz.php';
+require_once __DIR__ . '/../auth/password_audit_lib.php';
 
 startSecureSession();
 apiRequireCsrfToken();
@@ -18,7 +19,7 @@ $db = getDbConnection();
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $stmt = $db->query("
-        SELECT u.id, u.login, u.email, u.role, u.group_id, g.name AS group_name, u.force_password_change, u.created_at,
+        SELECT u.id, u.login, u.email, u.role, u.group_id, g.name AS group_name, u.force_password_change, u.password_locked, u.created_at,
                (SELECT MAX(a.logged_at) FROM access_logs a WHERE a.user_id = u.id) AS last_login
         FROM users u
         LEFT JOIN `groups` g ON u.group_id = g.id
@@ -103,6 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $db->prepare("INSERT INTO users (login, email, password_hash, role, group_id, force_password_change) VALUES (?, ?, ?, ?, ?, 1)");
         $stmt->execute([$login, $email, $hash, $role, $groupId]);
         $id = (int)$db->lastInsertId();
+        attributePasswordHashChange($db, $id, $hash, 'create_user', (int) $operatorId, (string) $operatorLogin);
         
         $groupDesc = $groupName ? " no grupo '{$groupName}'" : "";
         logActivity(

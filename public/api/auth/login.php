@@ -116,7 +116,7 @@ logActivity(
 
 // Busca dados completos incluindo o grupo
 $stmtDetails = $db->prepare("
-    SELECT u.id, u.login, u.email, u.role, u.group_id, u.force_password_change,
+    SELECT u.id, u.login, u.email, u.role, u.group_id, u.force_password_change, u.password_locked,
            g.name AS group_name, g.powerbi_url AS group_powerbi_url
     FROM users u
     LEFT JOIN `groups` g ON u.group_id = g.id
@@ -137,5 +137,6 @@ apiJsonResponse(200, [
         'group_name' => $userDetails['group_name'] ?? null,
         'group_powerbi_url' => $userDetails['group_powerbi_url'] ?? null,
         'force_password_change' => (bool) $userDetails['force_password_change'],
+        'password_locked' => (bool) ($userDetails['password_locked'] ?? false),
     ],
 ]);

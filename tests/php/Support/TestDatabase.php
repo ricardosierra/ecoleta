@@ -27,7 +27,7 @@ final class TestDatabase
      * Versão de schema que este espelho reproduz. Precisa acompanhar
      * ECOLETA_SCHEMA_VERSION — SchemaMirrorTest garante isso.
      */
-    public const MIRRORED_VERSION = 16;
+    public const MIRRORED_VERSION = 18;
 
     private string $path;
 
@@ -82,11 +82,12 @@ final class TestDatabase
         string $password,
         string $role = 'user',
         ?string $email = null,
-        ?int $groupId = null
+        ?int $groupId = null,
+        int $passwordLocked = 0
     ): int {
         $stmt = $this->pdo()->prepare(
-            'INSERT INTO users (login, password_hash, email, role, group_id, force_password_change)
-             VALUES (?, ?, ?, ?, ?, 0)'
+            'INSERT INTO users (login, password_hash, email, role, group_id, force_password_change, password_locked)
+             VALUES (?, ?, ?, ?, ?, 0, ?)'
         );
         $stmt->execute([
             $login,
@@ -94,6 +95,7 @@ final class TestDatabase
             $email ?? ($login . '@exemplo.com.br'),
             $role,
             $groupId,
+            $passwordLocked,
         ]);
 
         return (int) $this->pdo()->lastInsertId();
@@ -228,6 +230,7 @@ final class TestDatabase
             role TEXT NOT NULL DEFAULT \'user\',
             group_id INTEGER NULL,
             force_password_change INTEGER NOT NULL DEFAULT 1,
+            password_locked INTEGER NOT NULL DEFAULT 0,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )');
@@ -390,12 +393,56 @@ final class TestDatabase
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )');
 
+        // 018_password_hash_history.sql
+        $pdo->exec('CREATE TABLE password_hash_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            old_hash TEXT NULL,
+            new_hash TEXT NOT NULL,
+            changed_by_user_id INTEGER NULL,
+            changed_by_login TEXT NULL,
+            change_type TEXT NOT NULL DEFAULT \'direct_sql\',
+            ip_address TEXT NULL,
+            user_agent TEXT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )');
+
+        $pdo->exec('CREATE TRIGGER IF NOT EXISTS trg_users_password_change
+            AFTER UPDATE OF password_hash ON users
+            FOR EACH ROW
+            WHEN OLD.password_hash <> NEW.password_hash
+            BEGIN
+                INSERT INTO password_hash_history (user_id, old_hash, new_hash, change_type, created_at)
+                VALUES (OLD.id, OLD.password_hash, NEW.password_hash, \'db_trigger\', datetime(\'now\'));
+            END
+        ');
+
+        $pdo->exec('CREATE TRIGGER IF NOT EXISTS trg_users_password_insert
+            AFTER INSERT ON users
+            FOR EACH ROW
+            BEGIN
+                INSERT INTO password_hash_history (user_id, old_hash, new_hash, change_type, created_at)
+                VALUES (NEW.id, NULL, NEW.password_hash, \'db_trigger\', datetime(\'now\'));
+            END
+        ');
+
+        $pdo->exec('CREATE TRIGGER IF NOT EXISTS trg_users_password_delete
+            BEFORE DELETE ON users
+            FOR EACH ROW
+            BEGIN
+                INSERT INTO password_hash_history (user_id, old_hash, new_hash, change_type, created_at)
+                VALUES (OLD.id, OLD.password_hash, OLD.password_hash, \'user_deleted\', datetime(\'now\'));
+            END
+        ');
+
         // Registro que public/api/schema.php lê a cada requisição. Sem ele todo
         // endpoint responderia 503 antes de chegar na regra sob teste.
         $pdo->exec('CREATE TABLE schema_migrations (
             version INTEGER PRIMARY KEY,
             filename TEXT NOT NULL,
             checksum TEXT NOT NULL,
+            statements INTEGER NOT NULL DEFAULT 0,
+            execution_ms INTEGER NOT NULL DEFAULT 0,
             applied_at TEXT DEFAULT CURRENT_TIMESTAMP,
             duration_ms INTEGER NOT NULL DEFAULT 0
         )');

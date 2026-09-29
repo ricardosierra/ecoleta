@@ -36,6 +36,7 @@ export type Actor = {
 export type TargetUser = {
   id?: number | null;
   role?: string | null;
+  password_locked?: boolean | null;
 };
 
 export type NavLink = {
@@ -102,13 +103,13 @@ export function canManageGroups(actor: Actor): boolean {
 export const WHATSAPP_PANEL_EMAILS: readonly string[] = ["sierra.csi@gmail.com"];
 
 /**
- * Painel de WhatsApp: exige `root` E estar na lista acima.
- *
- * As duas condições juntas de propósito. Só o papel deixaria qualquer root
- * futuro lendo conversa de cliente; só o e-mail daria acesso a uma conta que
- * foi rebaixada e continua com o mesmo endereço.
+ * Painel de WhatsApp: liberado para `master` (cliente) e `root` na lista.
  */
 export function canViewWhatsAppPanel(actor: Actor): boolean {
+  if (isMaster(actor)) {
+    return true;
+  }
+
   if (!isRoot(actor)) {
     return false;
   }
@@ -152,7 +153,14 @@ export function canEditUser(actor: Actor, target: TargetUser): boolean {
 }
 
 export function canGeneratePassword(actor: Actor, target: TargetUser): boolean {
+  if (target.password_locked) {
+    return false;
+  }
   return canActOnTarget(actor, target);
+}
+
+export function canTogglePasswordLock(actor: Actor): boolean {
+  return isRoot(actor);
 }
 
 /**

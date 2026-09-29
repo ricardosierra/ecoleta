@@ -2,6 +2,8 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../authz.php';
+require_once __DIR__ . '/../security_alerts.php';
+require_once __DIR__ . '/../auth/password_audit_lib.php';
 
 startSecureSession();
 apiRequireCsrfToken();
@@ -33,7 +35,7 @@ if (!$targetUserId) {
 $db = getDbConnection();
 
 // Busca usuário alvo
-$stmt = $db->prepare("SELECT id, login, email, role FROM users WHERE id = ? LIMIT 1");
+$stmt = $db->prepare("SELECT id, login, email, role, password_locked FROM users WHERE id = ? LIMIT 1");
 $stmt->execute([$targetUserId]);
 $targetUser = $stmt->fetch();
 
@@ -50,6 +52,34 @@ if (!apiRoleCanGeneratePassword($operatorRole, (string) $targetUser['role'])) {
     exit;
 }
 
+// Se a conta estiver com troca de senha bloqueada, recusa a geração e alerta
+if (!empty($targetUser['password_locked'])) {
+    apiSendSecurityAlert(
+        'Tentativa Bloqueada de Gerar Senha',
+        "Tentativa de redefinir senha do usuário '{$targetUser['login']}' com trava ativada",
+        [
+            'Usuário Alvo' => $targetUser['login'],
+            'E-mail Alvo' => $targetUser['email'] ?? 'Não cadastrado',
+            'Solicitante' => "{$operatorLogin} ({$operatorRole})",
+            'Status' => 'BLOQUEADO (Conta com trava ativada)',
+        ]
+    );
+
+    logActivity(
+        $db,
+        $targetUserId,
+        'reset_password_blocked',
+        "Tentativa de gerar senha para '{$targetUser['login']}' bloqueada por trava de segurança",
+        $operatorId,
+        $operatorLogin,
+        $targetUser['login']
+    );
+
+    http_response_code(403);
+    echo json_encode(['error' => 'A troca de senha deste usuário está bloqueada pelo administrador. Desbloqueie a conta antes de gerar nova senha.']);
+    exit;
+}
+
 // Gera senha temporária de 10 caracteres
 $chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$';
 $generatedPassword = '';
@@ -62,6 +92,7 @@ $passwordHash = password_hash($generatedPassword, PASSWORD_DEFAULT);
 
 $updateStmt = $db->prepare("UPDATE users SET password_hash = ?, force_password_change = 1 WHERE id = ?");
 $updateStmt->execute([$passwordHash, $targetUserId]);
+attributePasswordHashChange($db, (int) $targetUserId, $passwordHash, 'reset_password', (int) $operatorId, (string) $operatorLogin);
 
 // Grava no log de auditoria
 logActivity(
@@ -72,6 +103,18 @@ logActivity(
     $operatorId,
     $operatorLogin,
     $targetUser['login']
+);
+
+// Notifica o administrador técnico por e-mail
+apiSendSecurityAlert(
+    'Nova Senha Temporária Gerada',
+    "Uma nova senha temporária foi gerada para o usuário '{$targetUser['login']}'",
+    [
+        'Usuário Alvo' => $targetUser['login'],
+        'E-mail Alvo' => $targetUser['email'] ?? 'Não cadastrado',
+        'Gerado por' => "{$operatorLogin} ({$operatorRole})",
+        'Status' => 'Senha temporária gerada (primeiro acesso exigido)',
+    ]
 );
 
 echo json_encode([

@@ -12,6 +12,7 @@ import {
   canManageGroups,
   canManageUsers,
   canSwitchGroupPanel,
+  canTogglePasswordLock,
   canViewUserLogs,
   dashboardNavLinks,
   isAdmin,
@@ -110,6 +111,7 @@ describe("dashboardNavLinks", () => {
       { href: "/dashboard/faturas", label: "Faturas" },
       { href: "/dashboard/os", label: "OS Eletrônica" },
       { href: "/dashboard/configuracoes", label: "Configurações" },
+      { href: "/dashboard/whatsapp", label: "WhatsApp" },
     ]);
   });
 
@@ -162,6 +164,24 @@ describe("ações sobre uma conta", () => {
     expect(canEditUser(master, estranho)).toBe(false);
     // root já pode tudo; o servidor ainda revalida o papel enviado.
     expect(canEditUser(root, estranho)).toBe(true);
+  });
+
+  it("não permite gerar nova senha para usuário com trava ativa (password_locked)", () => {
+    const travado = { id: 5, role: "user", password_locked: true };
+    const destravado = { id: 6, role: "user", password_locked: false };
+
+    expect(canGeneratePassword(root, travado)).toBe(false);
+    expect(canGeneratePassword(master, travado)).toBe(false);
+
+    expect(canGeneratePassword(root, destravado)).toBe(true);
+    expect(canGeneratePassword(master, destravado)).toBe(true);
+  });
+
+  it("apenas root pode alterar o estado da trava de senha", () => {
+    expect(canTogglePasswordLock(root)).toBe(true);
+    expect(canTogglePasswordLock(master)).toBe(false);
+    expect(canTogglePasswordLock(comum)).toBe(false);
+    expect(canTogglePasswordLock(null)).toBe(false);
   });
 });
 
@@ -281,7 +301,8 @@ describe("canViewWhatsAppPanel", () => {
     ["root fora da lista", { role: "root", email: "outro@exemplo.com" }, false],
     ["root sem e-mail", { role: "root", email: null }, false],
     ["root com e-mail vazio", { role: "root", email: "" }, false],
-    ["master na lista", { role: "master", email: "sierra.csi@gmail.com" }, false],
+    ["master liberado", { role: "master", email: "cliente@exemplo.com" }, true],
+    ["master sem e-mail", { role: "master", email: null }, true],
     ["user na lista", { role: "user", email: "sierra.csi@gmail.com" }, false],
     ["papel desconhecido", { role: "superadmin", email: "sierra.csi@gmail.com" }, false],
     ["papel com caixa trocada", { role: "Root", email: "sierra.csi@gmail.com" }, false],
@@ -298,15 +319,18 @@ describe("canViewWhatsAppPanel", () => {
 });
 
 describe("dashboardNavLinks — WhatsApp", () => {
-  it("mostra o link só para a conta que pode abrir o painel", () => {
-    const permitido = dashboardNavLinks({ role: "root", email: "sierra.csi@gmail.com" });
-    expect(permitido.some(l => l.href === "/dashboard/whatsapp")).toBe(true);
+  it("mostra o link para root autorizado e para master", () => {
+    const rootPermitido = dashboardNavLinks({ role: "root", email: "sierra.csi@gmail.com" });
+    expect(rootPermitido.some(l => l.href === "/dashboard/whatsapp")).toBe(true);
+
+    const masterPermitido = dashboardNavLinks({ role: "master", email: "cliente@exemplo.com" });
+    expect(masterPermitido.some(l => l.href === "/dashboard/whatsapp")).toBe(true);
   });
 
-  it("esconde o link de outro root e de master", () => {
+  it("esconde o link de outro root e de user", () => {
     for (const ator of [
       { role: "root", email: "outro@exemplo.com" },
-      { role: "master", email: "sierra.csi@gmail.com" },
+      { role: "user", email: "sierra.csi@gmail.com" },
     ]) {
       expect(dashboardNavLinks(ator).some(l => l.href === "/dashboard/whatsapp")).toBe(false);
     }
