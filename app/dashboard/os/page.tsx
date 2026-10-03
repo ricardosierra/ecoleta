@@ -14,6 +14,7 @@ import {
 import { isAdmin } from "@/lib/authz";
 import { apiPostJson } from "@/lib/dashboard-api";
 import {
+  OS_LIMITS,
   OS_SUPPORT_PHONE,
   formatOsDate,
   formatOsDateTime,
@@ -238,30 +239,30 @@ function OSMain() {
               </select>
             </label>
             <label className={labelClass} htmlFor="os-endereco">Endereço da Coleta
-              <input id="os-endereco" value={collectionAddress} onChange={e => setCollectionAddress(e.target.value)} placeholder="Ex: Av. das Américas, 500 - Barra da Tijuca" className={inputClass} />
+              <input id="os-endereco" maxLength={OS_LIMITS.address} value={collectionAddress} onChange={e => setCollectionAddress(e.target.value)} placeholder="Ex: Av. das Américas, 500 - Barra da Tijuca" className={inputClass} />
             </label>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <label className={labelClass} htmlFor="os-data">Data da Coleta
                 <input id="os-data" type="date" value={collectionDate} onChange={e => setCollectionDate(e.target.value)} className={inputClass} />
               </label>
               <label className={labelClass} htmlFor="os-horario">Horário Aproximado
-                <input id="os-horario" value={approximateTime} onChange={e => setApproximateTime(e.target.value)} placeholder="Ex: 10:00 ou Manhã" className={inputClass} />
+                <input id="os-horario" maxLength={OS_LIMITS.time} value={approximateTime} onChange={e => setApproximateTime(e.target.value)} placeholder="Ex: 10:00 ou Manhã" className={inputClass} />
               </label>
               <label className={labelClass} htmlFor="os-material">Material Coletado
-                <input id="os-material" value={materialCollected} onChange={e => setMaterialCollected(e.target.value)} placeholder="Ex: Óleo vegetal usado" className={inputClass} />
+                <input id="os-material" maxLength={OS_LIMITS.material} value={materialCollected} onChange={e => setMaterialCollected(e.target.value)} placeholder="Ex: Óleo vegetal usado" className={inputClass} />
               </label>
               <label className={labelClass} htmlFor="os-peso">Pesagem
-                <input id="os-peso" value={weight} onChange={e => setWeight(e.target.value)} placeholder="150 kg" className={inputClass} />
+                <input id="os-peso" maxLength={OS_LIMITS.weight} value={weight} onChange={e => setWeight(e.target.value)} placeholder="150 kg" className={inputClass} />
               </label>
               <label className={labelClass} htmlFor="os-sacos">Qtd. Sacos
-                <input id="os-sacos" type="number" inputMode="numeric" min="0" value={bagsCount} onChange={e => setBagsCount(e.target.value)} className={inputClass} />
+                <input id="os-sacos" type="number" inputMode="numeric" min="0" max={OS_LIMITS.quantity} value={bagsCount} onChange={e => setBagsCount(e.target.value)} className={inputClass} />
               </label>
               <label className={labelClass} htmlFor="os-containers">Qtd. Contêineres
-                <input id="os-containers" type="number" inputMode="numeric" min="0" value={containersCount} onChange={e => setContainersCount(e.target.value)} className={inputClass} />
+                <input id="os-containers" type="number" inputMode="numeric" min="0" max={OS_LIMITS.quantity} value={containersCount} onChange={e => setContainersCount(e.target.value)} className={inputClass} />
               </label>
             </div>
             <label className={labelClass} htmlFor="os-responsavel">Responsável pela Coleta
-              <input id="os-responsavel" value={responsible} onChange={e => setResponsible(e.target.value)} className={inputClass} />
+              <input id="os-responsavel" maxLength={OS_LIMITS.responsible} value={responsible} onChange={e => setResponsible(e.target.value)} className={inputClass} />
             </label>
 
             {formError && (

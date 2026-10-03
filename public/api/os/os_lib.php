@@ -212,6 +212,129 @@ function osNumber(int $id): string
     return str_pad((string) $id, 5, '0', STR_PAD_LEFT);
 }
 
+/**
+ * Tamanho máximo, em CARACTERES, das colunas de texto de `service_orders`
+ * (migrations 008 e 016). O VARCHAR do MySQL conta caracteres, não bytes: "ç"
+ * ocupa dois bytes e um campo cheio deles continua cabendo.
+ */
+const OS_TEXT_MAX_LENGTH = [
+    'collection_address' => 255,
+    'approximate_time' => 50,
+    'material_collected' => 255,
+    'weight' => 50,
+    'responsible' => 255,
+];
+
+/**
+ * Maior quantidade de sacos ou contêineres aceita. A coluna é INT, mas uma OS de
+ * coleta com mais de cem mil sacos é um erro de digitação, e é esse que a tela
+ * precisa apontar antes de o documento sair assinado.
+ */
+const OS_MAX_QUANTITY = 99999;
+
+/** Primeiro ano aceito na data da coleta. O último é o ano seguinte ao corrente. */
+const OS_MIN_YEAR = 2000;
+
+/**
+ * Valida e normaliza o corpo da criação de OS (`os/index.php`).
+ *
+ * O cliente fica de fora: quem o checa é o endpoint, que também confere que ele
+ * existe. A tela só marca o cliente como obrigatório, e o servidor cobra o mesmo,
+ * nem mais nem menos; o resto é opcional, mas precisa caber na coluna.
+ *
+ * Toda mensagem NOMEIA o campo, pelo rótulo que o cliente lê no documento
+ * (`OS_FIELD_LABELS`). Antes, "As quantidades devem ser números inteiros não
+ * negativos." não dizia qual das duas estava errada.
+ *
+ * - texto: aceita texto e número (a tela manda texto, mas `150` em JSON é legítimo);
+ *   lista, objeto e booleano são recusados, e vazio ou só espaços vira `null`;
+ * - quantidade: inteiro de 0 a `OS_MAX_QUANTITY`; zeros à esquerda ("05") valem,
+ *   porque é assim que muita gente digita; decimal, sinal e notação científica não;
+ * - data: `YYYY-MM-DD` real, entre `OS_MIN_YEAR` e o ano seguinte. "0026-09-03" e
+ *   "2099-09-03" eram datas válidas para o `DateTime` e absurdas para uma coleta.
+ *
+ * @param array<string,mixed> $body
+ * @return array{0:array<string,mixed>,1:?string} os valores prontos para gravar e a mensagem de erro (`null` se tudo certo)
+ */
+function osValidateInput(array $body, ?DateTimeImmutable $now = null): array
+{
+    $valores = [];
+
+    foreach (OS_TEXT_MAX_LENGTH as $campo => $maximo) {
+        $rotulo = OS_FIELD_LABELS[$campo];
+        $bruto = $body[$campo] ?? null;
+
+        if ($bruto !== null && !is_string($bruto) && !is_int($bruto) && !is_float($bruto)) {
+            return [[], $rotulo . ': valor inválido.'];
+        }
+
+        $texto = trim((string) ($bruto ?? ''));
+        if (mb_strlen($texto, 'UTF-8') > $maximo) {
+            return [[], sprintf('%s deve ter no máximo %d caracteres.', $rotulo, $maximo)];
+        }
+
+        $valores[$campo] = $texto === '' ? null : $texto;
+    }
+
+    foreach (['bags_count', 'containers_count'] as $campo) {
+        $bruto = $body[$campo] ?? null;
+        if (is_string($bruto)) {
+            $bruto = trim($bruto);
+        }
+
+        if ($bruto === null || $bruto === '') {
+            $valores[$campo] = null;
+            continue;
+        }
+
+        $quantidade = null;
+        if (is_int($bruto)) {
+            $quantidade = $bruto;
+        } elseif (is_float($bruto) && floor($bruto) === $bruto && abs($bruto) <= OS_MAX_QUANTITY) {
+            $quantidade = (int) $bruto;
+        } elseif (is_string($bruto) && preg_match('/^\d+$/D', $bruto) === 1) {
+            // Sem os zeros à esquerda, o que passar de seis dígitos já estoura o teto
+            // (e não vira inteiro gigante na conversão).
+            $digitos = ltrim($bruto, '0');
+            $quantidade = $digitos === '' ? 0 : (strlen($digitos) > 6 ? PHP_INT_MAX : (int) $digitos);
+        }
+
+        if ($quantidade === null || $quantidade < 0 || $quantidade > OS_MAX_QUANTITY) {
+            return [[], sprintf('%s deve ser um número inteiro de 0 a %d.', OS_FIELD_LABELS[$campo], OS_MAX_QUANTITY)];
+        }
+
+        $valores[$campo] = $quantidade;
+    }
+
+    $rotuloData = OS_FIELD_LABELS['collection_date'];
+    $brutoData = $body['collection_date'] ?? null;
+
+    if ($brutoData !== null && !is_string($brutoData)) {
+        return [[], $rotuloData . ' inválida.'];
+    }
+
+    $data = trim((string) ($brutoData ?? ''));
+    if ($data === '') {
+        $valores['collection_date'] = null;
+    } else {
+        $analisada = DateTimeImmutable::createFromFormat('!Y-m-d', $data);
+        if ($analisada === false || $analisada->format('Y-m-d') !== $data) {
+            return [[], $rotuloData . ' inválida.'];
+        }
+
+        $now ??= new DateTimeImmutable('now', new DateTimeZone('America/Sao_Paulo'));
+        $anoMaximo = (int) $now->format('Y') + 1;
+        $ano = (int) $analisada->format('Y');
+        if ($ano < OS_MIN_YEAR || $ano > $anoMaximo) {
+            return [[], sprintf('%s deve estar entre os anos de %d e %d.', $rotuloData, OS_MIN_YEAR, $anoMaximo)];
+        }
+
+        $valores['collection_date'] = $data;
+    }
+
+    return [$valores, null];
+}
+
 /** Data ISO do banco em dd/mm/aaaa. String vazia e nulo viram o marcador de vazio. */
 function osFormatDate(?string $isoDate): string
 {

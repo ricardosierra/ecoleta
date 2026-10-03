@@ -59,14 +59,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $clientId = (int) ($body['client_id'] ?? 0);
-    $collectionAddress = trim((string) ($body['collection_address'] ?? ''));
-    $weight = trim((string) ($body['weight'] ?? ''));
-    $collectionDate = trim((string) ($body['collection_date'] ?? ''));
-    $approximateTime = trim((string) ($body['approximate_time'] ?? ''));
-    $materialCollected = trim((string) ($body['material_collected'] ?? ''));
-    $bagsCount = isset($body['bags_count']) && $body['bags_count'] !== '' ? (int) $body['bags_count'] : null;
-    $containersCount = isset($body['containers_count']) && $body['containers_count'] !== '' ? (int) $body['containers_count'] : null;
-    $responsible = trim((string) ($body['responsible'] ?? ''));
 
     if (!$clientId) {
         apiJsonResponse(400, ['error' => 'Cliente é obrigatório.']);
@@ -75,20 +67,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $clientCheck = $db->prepare('SELECT id FROM clients WHERE id = ?');
     $clientCheck->execute([$clientId]);
     if (!$clientCheck->fetch()) apiJsonResponse(404, ['error' => 'Cliente não encontrado.']);
-    if ($collectionDate !== '') {
-        $parsedDate = DateTimeImmutable::createFromFormat('!Y-m-d', $collectionDate);
-        if (!$parsedDate || $parsedDate->format('Y-m-d') !== $collectionDate) {
-            apiJsonResponse(400, ['error' => 'Data de coleta inválida.']);
-        }
-    }
-    foreach (['bags_count', 'containers_count'] as $field) {
-        if (isset($body[$field]) && $body[$field] !== '' &&
-            (filter_var($body[$field], FILTER_VALIDATE_INT) === false || (int) $body[$field] < 0)) {
-            apiJsonResponse(400, ['error' => 'As quantidades devem ser números inteiros não negativos.']);
-        }
-    }
 
-    $colDate = $collectionDate !== '' ? $collectionDate : null;
+    // Tamanho, tipo, teto e data: ver osValidateInput(). Sem isto o valor chegava
+    // ao INSERT como veio, e o MySQL em modo estrito respondia um 500 genérico
+    // (ou, sem modo estrito, truncava em silêncio um documento que vai ao cliente).
+    [$campos, $erro] = osValidateInput($body);
+    if ($erro !== null) {
+        apiJsonResponse(400, ['error' => $erro]);
+    }
 
     try {
         $stmt = $db->prepare('
@@ -99,14 +85,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ');
         $stmt->execute([
             $clientId,
-            $collectionAddress !== '' ? $collectionAddress : null,
-            $weight,
-            $colDate,
-            $approximateTime !== '' ? $approximateTime : null,
-            $materialCollected !== '' ? $materialCollected : null,
-            $bagsCount,
-            $containersCount,
-            $responsible,
+            $campos['collection_address'],
+            $campos['weight'],
+            $campos['collection_date'],
+            $campos['approximate_time'],
+            $campos['material_collected'],
+            $campos['bags_count'],
+            $campos['containers_count'],
+            $campos['responsible'],
             osShareTokenNew(),
         ]);
 

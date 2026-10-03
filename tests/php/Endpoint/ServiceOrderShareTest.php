@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -132,6 +133,259 @@ final class ServiceOrderShareTest extends TestCase
         self::assertSame('Av. das Américas, 500', $criada['collection_address']);
         self::assertSame('14:30', $criada['approximate_time']);
         self::assertSame('Óleo vegetal usado', $criada['material_collected']);
+    }
+
+    // ── Validação do corpo da criação ───────────────────────────────────────
+    //
+    // O documento vai ao cliente, e as colunas têm tamanho: VARCHAR(50) para
+    // pesagem e horário, VARCHAR(255) para endereço, material e responsável, INT
+    // para as quantidades. Sem barrar antes, o MySQL em modo estrito responde 500
+    // genérico e, sem modo estrito, trunca em silêncio um texto que sai assinado.
+
+    /** @param array<string,mixed> $campos */
+    private function criar(array $campos): EndpointResponse
+    {
+        return Endpoint::call('os/index.php', $this->opcoes([
+            'session' => $this->sessaoAdmin(),
+            'body' => ['client_id' => $this->clientId] + $campos,
+        ]));
+    }
+
+    private function anoAtual(): int
+    {
+        return (int) (new DateTimeImmutable('now', new DateTimeZone('America/Sao_Paulo')))->format('Y');
+    }
+
+    public function testCriacaoSoComClienteContinuaValendo(): void
+    {
+        // A tela só marca o cliente como obrigatório (`Cliente *`); o servidor cobra
+        // o mesmo, nem mais nem menos.
+        $res = $this->criar([]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(200, $res->status, $res->body);
+        self::assertNull($this->db->rows('service_orders')[0]['collection_date']);
+    }
+
+    public function testCriacaoSemClienteResponde400(): void
+    {
+        $res = Endpoint::call('os/index.php', $this->opcoes([
+            'session' => $this->sessaoAdmin(),
+            'body' => ['weight' => '150 kg'],
+        ]));
+
+        self::assertSame(400, $res->status, $res->body);
+        self::assertSame('Cliente é obrigatório.', $res->error());
+        self::assertSame(0, $this->db->count('service_orders'));
+    }
+
+    public function testCriacaoComClienteInexistenteResponde404(): void
+    {
+        $res = Endpoint::call('os/index.php', $this->opcoes([
+            'session' => $this->sessaoAdmin(),
+            'body' => ['client_id' => 9999],
+        ]));
+
+        self::assertSame(404, $res->status, $res->body);
+        self::assertSame(0, $this->db->count('service_orders'));
+    }
+
+    /** @return array<string, array{0:string,1:mixed,2:string}> campo, valor, rótulo esperado na mensagem */
+    public static function quantidadesInvalidas(): array
+    {
+        return [
+            'sacos gigante' => ['bags_count', '99999999999', 'Qtd. sacos'],
+            'sacos acima do teto' => ['bags_count', '100000', 'Qtd. sacos'],
+            'sacos negativo' => ['bags_count', '-1', 'Qtd. sacos'],
+            'sacos decimal' => ['bags_count', '1.5', 'Qtd. sacos'],
+            'sacos texto' => ['bags_count', 'abc', 'Qtd. sacos'],
+            'sacos notacao cientifica' => ['bags_count', '1e3', 'Qtd. sacos'],
+            'sacos booleano' => ['bags_count', true, 'Qtd. sacos'],
+            'sacos lista' => ['bags_count', [1], 'Qtd. sacos'],
+            'sacos numero decimal json' => ['bags_count', 12.5, 'Qtd. sacos'],
+            'sacos inteiro gigante json' => ['bags_count', 99999999999, 'Qtd. sacos'],
+            'conteineres gigante' => ['containers_count', '99999999999', 'Qtd. contêineres'],
+            'conteineres negativo' => ['containers_count', -3, 'Qtd. contêineres'],
+            'conteineres texto' => ['containers_count', 'dois', 'Qtd. contêineres'],
+        ];
+    }
+
+    #[DataProvider('quantidadesInvalidas')]
+    public function testCriacaoRecusaQuantidadeInvalidaNomeandoOCampo(string $campo, mixed $valor, string $rotulo): void
+    {
+        $res = $this->criar([$campo => $valor]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(400, $res->status, $res->body);
+        self::assertStringContainsString($rotulo, (string) $res->error());
+        self::assertSame(0, $this->db->count('service_orders'));
+    }
+
+    /** @return array<string, array{0:mixed,1:?int}> */
+    public static function quantidadesValidas(): array
+    {
+        return [
+            'zero a esquerda' => ['05', 5],
+            'varios zeros a esquerda' => ['007', 7],
+            'so zeros' => ['000', 0],
+            'zero' => ['0', 0],
+            'inteiro json' => [12, 12],
+            'inteiro json decimal exato' => [12.0, 12],
+            'no teto' => ['99999', 99999],
+            'com espacos' => [' 8 ', 8],
+            'vazio' => ['', null],
+            'so espacos' => ['   ', null],
+            'nulo' => [null, null],
+        ];
+    }
+
+    #[DataProvider('quantidadesValidas')]
+    public function testCriacaoAceitaQuantidadeValida(mixed $valor, ?int $esperado): void
+    {
+        $res = $this->criar(['bags_count' => $valor, 'containers_count' => $valor]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(200, $res->status, $res->body);
+
+        $linha = $this->db->rows('service_orders')[0];
+        self::assertSame($esperado, $linha['bags_count'] === null ? null : (int) $linha['bags_count']);
+        self::assertSame($esperado, $linha['containers_count'] === null ? null : (int) $linha['containers_count']);
+    }
+
+    /** @return array<string, array{0:string}> */
+    public static function datasInvalidas(): array
+    {
+        return [
+            'ano 26' => ['0026-09-03'],
+            'ano 2099' => ['2099-09-03'],
+            'antes de 2000' => ['1999-12-31'],
+            'dia impossivel' => ['2026-02-31'],
+            'formato brasileiro' => ['03/09/2026'],
+            'texto' => ['amanha'],
+            'sem zero' => ['2026-9-3'],
+        ];
+    }
+
+    #[DataProvider('datasInvalidas')]
+    public function testCriacaoRecusaDataInvalidaOuImplausivel(string $data): void
+    {
+        $res = $this->criar(['collection_date' => $data]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(400, $res->status, $res->body);
+        self::assertStringContainsString('Data da coleta', (string) $res->error());
+        self::assertSame(0, $this->db->count('service_orders'));
+    }
+
+    public function testCriacaoRecusaDataDoAnoSeguinteAoSeguinte(): void
+    {
+        $res = $this->criar(['collection_date' => ($this->anoAtual() + 2) . '-01-01']);
+
+        self::assertSame(400, $res->status, $res->body);
+        self::assertStringContainsString('Data da coleta', (string) $res->error());
+    }
+
+    public function testCriacaoAceitaDatasNosLimitesDoIntervalo(): void
+    {
+        foreach (['2000-01-01', ($this->anoAtual() + 1) . '-12-31'] as $data) {
+            $res = $this->criar(['collection_date' => $data]);
+
+            self::assertSame(200, $res->status, $data . ' ' . $res->body);
+        }
+
+        self::assertSame(2, $this->db->count('service_orders'));
+    }
+
+    public function testCriacaoRecusaDataQueNaoETexto(): void
+    {
+        $res = $this->criar(['collection_date' => ['2026-09-03']]);
+
+        self::assertSame(400, $res->status, $res->body);
+        self::assertStringContainsString('Data da coleta', (string) $res->error());
+    }
+
+    /** @return array<string, array{0:string,1:int,2:string}> campo, tamanho da coluna, rótulo */
+    public static function camposDeTexto(): array
+    {
+        return [
+            'pesagem' => ['weight', 50, 'Pesagem'],
+            'horario' => ['approximate_time', 50, 'Horário aproximado'],
+            'endereco' => ['collection_address', 255, 'Endereço da coleta'],
+            'material' => ['material_collected', 255, 'Material coletado'],
+            'responsavel' => ['responsible', 255, 'Responsável pela coleta'],
+        ];
+    }
+
+    #[DataProvider('camposDeTexto')]
+    public function testCriacaoRecusaTextoMaiorQueAColunaNomeandoOCampo(string $campo, int $limite, string $rotulo): void
+    {
+        $res = $this->criar([$campo => str_repeat('a', $limite + 1)]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(400, $res->status, $res->body);
+        self::assertStringContainsString($rotulo, (string) $res->error());
+        self::assertStringContainsString((string) $limite, (string) $res->error());
+        self::assertSame(0, $this->db->count('service_orders'));
+    }
+
+    #[DataProvider('camposDeTexto')]
+    public function testCriacaoAceitaTextoExatamenteNoTamanhoDaColuna(string $campo, int $limite, string $rotulo): void
+    {
+        // A coluna VARCHAR(n) do MySQL conta caracteres, não bytes: "ç" ocupa dois
+        // bytes e um campo cheio deles não pode ser recusado por isso.
+        $texto = str_repeat('ç', $limite);
+
+        $res = $this->criar([$campo => $texto]);
+
+        self::assertSame(200, $res->status, $rotulo . ' ' . $res->body);
+        self::assertSame($texto, $this->db->rows('service_orders')[0][$campo]);
+    }
+
+    #[DataProvider('camposDeTexto')]
+    public function testCriacaoContaCaracteresEMultibyteNaoBytes(string $campo, int $limite, string $rotulo): void
+    {
+        $res = $this->criar([$campo => str_repeat('ç', $limite + 1)]);
+
+        self::assertSame(400, $res->status, $rotulo . ' ' . $res->body);
+    }
+
+    #[DataProvider('camposDeTexto')]
+    public function testCriacaoRecusaTextoQueNaoETextoNomeandoOCampo(string $campo, int $limite, string $rotulo): void
+    {
+        $res = $this->criar([$campo => ['a', 'b']]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(400, $res->status, $res->body);
+        self::assertStringContainsString($rotulo, (string) $res->error());
+        self::assertSame(0, $this->db->count('service_orders'));
+    }
+
+    public function testCriacaoAceitaPesagemEnviadaComoNumeroJson(): void
+    {
+        $res = $this->criar(['weight' => 150]);
+
+        self::assertSame(200, $res->status, $res->body);
+        self::assertSame('150', (string) $this->db->rows('service_orders')[0]['weight']);
+    }
+
+    public function testCriacaoTrataTextoSoComEspacosComoAusente(): void
+    {
+        $res = $this->criar(['weight' => '   ', 'responsible' => "\t", 'collection_address' => '  ']);
+
+        self::assertSame(200, $res->status, $res->body);
+
+        $linha = $this->db->rows('service_orders')[0];
+        self::assertNull($linha['weight']);
+        self::assertNull($linha['responsible']);
+        self::assertNull($linha['collection_address']);
+    }
+
+    public function testCriacaoGuardaOTextoSemOsEspacosDasPontas(): void
+    {
+        $res = $this->criar(['weight' => '  150 kg  ']);
+
+        self::assertSame(200, $res->status, $res->body);
+        self::assertSame('150 kg', $this->db->rows('service_orders')[0]['weight']);
     }
 
     public function testDuasOrdensNaoCompartilhamOMesmoToken(): void

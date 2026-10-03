@@ -190,6 +190,66 @@ final class OsLibTest extends TestCase
         self::assertStringContainsString('&lt;script&gt;', $html);
     }
 
+    // ── Validação do corpo da criação ────────────────────────────────────────
+
+    public function testValidacaoAceitaOAnoSeguinteAoAnoCorrenteEMaisNada(): void
+    {
+        $hoje = new DateTimeImmutable('2026-10-03 10:00:00', new DateTimeZone('America/Sao_Paulo'));
+
+        [$valores, $erro] = osValidateInput(['collection_date' => '2027-12-31'], $hoje);
+        self::assertNull($erro);
+        self::assertSame('2027-12-31', $valores['collection_date']);
+
+        [, $erro] = osValidateInput(['collection_date' => '2028-01-01'], $hoje);
+        self::assertSame('Data da coleta deve estar entre os anos de 2000 e 2027.', $erro);
+
+        [, $erro] = osValidateInput(['collection_date' => '1999-12-31'], $hoje);
+        self::assertSame('Data da coleta deve estar entre os anos de 2000 e 2027.', $erro);
+    }
+
+    public function testValidacaoNormalizaOCorpoEDevolveOsValoresProntosParaGravar(): void
+    {
+        [$valores, $erro] = osValidateInput([
+            'collection_address' => '  Rua A, 1  ',
+            'weight' => 150,
+            'collection_date' => '',
+            'approximate_time' => '   ',
+            'material_collected' => null,
+            'bags_count' => '007',
+            'containers_count' => '',
+            'responsible' => 'Equipe A',
+        ]);
+
+        self::assertNull($erro);
+        self::assertSame(
+            [
+                'collection_address' => 'Rua A, 1',
+                'approximate_time' => null,
+                'material_collected' => null,
+                'weight' => '150',
+                'responsible' => 'Equipe A',
+                'bags_count' => 7,
+                'containers_count' => null,
+                'collection_date' => null,
+            ],
+            $valores
+        );
+    }
+
+    public function testValidacaoParaNoPrimeiroErroENomeiaOCampo(): void
+    {
+        [$valores, $erro] = osValidateInput(['weight' => str_repeat('x', 51), 'bags_count' => 'abc']);
+
+        self::assertSame([], $valores);
+        self::assertSame('Pesagem deve ter no máximo 50 caracteres.', $erro);
+
+        [, $erro] = osValidateInput(['bags_count' => 'abc']);
+        self::assertSame('Qtd. sacos deve ser um número inteiro de 0 a 99999.', $erro);
+
+        [, $erro] = osValidateInput(['containers_count' => '100000']);
+        self::assertSame('Qtd. contêineres deve ser um número inteiro de 0 a 99999.', $erro);
+    }
+
     public function testRodapeDoDocumentoUsaATelefoneDeSuporteDaConstante(): void
     {
         self::assertSame('(21) 99152-9383', OS_SUPPORT_PHONE);

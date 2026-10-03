@@ -56,6 +56,20 @@ export const OS_SUPPORT_PHONE = "(21) 99152-9383";
  */
 export const OS_EMPTY_FIELD = "-";
 
+/**
+ * Limites do formulário de criação. Espelho de `OS_TEXT_MAX_LENGTH` e
+ * `OS_MAX_QUANTITY` em `public/api/os/os_lib.php`. Quem decide é o servidor; aqui
+ * o campo só avisa antes, para o operador não descobrir o limite pelo erro.
+ */
+export const OS_LIMITS = {
+  address: 255,
+  time: 50,
+  material: 255,
+  weight: 50,
+  responsible: 255,
+  quantity: 99999,
+} as const;
+
 /** Número exibido do documento: 42 → "00042". O PHP usa o mesmo formato. */
 export function osNumber(id: number): string {
   return String(id).padStart(5, "0");

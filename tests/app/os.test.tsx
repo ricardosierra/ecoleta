@@ -122,6 +122,39 @@ describe("/dashboard/os — encaminhamento", () => {
     );
   });
 
+  /**
+   * Quem decide é o servidor (osValidateInput() em os_lib.php), mas o formulário
+   * já avisa antes: o campo não deixa passar do tamanho da coluna nem do teto.
+   */
+  it("limita o tamanho dos campos do formulário como o servidor", async () => {
+    montar();
+    render(<OSPage />);
+    await screen.findByLabelText(/Pesagem/);
+
+    expect(screen.getByLabelText(/Pesagem/)).toHaveAttribute("maxlength", "50");
+    expect(screen.getByLabelText(/Horário Aproximado/)).toHaveAttribute("maxlength", "50");
+    expect(screen.getByLabelText(/Endereço da Coleta/)).toHaveAttribute("maxlength", "255");
+    expect(screen.getByLabelText(/Material Coletado/)).toHaveAttribute("maxlength", "255");
+    expect(screen.getByLabelText(/Responsável pela Coleta/)).toHaveAttribute("maxlength", "255");
+    expect(screen.getByLabelText(/Qtd\. Sacos/)).toHaveAttribute("max", "99999");
+    expect(screen.getByLabelText(/Qtd\. Contêineres/)).toHaveAttribute("max", "99999");
+  });
+
+  it("mostra o erro do servidor, que nomeia o campo, ao gerar a OS", async () => {
+    montar({
+      [OS]: { status: 400, body: { error: "Qtd. sacos deve ser um número inteiro de 0 a 99999." } },
+    });
+    render(<OSPage />);
+
+    const user = userEvent.setup();
+    // Os clientes chegam pela API; o <option> só existe depois disso.
+    await screen.findByRole("option", { name: "Heineken" });
+    await user.selectOptions(screen.getByLabelText(/Cliente \*/), "1");
+    await user.click(screen.getByRole("button", { name: "Gerar OS" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Qtd. sacos deve ser um número inteiro de 0 a 99999.");
+  });
+
   it("mostra a assinatura da responsável no documento", async () => {
     montar();
     render(<OSPage />);
