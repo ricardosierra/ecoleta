@@ -195,7 +195,7 @@ describe("osShareMessage", () => {
 
     expect(resto.slice(1, 1 + LINHAS_DA_OS_VAZIA.length)).toEqual(LINHAS_DA_OS_VAZIA);
     // O único travessão da mensagem é o do título; nenhum campo o usa.
-    expect(resto.join("\n")).not.toContain("—");
+    expect(resto.join("\n")).not.toContain(String.fromCharCode(0x2014));
   });
 
   it("usa o telefone de suporte da constante", () => {

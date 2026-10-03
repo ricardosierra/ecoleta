@@ -108,7 +108,7 @@ describe("/dashboard/os — encaminhamento", () => {
     expect(texto).toContain("Pesagem: -");
     expect(texto).toContain("Responsável pela coleta: -");
     expect(texto).toContain("Qtd. sacos: -");
-    expect(texto).not.toContain("—");
+    expect(texto).not.toContain(String.fromCharCode(0x2014));
   });
 
   it("oferece o mesmo WhatsApp de suporte que o documento do PHP, com a mesma frase", async () => {
@@ -351,9 +351,9 @@ describe("/dashboard/os — encaminhamento", () => {
   });
 });
 
-describe("/dashboard/os — janela fechada e envio cobrado", () => {
+describe("/dashboard/os: janela fechada e envio cobrado", () => {
   const FORA_DA_JANELA = {
-    error: "O cliente não escreve para este número há mais de 24 horas — fora da janela, a Meta só entrega template aprovado.",
+    error: "O cliente não escreve para este número há mais de 24 horas, fora da janela a Meta só entrega template aprovado.",
     code: "whatsapp_outside_window",
   };
 
@@ -527,7 +527,7 @@ describe("/dashboard/os — janela fechada e envio cobrado", () => {
   });
 });
 
-describe("/dashboard/os — falha ao carregar a tela", () => {
+describe("/dashboard/os: falha ao carregar a tela", () => {
   /**
    * Sessão vencida, 503 de schema ou rede caída: o histórico mostrava o estado
    * vazio ("Nenhuma OS encontrada.") e o select de clientes ficava vazio, sem
@@ -623,7 +623,7 @@ describe("/dashboard/os — falha ao carregar a tela", () => {
   });
 });
 
-describe("/dashboard/os — o que aconteceu com a mensagem do robô", () => {
+describe("/dashboard/os: o que aconteceu com a mensagem do robô", () => {
   const enviada = {
     whatsapp_sent_at: "2026-09-03 14:22:00",
     whatsapp_sent_to: "5521999887766",
