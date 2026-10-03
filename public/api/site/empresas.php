@@ -141,18 +141,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
-        // Trocar a imagem deixava a anterior para sempre em uploads/logos/, e
-        // nome com hash nunca é reaproveitado: sem isto o diretório só cresce.
-        // A conferência antes de apagar existe porque logo_url também aceita
-        // caminho digitado à mão, que duas empresas podem compartilhar.
-        if ($existing && $hasFile) {
+        // Trocar a imagem, por upload OU por caminho informado à mão, deixava a
+        // anterior para sempre em uploads/logos/: nome com hash nunca é
+        // reaproveitado, então sem isto o diretório só cresce. A função só apaga
+        // quando nenhuma outra empresa ainda usa o arquivo (caminho à mão pode
+        // ser compartilhado).
+        if ($existing) {
             $anterior = (string) ($existing['logo_url'] ?? '');
-            if ($anterior !== $logoUrl && str_starts_with($anterior, ECOLETA_LOGO_PUBLIC_PREFIX)) {
-                $emUso = $db->prepare('SELECT 1 FROM site_clients WHERE logo_url = ? LIMIT 1');
-                $emUso->execute([$anterior]);
-                if (!$emUso->fetch()) {
-                    ecoletaLogoDeleteByUrl($anterior);
-                }
+            if ($anterior !== $logoUrl) {
+                ecoletaLogoDeleteIfUnused($db, $anterior);
             }
         }
 
@@ -218,7 +215,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $db->prepare("DELETE FROM site_clients WHERE id = ?");
         $stmt->execute([$id]);
 
-        ecoletaLogoDeleteByUrl((string) $company['logo_url']);
+        // Duas empresas podem apontar para o mesmo arquivo de uploads (caminho
+        // informado à mão): só some do disco quando a última sai.
+        ecoletaLogoDeleteIfUnused($db, (string) $company['logo_url']);
 
         logActivity(
             $db,

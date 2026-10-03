@@ -27,6 +27,19 @@ declare(strict_types=1);
  */
 
 const ECOLETA_LOGO_MAX_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Teto de dimensões do arquivo ENVIADO, conferido pelo cabeçalho antes de
+ * qualquer alocação do GD. Os 4 MB de ECOLETA_LOGO_MAX_BYTES não protegem: um
+ * PNG de 1 bit com 20000×20000 cabe em dezenas de KB e o GD pede cerca de
+ * 1,6 GB para o canvas truecolor, FORA do memory_limit do PHP (o pico que o PHP
+ * reporta fica em 2 MB; a medição levou cerca de 15 s de CPU para um arquivo de
+ * 76 KB). 4096 px de lado e 12 megapixels aceitam uma foto de celular (4000×3000) e
+ * qualquer logo, já que a saída nunca passa de 600×360.
+ */
+const ECOLETA_LOGO_MAX_INPUT_WIDTH = 4096;
+const ECOLETA_LOGO_MAX_INPUT_HEIGHT = 4096;
+const ECOLETA_LOGO_MAX_INPUT_PIXELS = 12000000;
 const ECOLETA_LOGO_MAX_WIDTH = 600;
 const ECOLETA_LOGO_MAX_HEIGHT = 360;
 const ECOLETA_LOGO_PUBLIC_PREFIX = '/uploads/logos/';
@@ -79,6 +92,31 @@ function ecoletaLogoOutputExtension(): string
 }
 
 /**
+ * Mensagem de erro quando as dimensões declaradas pelo arquivo passam do teto, ou
+ * null quando cabem. Recebe só números: quem chama lê getimagesize(), que olha o
+ * cabeçalho e não decodifica nada.
+ */
+function ecoletaLogoDimensionsError(int $width, int $height): ?string
+{
+    if (
+        $width > ECOLETA_LOGO_MAX_INPUT_WIDTH
+        || $height > ECOLETA_LOGO_MAX_INPUT_HEIGHT
+        || $width * $height > ECOLETA_LOGO_MAX_INPUT_PIXELS
+    ) {
+        return sprintf(
+            'A imagem tem %d×%d px, grande demais para o servidor tratar. Use no máximo %d px de largura, %d px de altura e %d megapixels no total.',
+            $width,
+            $height,
+            ECOLETA_LOGO_MAX_INPUT_WIDTH,
+            ECOLETA_LOGO_MAX_INPUT_HEIGHT,
+            intdiv(ECOLETA_LOGO_MAX_INPUT_PIXELS, 1000000)
+        );
+    }
+
+    return null;
+}
+
+/**
  * Valida a entrada de $_FILES sem confiar no mime declarado pelo navegador:
  * o tipo sai dos bytes, via getimagesize(). Devolve a mensagem de erro para o
  * usuário, ou null quando o arquivo serve.
@@ -113,7 +151,7 @@ function ecoletaLogoValidateUpload(array $file): ?string
         return 'Formato não suportado — envie PNG, JPEG ou WebP.';
     }
 
-    return null;
+    return ecoletaLogoDimensionsError((int) $info[0], (int) $info[1]);
 }
 
 /**
@@ -373,6 +411,12 @@ function ecoletaLogoProcess(string $tmpPath, string $destDir, string $companyNam
         return ['ok' => false, 'error' => 'O arquivo enviado não é uma imagem válida.'];
     }
 
+    // Antes de qualquer imagecreatefrom*: é a decodificação que aloca a memória.
+    $dimensionsError = ecoletaLogoDimensionsError((int) $info[0], (int) $info[1]);
+    if ($dimensionsError !== null) {
+        return ['ok' => false, 'error' => $dimensionsError];
+    }
+
     $src = match ($info[2]) {
         IMAGETYPE_PNG => @imagecreatefrompng($tmpPath),
         IMAGETYPE_JPEG => @imagecreatefromjpeg($tmpPath),
@@ -439,4 +483,27 @@ function ecoletaLogoDeleteByUrl(string $logoUrl): void
     if (is_file($path)) {
         @unlink($path);
     }
+}
+
+/**
+ * Apaga a logo do disco SÓ se nenhuma empresa ainda aponta para ela.
+ *
+ * `logo_url` também aceita caminho informado à mão, então duas empresas podem
+ * compartilhar o mesmo arquivo de uploads/logos/; apagar na exclusão ou na troca
+ * de uma delas quebraria a imagem da outra. Chame DEPOIS de gravar a mudança no
+ * banco: a linha que deixou de usar o arquivo já não pode contar como uso.
+ */
+function ecoletaLogoDeleteIfUnused(PDO $db, string $logoUrl): void
+{
+    if (!str_starts_with($logoUrl, ECOLETA_LOGO_PUBLIC_PREFIX)) {
+        return;
+    }
+
+    $stmt = $db->prepare('SELECT 1 FROM site_clients WHERE logo_url = ? LIMIT 1');
+    $stmt->execute([$logoUrl]);
+    if ($stmt->fetch()) {
+        return;
+    }
+
+    ecoletaLogoDeleteByUrl($logoUrl);
 }

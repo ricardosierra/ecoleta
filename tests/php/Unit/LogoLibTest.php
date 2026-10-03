@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 require_once ECOLETA_API_DIR . '/site/logo_lib.php';
@@ -283,6 +284,83 @@ final class LogoLibTest extends TestCase
         self::assertSame([50, 20], $this->dimensoes($res));
         $saida = $this->abreSaida($res);
         self::assertSame(0, (imagecolorat($saida, 25, 10) >> 24) & 0x7F);
+    }
+
+    /**
+     * PNG que traz só a assinatura e o cabeçalho (IHDR): é tudo o que o
+     * getimagesize() lê para dizer as dimensões, e nenhum pixel precisa existir.
+     * Reproduz o arquivo pequeno que declara um tamanho gigante, sem que o teste
+     * aloque memória de imagem.
+     */
+    private function pngSoComCabecalho(int $width, int $height): string
+    {
+        $chunk = static fn (string $type, string $data): string => pack('N', strlen($data)) . $type . $data . pack('N', crc32($type . $data));
+        $path = $this->workDir . '/so-cabecalho-' . $width . 'x' . $height . '.png';
+        file_put_contents(
+            $path,
+            "\x89PNG\r\n\x1a\n" . $chunk('IHDR', pack('NNCCCCC', $width, $height, 1, 0, 0, 0, 0)) . $chunk('IEND', '')
+        );
+
+        return $path;
+    }
+
+    private function validaUpload(string $path): ?string
+    {
+        return ecoletaLogoValidateUpload([
+            'error' => UPLOAD_ERR_OK,
+            'size' => filesize($path),
+            'tmp_name' => $path,
+        ]);
+    }
+
+    public function testPngPequenoQueDeclaraDimensoesGigantesERecusadoNaValidacao(): void
+    {
+        // Um PNG de 1 bit com 20000×20000 cabe em algumas dezenas de KB e, se
+        // chegasse ao GD, pediria cerca de 1,6 GB para o canvas truecolor.
+        $erro = $this->validaUpload($this->pngSoComCabecalho(20000, 20000));
+
+        self::assertNotNull($erro, 'a validação aceitou uma imagem de 400 megapixels');
+        self::assertStringContainsString('20000×20000', $erro);
+        self::assertStringContainsString('grande demais', $erro);
+    }
+
+    /** @return array<string,array{int,int,bool}> largura, altura, aceita */
+    public static function limitesDeDimensao(): array
+    {
+        return [
+            'foto de celular 4000x3000' => [4000, 3000, true],
+            'logo comum 800x500' => [800, 500, true],
+            'no limite de pixels 4096x2929' => [4096, 2929, true],
+            'um pixel acima do teto de pixels 4096x2930' => [4096, 2930, false],
+            'largura acima do limite 4097x10' => [4097, 10, false],
+            'altura acima do limite 10x4097' => [10, 4097, false],
+            'quadrada acima do teto de pixels 3500x3500' => [3500, 3500, false],
+        ];
+    }
+
+    #[DataProvider('limitesDeDimensao')]
+    public function testLimitesDeLarguraAlturaETotalDePixels(int $width, int $height, bool $aceita): void
+    {
+        $erro = $this->validaUpload($this->pngSoComCabecalho($width, $height));
+
+        if ($aceita) {
+            self::assertNull($erro, "{$width}×{$height} deveria passar");
+        } else {
+            self::assertNotNull($erro, "{$width}×{$height} deveria ser recusada");
+            self::assertStringContainsString("{$width}×{$height}", $erro);
+        }
+    }
+
+    public function testProcessRecusaDimensoesGigantesSemTentarDecodificar(): void
+    {
+        // O arquivo só tem cabeçalho: se o process() tentasse decodificar, a
+        // resposta seria "não consegui decodificar". A mensagem de tamanho prova
+        // que a checagem veio antes de qualquer alocação do GD.
+        $res = ecoletaLogoProcess($this->pngSoComCabecalho(20000, 20000), $this->workDir, 'Gigante');
+
+        self::assertFalse($res['ok']);
+        self::assertStringContainsString('grande demais', $res['error']);
+        self::assertSame([], glob($this->workDir . '/gigante-*') ?: []);
     }
 
     public function testDeleteSoAlcancaArquivosDeDentroDeUploads(): void
