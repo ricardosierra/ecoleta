@@ -35,22 +35,55 @@ $operator = apiRequireAdmin();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $raw = file_get_contents('php://input');
-    $body = json_decode($raw, true) ?? [];
-    
-    $key = trim($body['key'] ?? '');
-    $value = trim($body['value'] ?? '');
-    $label = trim($body['label'] ?? '');
-    
-    if (!$key || !$value || !$label) {
+    $decoded = json_decode($raw, true);
+    $body = is_array($decoded) ? $decoded : [];
+
+    // Só texto. trim() num array, objeto, número ou booleano lança TypeError, e
+    // isso acontecia aqui fora do try: o painel recebia a página de erro do PHP
+    // em vez do JSON de mensagem. Campo ausente ou null cai no "obrigatório".
+    $fields = [];
+    foreach (['key', 'value', 'label'] as $field) {
+        $input = $body[$field] ?? '';
+        if (!is_string($input)) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Chave, valor e rótulo devem ser texto.']);
+            exit;
+        }
+        $fields[$field] = trim($input);
+    }
+    ['key' => $key, 'value' => $value, 'label' => $label] = $fields;
+
+    // Comparação com '' e não "!$value": a string "0" é falsa no PHP, e zero é um
+    // número perfeitamente válido para um indicador.
+    if ($key === '' || $value === '' || $label === '') {
         http_response_code(400);
         echo json_encode(['error' => 'Chave, valor e rótulo são obrigatórios.']);
         exit;
     }
-    
+
+    // Tamanhos das colunas (utf8mb4, contam caracteres): indicator_key e value
+    // são VARCHAR(50), label é VARCHAR(100). Estourar derrubava o UPDATE e o
+    // painel via um 500 genérico, sem dizer qual campo passou.
+    $limits = [
+        [$key, 50, 'A chave pode ter no máximo 50 caracteres.'],
+        [$value, 50, 'O valor pode ter no máximo 50 caracteres.'],
+        [$label, 100, 'O rótulo pode ter no máximo 100 caracteres.'],
+    ];
+    foreach ($limits as [$text, $max, $message]) {
+        if (mb_strlen($text) > $max) {
+            http_response_code(400);
+            echo json_encode(['error' => $message]);
+            exit;
+        }
+    }
+
     try {
         $db->beginTransaction();
-        
-        $stmt = $db->prepare("SELECT value FROM site_indicators WHERE indicator_key = ? FOR UPDATE");
+
+        // FOR UPDATE trava a linha no MySQL para o histórico guardar o valor
+        // antigo certo; o SQLite descartável dos testes não tem essa sintaxe.
+        $lock = $db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql' ? ' FOR UPDATE' : '';
+        $stmt = $db->prepare('SELECT value FROM site_indicators WHERE indicator_key = ?' . $lock);
         $stmt->execute([$key]);
         $old = $stmt->fetch();
         
@@ -84,6 +117,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($db->inTransaction()) {
             $db->rollBack();
         }
+        error_log('indicadores.php: ' . $e->getMessage());
         http_response_code(500);
         echo json_encode(['error' => 'Erro interno ao atualizar indicador.']);
     }
