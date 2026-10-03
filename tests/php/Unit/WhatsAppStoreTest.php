@@ -192,7 +192,7 @@ final class WhatsAppStoreTest extends TestCase
         self::assertSame([], waPhoneVariants(''));
     }
 
-    // ── W5: mensagem atrasada ou reentregue não encurta a janela ────────────
+    // ── mensagem atrasada ou reentregue não encurta a janela ────────────
 
     /**
      * A Meta reentrega com atraso (ou fora de ordem) um evento que não vimos. A
@@ -293,7 +293,7 @@ final class WhatsAppStoreTest extends TestCase
         self::assertSame('2026-03-04 10:00:00', $c['service_window_expires_at']);
     }
 
-    // ── W6: o dono da conversa não troca sozinho ────────────────────────────
+    // ── o dono da conversa não troca sozinho ────────────────────────────
 
     public function testConversaMantemOClienteQueJaTinha(): void
     {
@@ -317,11 +317,11 @@ final class WhatsAppStoreTest extends TestCase
         self::assertSame(2, (int) $this->conversa()['client_id']);
     }
 
-    // ── W11: corrida no INSERT da conversa ──────────────────────────────────
+    // ── corrida no INSERT da conversa ──────────────────────────────────
 
     /**
      * Duas mensagens simultâneas de um número novo: as duas olham, nenhuma acha,
-     * as duas inserem. O telefone é UNIQUE, então a segunda INSERT falha — e a
+     * as duas inserem. O telefone é UNIQUE, então a segunda INSERT falha, e a
      * mensagem dela não pode se perder: a conversa que a outra criou serve.
      */
     public function testCorridaNoInsertDaConversaReaproveitaAQueOVizinhoCriou(): void
@@ -341,7 +341,7 @@ final class WhatsAppStoreTest extends TestCase
         self::assertSame('Maria', $this->conversa()['profile_name']);
     }
 
-    // ── W2: fusão de conversas duplicadas ───────────────────────────────────
+    // ── fusão de conversas duplicadas ───────────────────────────────────
 
     public function testFusaoMantemEncerradaQuandoAsDuasEstavamEncerradas(): void
     {

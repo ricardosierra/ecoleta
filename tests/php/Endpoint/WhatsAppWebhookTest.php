@@ -363,4 +363,100 @@ final class WhatsAppWebhookTest extends TestCase
         self::assertSame(2, (int) $conversa['unread_count']);
         self::assertSame(2, $this->db->count('whatsapp_messages'));
     }
+
+    // ── Robô de fatura acionado pelo webhook ────────────────────────────────
+
+    /**
+     * Com o robô configurado e o Asaas SEM chave, o único rastro de que o robô
+     * decidiu responder é o log da falha ao buscar o Pix: nenhuma rede é tocada,
+     * e a suíte consegue enxergar "o robô tentou" de ponta a ponta.
+     *
+     * @return array<string,string>
+     */
+    private function envComRoboLigado(): array
+    {
+        return ['WHATSAPP_PHONE_ID' => '123456', 'WHATSAPP_ACCESS_TOKEN' => 'token-de-teste'];
+    }
+
+    private function semearFaturaDoCliente(): void
+    {
+        $clientId = $this->db->seedClient('Heineken', 500.0, 10, 'active', '5521999887766');
+        $this->db->seedInvoice($clientId, 'pay_webhook', 120.5, '2026-10-10', 'PENDING');
+    }
+
+    public function testTextoPedindoAFaturaAcionaORobo(): void
+    {
+        $this->semearFaturaDoCliente();
+
+        $res = $this->postar(
+            $this->eventoDeMensagem('wamid.PED', 'Preciso da segunda via do boleto'),
+            ['env' => $this->envComRoboLigado()]
+        );
+
+        self::assertSame(200, $res->status, $res->body);
+        self::assertTrue($res->logged('ASAAS_API_KEY'), 'o robô não tentou buscar o Pix: ' . $res->errorLog);
+        // A mensagem do cliente foi gravada de qualquer jeito.
+        self::assertSame(1, $this->db->count('whatsapp_messages'));
+    }
+
+    public function testFotoDoComprovanteNaoAcionaORobo(): void
+    {
+        $this->semearFaturaDoCliente();
+        $evento = $this->eventoDeMensagem();
+        $evento['entry'][0]['changes'][0]['value']['messages'][0] = [
+            'id' => 'wamid.FOTO',
+            'from' => '5521999887766',
+            'timestamp' => '1772551320',
+            'type' => 'image',
+            'image' => ['id' => 'media-9', 'mime_type' => 'image/jpeg'],
+        ];
+
+        $res = $this->postar($evento, ['env' => $this->envComRoboLigado()]);
+
+        self::assertSame(200, $res->status, $res->body);
+        self::assertFalse($res->logged('ASAAS_API_KEY'), 'o robô respondeu à foto: ' . $res->errorLog);
+        self::assertSame('[imagem]', $this->db->rows('whatsapp_messages')[0]['body']);
+    }
+
+    public function testFotoComLegendaDeFaturaNaoAcionaORobo(): void
+    {
+        $this->semearFaturaDoCliente();
+        $evento = $this->eventoDeMensagem();
+        $evento['entry'][0]['changes'][0]['value']['messages'][0] = [
+            'id' => 'wamid.FOTO2',
+            'from' => '5521999887766',
+            'timestamp' => '1772551320',
+            'type' => 'image',
+            'image' => ['id' => 'media-10', 'caption' => 'segunda via do boleto'],
+        ];
+
+        $res = $this->postar($evento, ['env' => $this->envComRoboLigado()]);
+
+        self::assertFalse($res->logged('ASAAS_API_KEY'), $res->errorLog);
+    }
+
+    public function testEmojiEAgradecimentoNaoAcionamORobo(): void
+    {
+        $this->semearFaturaDoCliente();
+
+        foreach (['👍', 'ok', 'obrigado'] as $i => $texto) {
+            $res = $this->postar(
+                $this->eventoDeMensagem('wamid.CONV' . $i, $texto),
+                ['env' => $this->envComRoboLigado()]
+            );
+
+            self::assertFalse($res->logged('ASAAS_API_KEY'), $texto . ': ' . $res->errorLog);
+        }
+    }
+
+    /** Robô desligado (sem credenciais): nem consulta o Asaas. */
+    public function testRoboDesligadoNaoConsultaOAsaas(): void
+    {
+        $this->semearFaturaDoCliente();
+
+        $res = $this->postar($this->eventoDeMensagem('wamid.OFF', 'segunda via do boleto'));
+
+        self::assertSame(200, $res->status, $res->body);
+        self::assertFalse($res->logged('ASAAS_API_KEY'), $res->errorLog);
+    }
 }

@@ -189,7 +189,7 @@ final class WhatsAppBotTest extends TestCase
         self::assertFalse(waBotWantsQrImage('foto do boleto'));
     }
 
-    // ── W3: o robô só responde a texto com intenção clara ───────────────────
+    // ── o robô só responde a texto com intenção clara ───────────────────
 
     public function testTextoPedindoAFaturaRecebeAvisoECodigoPix(): void
     {
@@ -315,7 +315,7 @@ final class WhatsAppBotTest extends TestCase
         self::assertNotEmpty($this->enviados);
     }
 
-    // ── W4: achar a fatura certa ────────────────────────────────────────────
+    // ── achar a fatura certa ────────────────────────────────────────────
 
     public function testClienteComFaturaVencidaTambemRecebe(): void
     {

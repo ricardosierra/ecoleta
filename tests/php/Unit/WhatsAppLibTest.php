@@ -44,7 +44,7 @@ final class WhatsAppLibTest extends TestCase
         self::assertSame('pix_abc123', $opcoes[CURLOPT_POSTFIELDS]['file']->getPostFilename());
     }
 
-    // ── W8: tipo de mídia, data URI e formatos de áudio ─────────────────────
+    // ── tipo de mídia, data URI e formatos de áudio ─────────────────────
 
     public function testDataUriSimplesSeparaTipoEConteudo(): void
     {
@@ -147,7 +147,7 @@ final class WhatsAppLibTest extends TestCase
         self::assertSame('text/plain', waMediaUploadMime('text/plain; charset=utf-8'));
     }
 
-    // ── W9: lista de templates com o status real ────────────────────────────
+    // ── lista de templates com o status real ────────────────────────────
 
     /** @return array<string,mixed> */
     private static function templateDaMeta(string $nome, string $status, string $texto = 'Olá {{1}}, tudo bem?'): array

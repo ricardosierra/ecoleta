@@ -357,7 +357,7 @@ final class WhatsAppPanelTest extends TestCase
         self::assertStringContainsString((string) $osId, $msgs[0]['body']);
     }
 
-    // ── Auxiliares das revisões W2, W6 e W7 ─────────────────────────────────
+    // ── Auxiliares das conversas e das mensagens ─────────────────────────────────
 
     /**
      * Conversa com todos os campos que a unificação e a busca leem. O que não
@@ -391,7 +391,7 @@ final class WhatsAppPanelTest extends TestCase
         return (int) $this->db->pdo()->lastInsertId();
     }
 
-    // ── W6: dois clientes no mesmo telefone ─────────────────────────────────
+    // ── dois clientes no mesmo telefone ─────────────────────────────────
 
     /**
      * A sincronização da lista cria conversa para cliente com WhatsApp. Com dois
@@ -420,7 +420,7 @@ final class WhatsAppPanelTest extends TestCase
         self::assertSame(['Associação', 'Associação', 'Associação', 'Associação'], $nomes);
     }
 
-    // ── W2: unificação de conversas duplicadas ──────────────────────────────
+    // ── unificação de conversas duplicadas ──────────────────────────────
 
     /**
      * 12 e 13 dígitos do mesmo celular viram uma conversa só, e a unificação
@@ -510,7 +510,7 @@ final class WhatsAppPanelTest extends TestCase
         self::assertSame(str_replace(' ', 'T', $maisLonge) . 'Z', $c['window']['expires_at']);
     }
 
-    // ── W7: paginação e busca sem silêncio ──────────────────────────────────
+    // ── paginação e busca sem silêncio ──────────────────────────────────
 
     /** @param int $quantas mensagens, de 1 minuto em 1 minuto a partir de 2026-03-01 */
     private function semearMuitasMensagens(int $conversaId, int $quantas): void
@@ -627,7 +627,7 @@ final class WhatsAppPanelTest extends TestCase
         self::assertSame('Posto', $res['conversations'][0]['name']);
     }
 
-    // ── W8: áudio gravado no navegador ──────────────────────────────────────
+    // ── áudio gravado no navegador ──────────────────────────────────────
 
     /** @return array{0:int,1:array<string,mixed>} id da conversa e a sessão */
     private function conversaComJanelaAberta(): array
@@ -790,7 +790,7 @@ final class WhatsAppPanelTest extends TestCase
         self::assertSame('unsupported_audio_format', $res->json()['code']);
     }
 
-    // ── W9: templates sem inventar aprovação ────────────────────────────────
+    // ── templates sem inventar aprovação ────────────────────────────────
 
     /** @param array<string,string> $env */
     private function listarTemplates(array $env = []): EndpointResponse

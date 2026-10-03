@@ -260,7 +260,7 @@ if ($search !== '') {
 $whereClause = $where !== [] ? 'WHERE ' . implode(' AND ', $where) : '';
 
 // A lista é cortada nas conversas mais recentes. A resposta diz quantas existem
-// de verdade, e a tela avisa — sem isso, a conversa 301 em diante simplesmente
+// de verdade, e a tela avisa. Sem isso, a conversa 301 em diante simplesmente
 // não existia para quem olhava. A busca (`q`) roda aqui, no banco inteiro.
 const WA_CONVERSATION_LIST_LIMIT = 300;
 const WA_CLIENT_LIST_LIMIT = 200;

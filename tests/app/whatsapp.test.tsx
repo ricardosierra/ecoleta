@@ -369,7 +369,7 @@ async function abrirModalDeTemplate() {
   return user;
 }
 
-describe("/dashboard/whatsapp — modal de template (W1)", () => {
+describe("/dashboard/whatsapp - modal de template", () => {
   it("pré-preenche só o nome do cliente; número da OS e link ficam vazios", async () => {
     montarComJanelaFechada({ body: { ok: true, templates: [templateOs, templateFatura] } });
     await abrirModalDeTemplate();
@@ -465,7 +465,7 @@ describe("/dashboard/whatsapp — modal de template (W1)", () => {
   });
 });
 
-describe("/dashboard/whatsapp — status e erros dos templates (W9, W10)", () => {
+describe("/dashboard/whatsapp - status e erros dos templates", () => {
   it("mostra o status real e não deixa enviar template em análise", async () => {
     montarComJanelaFechada({
       body: { ok: true, templates: [{ ...templateOs, status: "PENDING" }] },
@@ -552,7 +552,7 @@ describe("/dashboard/whatsapp — status e erros dos templates (W9, W10)", () =>
   });
 });
 
-describe("/dashboard/whatsapp — falhas que não podem ser silenciosas (W10)", () => {
+describe("/dashboard/whatsapp - falhas que não podem ser silenciosas", () => {
   it("falha ao carregar as mensagens mostra o erro, e não 'Nenhuma mensagem.'", async () => {
     montar({ [MESSAGES]: { status: 500, body: { error: "Banco indisponível." } } });
     render(<WhatsAppPage />);
@@ -675,7 +675,7 @@ describe("/dashboard/whatsapp — falhas que não podem ser silenciosas (W10)", 
   });
 });
 
-describe("/dashboard/whatsapp — listas cortadas e busca no servidor (W7)", () => {
+describe("/dashboard/whatsapp - listas cortadas e busca no servidor", () => {
   it("manda o termo da busca para o servidor", async () => {
     const api = montar();
     render(<WhatsAppPage />);
@@ -762,7 +762,7 @@ describe("/dashboard/whatsapp — listas cortadas e busca no servidor (W7)", () 
   });
 });
 
-describe("/dashboard/whatsapp — gravação de áudio (W8)", () => {
+describe("/dashboard/whatsapp - gravação de áudio", () => {
   class GravadorFalso {
     static suportados: string[] = [];
 
