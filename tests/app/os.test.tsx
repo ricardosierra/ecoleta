@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import OSPage from "@/app/dashboard/os/page";
@@ -323,6 +323,182 @@ describe("/dashboard/os — encaminhamento", () => {
       expect(screen.getByRole("status")).toHaveTextContent("não está configurado");
     });
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("/dashboard/os — janela fechada e envio cobrado", () => {
+  const FORA_DA_JANELA = {
+    error: "O cliente não escreve para este número há mais de 24 horas — fora da janela, a Meta só entrega template aprovado.",
+    code: "whatsapp_outside_window",
+  };
+
+  const COBRADO = {
+    error: "Fora da janela de 24 horas este envio usa template e é cobrado pela Meta.",
+    code: "whatsapp_billable_confirmation_required",
+    billable: true,
+  };
+
+  const JA_ENVIADA = {
+    error: "Esta OS já foi enviada pelo WhatsApp do robô.",
+    code: "whatsapp_already_sent",
+    whatsapp_sent_at: "2026-09-03 14:22:00",
+    whatsapp_sent_to: "5521999887766",
+  };
+
+  const SUCESSO = {
+    ok: true,
+    whatsapp_sent_to: "5521999887766",
+    whatsapp_sent_at: "2026-09-03 14:22:00",
+    whatsapp_status: "accepted",
+    billable: true,
+  };
+
+  /** Responde ao robô com as respostas dadas, na ordem; o resto vai para o roteador. */
+  function montarComRespostas(respostas: Array<{ status: number; body: unknown }>) {
+    const api = montar();
+    const original = api.fetch.getMockImplementation()!;
+    const fila = [...respostas];
+    api.fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === WHATSAPP) {
+        const proxima = fila.shift()!;
+        return Response.json(proxima.body, { status: proxima.status });
+      }
+      return original(input, init);
+    });
+    return api;
+  }
+
+  const corposEnviados = (api: ReturnType<typeof montar>) =>
+    api.fetch.mock.calls
+      .filter(chamada => String(chamada[0]) === WHATSAPP)
+      .map(chamada => JSON.parse(String((chamada[1] as RequestInit).body)));
+
+  /**
+   * O comentário de os/whatsapp.php diz que a tela oferece o WhatsApp pessoal
+   * quando a janela fecha, mas o código só mostrava um texto vermelho.
+   */
+  it("oferece o Meu WhatsApp quando a Meta recusa por estar fora da janela", async () => {
+    montarComRespostas([{ status: 422, body: FORA_DA_JANELA }]);
+    const open = vi.fn();
+    vi.stubGlobal("open", open);
+    render(<OSPage />);
+
+    const user = userEvent.setup();
+    await abrirOS(user);
+    await user.click(screen.getByRole("button", { name: "WhatsApp do robô" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("mais de 24 horas");
+    await user.click(screen.getByRole("button", { name: "Abrir Meu WhatsApp" }));
+
+    expect(open).toHaveBeenCalledTimes(1);
+    const url = String(open.mock.calls[0][0]);
+    expect(url.startsWith("https://wa.me/5521999887766?text=")).toBe(true);
+    expect(decodeURIComponent(url)).toContain("https://ecolevaeco.com/api/os/view.php?id=42&t=abc");
+  });
+
+  it("não oferece o Meu WhatsApp para erros que não são de janela fechada", async () => {
+    montarComRespostas([{ status: 502, body: { error: "Erro na comunicação com o WhatsApp.", code: "whatsapp_send_failed" } }]);
+    render(<OSPage />);
+
+    const user = userEvent.setup();
+    await abrirOS(user);
+    await user.click(screen.getByRole("button", { name: "WhatsApp do robô" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Erro na comunicação");
+    expect(screen.queryByRole("button", { name: "Abrir Meu WhatsApp" })).toBeNull();
+  });
+
+  /**
+   * Com template configurado, fora da janela o envio sai PAGO. O primeiro clique
+   * não pode gastar: o servidor pergunta antes, e a tela mostra o custo.
+   */
+  it("pede confirmação antes de um envio que a Meta vai cobrar, sem enviar ainda", async () => {
+    const api = montarComRespostas([{ status: 409, body: COBRADO }]);
+    render(<OSPage />);
+
+    const user = userEvent.setup();
+    await abrirOS(user);
+    await user.click(screen.getByRole("button", { name: "WhatsApp do robô" }));
+
+    const dialogo = await screen.findByRole("dialog");
+    expect(dialogo).toHaveTextContent("cobrado pela Meta");
+    expect(corposEnviados(api)).toEqual([{ id: 42, confirm: false }]);
+    expect(screen.queryByText(/Aceita pela Meta para/)).toBeNull();
+  });
+
+  it("cancelar a confirmação do envio cobrado não envia nada", async () => {
+    const api = montarComRespostas([{ status: 409, body: COBRADO }]);
+    render(<OSPage />);
+
+    const user = userEvent.setup();
+    await abrirOS(user);
+    await user.click(screen.getByRole("button", { name: "WhatsApp do robô" }));
+    await user.click(await screen.findByRole("button", { name: "Cancelar" }));
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(corposEnviados(api)).toHaveLength(1);
+  });
+
+  it("confirmar o envio cobrado repete a chamada com confirm_billable", async () => {
+    const api = montarComRespostas([
+      { status: 409, body: COBRADO },
+      { status: 200, body: SUCESSO },
+    ]);
+    render(<OSPage />);
+
+    const user = userEvent.setup();
+    await abrirOS(user);
+    await user.click(screen.getByRole("button", { name: "WhatsApp do robô" }));
+    await user.click(await screen.findByRole("button", { name: "Enviar e pagar" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent("Aceita pela Meta para 5521999887766.");
+    });
+    expect(corposEnviados(api)).toEqual([
+      { id: 42, confirm: false },
+      { id: 42, confirm: false, confirm_billable: true },
+    ]);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("no reenvio de uma OS já enviada, as duas confirmações vêm uma de cada vez", async () => {
+    const api = montarComRespostas([
+      { status: 409, body: JA_ENVIADA },
+      { status: 409, body: COBRADO },
+      { status: 200, body: SUCESSO },
+    ]);
+    render(<OSPage />);
+
+    const user = userEvent.setup();
+    await abrirOS(user);
+    await user.click(screen.getByRole("button", { name: "WhatsApp do robô" }));
+
+    await user.click(await screen.findByRole("button", { name: "Enviar novamente" }));
+    // A confirmação de reenvio some e dá lugar à do custo; nunca as duas juntas.
+    await user.click(await screen.findByRole("button", { name: "Enviar e pagar" }));
+
+    await waitFor(() => expect(corposEnviados(api)).toHaveLength(3));
+    expect(corposEnviados(api)[2]).toEqual({ id: 42, confirm: true, confirm_billable: true });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("deixa trocar o envio cobrado pelo Meu WhatsApp, que é de graça", async () => {
+    const api = montarComRespostas([{ status: 409, body: COBRADO }]);
+    const open = vi.fn();
+    vi.stubGlobal("open", open);
+    render(<OSPage />);
+
+    const user = userEvent.setup();
+    await abrirOS(user);
+    await user.click(screen.getByRole("button", { name: "WhatsApp do robô" }));
+
+    const dialogo = await screen.findByRole("dialog");
+    await user.click(within(dialogo).getByRole("button", { name: "Usar Meu WhatsApp" }));
+
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(String(open.mock.calls[0][0]).startsWith("https://wa.me/5521999887766?text=")).toBe(true);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(corposEnviados(api)).toHaveLength(1);
   });
 });
 

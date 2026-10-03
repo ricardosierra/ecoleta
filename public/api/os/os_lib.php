@@ -16,6 +16,7 @@ declare(strict_types=1);
  */
 
 require_once __DIR__ . '/../security.php';
+require_once __DIR__ . '/../whatsapp_store.php';
 
 /** Assinatura digitalizada da responsável técnica, publicada em public/. */
 const OS_SIGNATURE_IMAGE = 'assinatura-responsavel.png';
@@ -275,6 +276,122 @@ const OS_TEXT_MAX_LENGTH = [
  * precisa apontar antes de o documento sair assinado.
  */
 const OS_MAX_QUANTITY = 99999;
+
+/**
+ * Reserva o envio da OS pelo WhatsApp do robô ANTES de chamar a Meta.
+ *
+ * `os/whatsapp.php` lia `whatsapp_sent_at`, enviava (chamada de até 20 segundos)
+ * e só depois gravava. Nessa janela, duas abas ou dois operadores liam "ainda não
+ * enviada" e mandavam a mesma OS duas vezes ao cliente. Aqui a marca é um único
+ * UPDATE condicional, e quem decide qual das chamadas passa é o banco:
+ *
+ *  - OS ainda não enviada: `WHERE whatsapp_sent_at IS NULL`;
+ *  - reenvio confirmado: `WHERE whatsapp_sent_at = <o valor que esta chamada leu>`.
+ *    Dois operadores confirmando o mesmo reenvio leram o mesmo valor, e só o
+ *    primeiro UPDATE o encontra.
+ *
+ * O horário vem do relógio do banco (como o `CURRENT_TIMESTAMP` de antes, e como
+ * o `sent_at` do e-mail), lido primeiro para que `osWhatsAppRelease()` saiba qual
+ * valor é o nosso. Funciona igual em MySQL e SQLite.
+ *
+ * O `rowCount()` do MySQL conta linhas que MUDARAM. Reenviar no mesmo segundo do
+ * envio anterior, para o mesmo número, não muda nada e conta zero: a chamada é
+ * tratada como perdida e a tela pede a confirmação de novo, que é o lado seguro.
+ *
+ * @return array{at:string,previous_at:?string,previous_to:?string}|null `null`
+ *         quando outra chamada chegou primeiro: esta NÃO pode enviar
+ */
+function osWhatsAppReserve(PDO $db, int $id, ?string $previousAt, ?string $previousTo, string $destino): ?array
+{
+    $previousAt = $previousAt === null || trim($previousAt) === '' ? null : $previousAt;
+    $agora = (string) $db->query('SELECT CURRENT_TIMESTAMP')->fetchColumn();
+
+    if ($previousAt === null) {
+        $stmt = $db->prepare('UPDATE service_orders SET whatsapp_sent_at = ?, whatsapp_sent_to = ? WHERE id = ? AND whatsapp_sent_at IS NULL');
+        $stmt->execute([$agora, $destino, $id]);
+    } else {
+        $stmt = $db->prepare('UPDATE service_orders SET whatsapp_sent_at = ?, whatsapp_sent_to = ? WHERE id = ? AND whatsapp_sent_at = ?');
+        $stmt->execute([$agora, $destino, $id, $previousAt]);
+    }
+
+    if ($stmt->rowCount() !== 1) {
+        return null;
+    }
+
+    return ['at' => $agora, 'previous_at' => $previousAt, 'previous_to' => $previousTo];
+}
+
+/**
+ * Desfaz a reserva quando o envio falhou: a OS volta a constar como estava, e o
+ * operador pode tentar de novo sem ver "já enviada".
+ *
+ * Só desfaz se a linha ainda tem A NOSSA marca (`whatsapp_sent_at = at`): se outro
+ * operador gravou o dele nesse meio-tempo, não se pisa nisso. Nunca lança: quem
+ * chama está devolvendo o erro do envio, e um segundo erro o esconderia. Se falhar,
+ * a OS fica marcada como enviada (o lado seguro: pede confirmação em vez de
+ * duplicar) e o log diz qual.
+ *
+ * @param array{at:string,previous_at:?string,previous_to:?string} $reserva
+ */
+function osWhatsAppRelease(PDO $db, int $id, array $reserva): void
+{
+    try {
+        $stmt = $db->prepare('UPDATE service_orders SET whatsapp_sent_at = ?, whatsapp_sent_to = ? WHERE id = ? AND whatsapp_sent_at = ?');
+        $stmt->execute([$reserva['previous_at'], $reserva['previous_to'], $id, $reserva['at']]);
+    } catch (Throwable) {
+        error_log(sprintf('Falha ao desfazer a reserva de WhatsApp da OS #%d; ela segue marcada como enviada.', $id));
+    }
+}
+
+/**
+ * Como o envio de uma OS sairia agora, pela janela de 24 horas e pelo template.
+ *
+ *  - `gratis`: janela aberta, texto livre, a Meta não cobra;
+ *  - `cobrado`: janela fechada e template configurado, a Meta entrega e COBRA;
+ *  - `recusado`: janela fechada sem template, a Meta recusa (`outsideWindow`).
+ *
+ * A tela pede confirmação antes do `cobrado`: o botão do robô não pode gastar
+ * dinheiro no primeiro clique.
+ */
+function osWhatsAppSendPlan(bool $windowOpen, string $template): string
+{
+    if ($windowOpen) {
+        return 'gratis';
+    }
+
+    return trim($template) !== '' ? 'cobrado' : 'recusado';
+}
+
+/**
+ * Grava a mensagem que a Meta acabou de aceitar, sem nunca lançar.
+ *
+ * A Meta já aceitou: o cliente vai receber. Se gravar o histórico falhar e a
+ * exceção subisse, a resposta seria 500, a tela diria que falhou e o operador
+ * reenviaria uma OS que o cliente já tem. Falhar aqui só deixa a conversa sem o
+ * registro; o `wamid` vai para o log para ser reconciliado.
+ *
+ * @param array<string,mixed> $mensagem os campos de `waRecordMessage()`
+ * @return bool `false` quando a gravação falhou; `true` também quando não há conversa
+ */
+function osRecordWhatsAppSent(PDO $db, ?int $conversationId, array $mensagem): bool
+{
+    if ($conversationId === null) {
+        return true;
+    }
+
+    try {
+        waRecordMessage($db, $conversationId, $mensagem);
+
+        return true;
+    } catch (Throwable) {
+        error_log(sprintf(
+            'OS enviada pela Meta, mas a mensagem %s não foi gravada no histórico de conversas.',
+            (string) ($mensagem['wa_message_id'] ?? '(sem wamid)')
+        ));
+
+        return false;
+    }
+}
 
 /** Primeiro ano aceito na data da coleta. O último é o ano seguinte ao corrente. */
 const OS_MIN_YEAR = 2000;

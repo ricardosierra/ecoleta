@@ -31,10 +31,17 @@ import Logo from "@/components/Logo";
 
 type Client = { id: number; name: string };
 
-type Feedback = { tone: "ok" | "erro"; text: string };
+type Feedback = { tone: "ok" | "erro"; text: string; oferecerMeuWhatsApp?: boolean };
 
 /** Dados do reenvio pendente de confirmação (resposta 409 de os/whatsapp.php). */
 type ReenvioWhatsApp = { sentAt: string | null; sentTo: string | null };
+
+/**
+ * Envio cobrado pendente de confirmação (409 `whatsapp_billable_confirmation_required`).
+ * `reenvioConfirmado` guarda se o operador já confirmou o reenvio, para a chamada
+ * final levar as duas confirmações.
+ */
+type CustoWhatsApp = { reenvioConfirmado: boolean };
 
 const inputClass =
   "mt-1.5 w-full rounded-xl border border-[var(--color-border-dark)] bg-black/30 px-3.5 py-2.5 text-sm text-white outline-none transition-colors placeholder:text-white/30 focus:border-[var(--color-accent)]";
@@ -141,6 +148,7 @@ function OSMain() {
   const [sending, setSending] = useState<"email" | "whatsapp" | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [reenvio, setReenvio] = useState<ReenvioWhatsApp | null>(null);
+  const [custo, setCusto] = useState<CustoWhatsApp | null>(null);
 
   // Clientes e histórico vêm de duas chamadas. Cada uma pode falhar sozinha, e o
   // aviso diz qual: antes o erro era engolido e a falha aparecia como lista
@@ -183,6 +191,7 @@ function OSMain() {
     setEmailTo(os.client_email ?? "");
     setFeedback(null);
     setReenvio(null);
+    setCusto(null);
   };
 
   /** Reflete um envio na pré-visualização e na linha do histórico. */
@@ -266,22 +275,34 @@ function OSMain() {
   };
 
   /**
-   * WhatsApp do robô. Sem `confirm`, o servidor responde 409 quando a OS já foi
-   * disparada antes — é o que abre a tela de confirmação. O segundo clique
-   * repete a chamada com `confirm: true`.
+   * WhatsApp do robô. O servidor pode pedir duas confirmações, uma de cada vez:
+   *
+   *  - sem `confirm`, responde 409 quando a OS já foi disparada antes;
+   *  - sem `confirm_billable`, responde 409 quando o envio sairia como template
+   *    fora da janela de 24h, que a Meta COBRA.
+   *
+   * Cada 409 abre o seu diálogo, e o clique de confirmar repete a chamada com a
+   * flag correspondente (e mantém a anterior: confirmar o custo de um reenvio já
+   * confirmado manda as duas). `confirm_billable` só vai no corpo quando é
+   * `true`, para a primeira chamada seguir idêntica à de sempre.
    */
-  const handleWhatsAppRobo = async (confirmar = false) => {
+  const handleWhatsAppRobo = async (confirmar = false, confirmarCusto = false) => {
     if (!activeOS || sending) return;
 
     setSending("whatsapp");
     setFeedback(null);
 
     try {
-      const res = await apiPostJson("/api/os/whatsapp.php", { id: activeOS.id, confirm: confirmar });
+      const res = await apiPostJson("/api/os/whatsapp.php", {
+        id: activeOS.id,
+        confirm: confirmar,
+        ...(confirmarCusto ? { confirm_billable: true } : {}),
+      });
       const data = await res.json();
 
       if (res.ok && data.ok) {
         setReenvio(null);
+        setCusto(null);
         // Logo depois do envio a Meta só ACEITOU o pedido: entrega e leitura
         // chegam depois, pelo webhook, e aparecem na próxima carga do histórico.
         registrarEnvio(activeOS.id, {
@@ -295,10 +316,22 @@ function OSMain() {
           text: `Aceita pela Meta para ${data.whatsapp_sent_to}. A entrega é confirmada em seguida.`,
         });
       } else if (data.code === "whatsapp_already_sent") {
+        setCusto(null);
         setReenvio({ sentAt: data.whatsapp_sent_at ?? null, sentTo: data.whatsapp_sent_to ?? null });
+      } else if (data.code === "whatsapp_billable_confirmation_required") {
+        // O reenvio, se havia, já foi confirmado: o diálogo de custo toma o lugar.
+        setReenvio(null);
+        setCusto({ reenvioConfirmado: confirmar });
       } else {
         setReenvio(null);
-        setFeedback({ tone: "erro", text: data.error ?? "Não foi possível enviar pelo WhatsApp." });
+        setCusto(null);
+        setFeedback({
+          tone: "erro",
+          text: data.error ?? "Não foi possível enviar pelo WhatsApp.",
+          // Janela fechada sem template: a Meta não entrega, mas o operador ainda
+          // pode mandar do próprio WhatsApp, com o texto e o link prontos.
+          oferecerMeuWhatsApp: data.code === "whatsapp_outside_window",
+        });
       }
     } catch {
       setFeedback({ tone: "erro", text: "Não foi possível enviar pelo WhatsApp." });
@@ -462,6 +495,15 @@ function OSMain() {
                   </p>
                 )}
 
+                {/* Janela de 24h fechada e sem template: o robô não consegue, mas o
+                    WhatsApp do próprio operador sim, com texto e link já prontos. */}
+                {feedback?.oferecerMeuWhatsApp && (
+                  <button type="button" onClick={handleWhatsAppPessoal} className={secondaryButton}>
+                    <SmartphoneIcon width={16} height={16} />
+                    Abrir Meu WhatsApp
+                  </button>
+                )}
+
                 {(activeOS.sent_at || activeOS.whatsapp_sent_at) && (
                   <dl className="space-y-1 text-xs text-[var(--color-text-on-dark)]">
                     {activeOS.sent_at && (
@@ -620,6 +662,48 @@ function OSMain() {
               className="inline-flex items-center justify-center rounded-full bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-[var(--color-bg-dark)] transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               {sending === "whatsapp" ? "Enviando…" : "Enviar novamente"}
+            </button>
+          </ModalActions>
+        </DashboardModal>
+      )}
+
+      {/* Confirmação do custo: fora da janela de 24h o robô envia template, e a Meta cobra */}
+      {custo && activeOS && (
+        <DashboardModal
+          title="Envio cobrado pela Meta"
+          icon={<BotIcon width={18} height={18} />}
+          tone="warning"
+          size="sm"
+          onClose={() => setCusto(null)}
+        >
+          <p className="text-sm text-[var(--color-text-on-dark)]">
+            Este cliente não escreve para o nosso número há mais de 24 horas. Fora da janela, o robô envia um
+            template aprovado e o envio é cobrado pela Meta.
+          </p>
+          <p className="mt-2 text-sm text-[var(--color-text-on-dark)]">
+            O Meu WhatsApp abre o seu aplicativo com o texto e o link prontos, sem custo.
+          </p>
+          <ModalActions>
+            <button type="button" onClick={() => setCusto(null)} className={secondaryButton}>
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCusto(null);
+                handleWhatsAppPessoal();
+              }}
+              className={secondaryButton}
+            >
+              Usar Meu WhatsApp
+            </button>
+            <button
+              type="button"
+              onClick={() => handleWhatsAppRobo(custo.reenvioConfirmado, true)}
+              disabled={sending !== null}
+              className="inline-flex items-center justify-center rounded-full bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-[var(--color-bg-dark)] transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {sending === "whatsapp" ? "Enviando…" : "Enviar e pagar"}
             </button>
           </ModalActions>
         </DashboardModal>

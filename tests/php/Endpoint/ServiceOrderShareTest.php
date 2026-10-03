@@ -713,6 +713,136 @@ final class ServiceOrderShareTest extends TestCase
         self::assertSame('5521999887766', $json['whatsapp_sent_to'] ?? null);
     }
 
+    /**
+     * Opções para chamar o robô COM credenciais (de mentira) e o transporte
+     * ligado, que é o único jeito de passar da checagem de configuração.
+     *
+     * Nenhum caminho aqui pode chegar à Meta. Se algum chegar, o proxy abaixo
+     * recusa a conexão na própria máquina, em vez de a chamada sair para a
+     * internet com um token inventado.
+     *
+     * @param array<string,string> $env
+     * @param array<string,mixed> $extra
+     * @return array<string,mixed>
+     */
+    private function opcoesRobo(array $env = [], array $extra = []): array
+    {
+        return $this->opcoes($extra + [
+            'session' => $this->sessaoAdmin(),
+            'env' => $env + [
+                'MAIL_TRANSPORT' => 'log',
+                'WHATSAPP_PHONE_ID' => '1234567890',
+                'WHATSAPP_ACCESS_TOKEN' => 'token-de-teste-que-nao-vale-nada',
+                'https_proxy' => 'http://127.0.0.1:9',
+                'HTTPS_PROXY' => 'http://127.0.0.1:9',
+            ],
+        ]);
+    }
+
+    /**
+     * Fora da janela de 24h, com template configurado, o envio sai como template
+     * e a Meta COBRA. O botão gastava dinheiro no primeiro clique, e o campo
+     * `billable` da resposta, que só chegava depois de enviar, era ignorado.
+     */
+    public function testWhatsAppForaDaJanelaComTemplatePedeConfirmacaoAntesDeGastar(): void
+    {
+        $id = $this->db->seedServiceOrder($this->clientId, str_repeat('f', 64));
+
+        $res = Endpoint::call('os/whatsapp.php', $this->opcoesRobo(
+            ['WHATSAPP_OS_TEMPLATE' => 'os_enviada'],
+            ['body' => ['id' => $id]]
+        ));
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(409, $res->status, $res->body);
+        self::assertSame('whatsapp_billable_confirmation_required', $res->json()['code'] ?? null);
+        self::assertTrue($res->json()['billable'] ?? false);
+
+        // Nada saiu e nada ficou marcado ou gravado como envio.
+        self::assertNull($this->db->rows('service_orders')[0]['whatsapp_sent_at']);
+        self::assertSame(0, $this->db->count('whatsapp_messages'));
+    }
+
+    public function testConfirmarOReenvioNaoDispensaAConfirmacaoDoEnvioCobrado(): void
+    {
+        $id = $this->db->seedServiceOrder(
+            $this->clientId,
+            str_repeat('f', 64),
+            '2026-09-03',
+            '2026-09-03 14:22:00',
+            '5521999887766'
+        );
+
+        $res = Endpoint::call('os/whatsapp.php', $this->opcoesRobo(
+            ['WHATSAPP_OS_TEMPLATE' => 'os_enviada'],
+            ['body' => ['id' => $id, 'confirm' => true]]
+        ));
+
+        self::assertSame(409, $res->status, $res->body);
+        self::assertSame('whatsapp_billable_confirmation_required', $res->json()['code'] ?? null);
+        self::assertSame('2026-09-03 14:22:00', $this->db->rows('service_orders')[0]['whatsapp_sent_at']);
+    }
+
+    public function testJanelaAbertaNaoPedeConfirmacaoDeCusto(): void
+    {
+        // Dentro da janela o texto é livre e gratuito: nada a confirmar. A chamada
+        // segue até a Meta, onde o proxy da suíte a recusa (502), e a OS volta ao
+        // que era.
+        $id = $this->db->seedServiceOrder($this->clientId, str_repeat('f', 64));
+        $this->db->pdo()->prepare('INSERT INTO whatsapp_conversations (phone, service_window_expires_at, created_at, updated_at) VALUES (?, ?, ?, ?)')
+            ->execute(['5521999887766', gmdate('Y-m-d H:i:s', time() + 3600), '2026-09-03 14:00:00', '2026-09-03 14:00:00']);
+
+        $res = Endpoint::call('os/whatsapp.php', $this->opcoesRobo(
+            ['WHATSAPP_OS_TEMPLATE' => 'os_enviada'],
+            ['body' => ['id' => $id]]
+        ));
+
+        self::assertNotSame('whatsapp_billable_confirmation_required', $res->json()['code'] ?? null);
+        self::assertSame(502, $res->status, $res->body);
+        self::assertSame('whatsapp_send_failed', $res->json()['code'] ?? null);
+        self::assertNull($this->db->rows('service_orders')[0]['whatsapp_sent_at'], 'a falha desfez a reserva');
+    }
+
+    public function testForaDaJanelaSemTemplateResponde422EDeixaAOsComoEstava(): void
+    {
+        $id = $this->db->seedServiceOrder($this->clientId, str_repeat('f', 64));
+
+        $res = Endpoint::call('os/whatsapp.php', $this->opcoesRobo([], ['body' => ['id' => $id]]));
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(422, $res->status, $res->body);
+        self::assertSame('whatsapp_outside_window', $res->json()['code'] ?? null);
+
+        $linha = $this->db->rows('service_orders')[0];
+        self::assertNull($linha['whatsapp_sent_at'], 'a reserva é desfeita quando o envio falha');
+        self::assertNull($linha['whatsapp_sent_to']);
+
+        $mensagem = $this->db->rows('whatsapp_messages')[0];
+        self::assertSame('failed', $mensagem['status'], 'a tentativa fica no histórico de conversas');
+        self::assertSame($id, (int) $mensagem['service_order_id']);
+    }
+
+    public function testFalhaNoReenvioRestauraOEnvioAnterior(): void
+    {
+        $id = $this->db->seedServiceOrder(
+            $this->clientId,
+            str_repeat('f', 64),
+            '2026-09-03',
+            '2026-09-03 14:22:00',
+            '5521999887766'
+        );
+
+        $res = Endpoint::call('os/whatsapp.php', $this->opcoesRobo([], [
+            'body' => ['id' => $id, 'confirm' => true, 'whatsapp' => '(21) 98888-7766'],
+        ]));
+
+        self::assertSame(422, $res->status, $res->body);
+
+        $linha = $this->db->rows('service_orders')[0];
+        self::assertSame('2026-09-03 14:22:00', $linha['whatsapp_sent_at']);
+        self::assertSame('5521999887766', $linha['whatsapp_sent_to'], 'o destino do envio anterior volta');
+    }
+
     public function testWhatsAppRecusaClienteSemNumero(): void
     {
         $semNumero = $this->db->seedClient('Cliente Sem Zap', 100.0, 10, 'active', null);

@@ -56,6 +56,11 @@ if ($destino === '') {
 // Reenvio exige confirmação explícita da tela. O servidor é quem sabe se já
 // houve disparo — checar só no navegador deixaria duas abas, ou um clique
 // duplo, mandando a mesma OS ao cliente duas vezes sem nenhum aviso.
+//
+// Esta leitura é só o aviso amigável. Quem garante que UMA chamada envia é a
+// reserva atômica mais abaixo (osWhatsAppReserve): entre ler aqui e enviar passa
+// a chamada à Meta, de até 20 segundos, e duas abas leem "não enviada" ao mesmo
+// tempo.
 $jaEnviada = trim((string) ($os['whatsapp_sent_at'] ?? '')) !== '';
 if ($jaEnviada && empty($body['confirm'])) {
     apiJsonResponse(409, [
@@ -99,6 +104,40 @@ $janelaAberta = waWindowIsOpen(
     $conversa === null ? null : ($conversa['service_window_expires_at'] ?? null)
 );
 
+// Fora da janela de 24h o envio sai como template, e a Meta COBRA. Isso o
+// servidor já sabe aqui, antes de gastar: pede a confirmação do operador em vez
+// de descobrir pelo campo `billable` da resposta, que só chega depois de enviado.
+// O código vale para a OS nova e para o reenvio (cada confirmação é separada).
+$plano = osWhatsAppSendPlan($janelaAberta, apiSecret('WHATSAPP_OS_TEMPLATE'));
+if ($plano === 'cobrado' && empty($body['confirm_billable'])) {
+    apiJsonResponse(409, [
+        'error' => 'Fora da janela de 24 horas este envio usa template e é cobrado pela Meta.',
+        'code' => 'whatsapp_billable_confirmation_required',
+        'billable' => true,
+    ]);
+}
+
+// Reserva ATÔMICA, antes de chamar a Meta: um UPDATE condicional que só uma das
+// chamadas simultâneas vence. Perdeu, não envia: outra aba ou outro operador
+// chegou primeiro, e a tela mostra a confirmação de reenvio com os dados dele.
+$reserva = osWhatsAppReserve(
+    $db,
+    $id,
+    $os['whatsapp_sent_at'] ?? null,
+    $os['whatsapp_sent_to'] ?? null,
+    $destino
+);
+
+if ($reserva === null) {
+    $atual = osFindById($db, $id);
+    apiJsonResponse(409, [
+        'error' => 'Esta OS já foi enviada pelo WhatsApp do robô.',
+        'code' => 'whatsapp_already_sent',
+        'whatsapp_sent_at' => $atual['whatsapp_sent_at'] ?? null,
+        'whatsapp_sent_to' => $atual['whatsapp_sent_to'] ?? null,
+    ]);
+}
+
 try {
     $resposta = waSendOsMessage(
         $destino,
@@ -108,20 +147,26 @@ try {
         $texto,
         $janelaAberta
     );
-} catch (WhatsAppApiException $e) {
+} catch (Throwable $e) {
+    // Não saiu: a OS volta a constar como estava, e o operador pode tentar de
+    // novo sem ver "já enviada" por um envio que não aconteceu.
+    osWhatsAppRelease($db, $id, $reserva);
+
+    if (!$e instanceof WhatsAppApiException) {
+        throw $e;
+    }
+
     // O que não saiu também fica registrado: a tela de conversas precisa
     // mostrar a tentativa, não só os acertos.
-    if ($conversaId !== null) {
-        waRecordMessage($db, $conversaId, [
-            'direction' => 'outgoing',
-            'type' => $janelaAberta ? 'text' : 'template',
-            'status' => 'failed',
-            'body' => $texto,
-            'error_message' => $e->getMessage(),
-            'sent_by_user_id' => $operator['id'],
-            'service_order_id' => $id,
-        ]);
-    }
+    osRecordWhatsAppSent($db, $conversaId, [
+        'direction' => 'outgoing',
+        'type' => $janelaAberta ? 'text' : 'template',
+        'status' => 'failed',
+        'body' => $texto,
+        'error_message' => $e->getMessage(),
+        'sent_by_user_id' => $operator['id'],
+        'service_order_id' => $id,
+    ]);
 
     // Janela de 24h fechada não é erro de configuração: é a regra da Meta. A
     // tela usa este código para oferecer o WhatsApp pessoal como saída.
@@ -138,21 +183,19 @@ try {
     ]);
 }
 
-if ($conversaId !== null) {
-    waRecordMessage($db, $conversaId, [
-        'wa_message_id' => waExtractSentMessageId($resposta),
-        'direction' => 'outgoing',
-        'type' => $janelaAberta ? 'text' : 'template',
-        'status' => 'accepted',
-        'body' => $texto,
-        'raw_payload' => $resposta,
-        'sent_by_user_id' => $operator['id'],
-        'service_order_id' => $id,
-    ]);
-}
-
-$stmt = $db->prepare('UPDATE service_orders SET whatsapp_sent_at = CURRENT_TIMESTAMP, whatsapp_sent_to = ? WHERE id = ?');
-$stmt->execute([$destino, $id]);
+// A Meta aceitou: a marca de envio já está na OS desde a reserva. Gravar a
+// mensagem no histórico de conversas nunca derruba a resposta; se falhar, o
+// envio que o cliente vai receber não vira um 500 que convida a reenviar.
+osRecordWhatsAppSent($db, $conversaId, [
+    'wa_message_id' => waExtractSentMessageId($resposta),
+    'direction' => 'outgoing',
+    'type' => $janelaAberta ? 'text' : 'template',
+    'status' => 'accepted',
+    'body' => $texto,
+    'raw_payload' => $resposta,
+    'sent_by_user_id' => $operator['id'],
+    'service_order_id' => $id,
+]);
 
 logActivity(
     $db,
@@ -169,6 +212,9 @@ apiJsonResponse(200, [
     'ok' => true,
     'whatsapp_sent_to' => $destino,
     'whatsapp_sent_at' => $atualizada['whatsapp_sent_at'] ?? null,
+    // Logo depois do envio a Meta só ACEITOU o pedido; entrega e leitura chegam
+    // depois, pelo webhook, e a listagem de OS as devolve.
+    'whatsapp_status' => 'accepted',
     'share_url' => $shareUrl,
-    'billable' => !$janelaAberta,
+    'billable' => $plano === 'cobrado',
 ]);
