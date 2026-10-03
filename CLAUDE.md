@@ -200,15 +200,40 @@ diretório antes do primeiro upload.
   descartar uma cobrança já criada no Asaas.
 
 - **O que decide e o que desenha mora em `public/api/billing_lib.php`** — quando
-  cobrar (`billingShouldIssue`, `billingDueDate`) e o documento do e-mail
-  (`billingNewInvoiceEmail`, `billingReminderEmail`). `api/cron/billing.php` fica
-  só com o efeito colateral. Foi assim que o link do boleto vazio passou
-  despercebido: com o HTML copiado dentro do cron, nenhum teste conseguia
-  renderizar o e-mail.
+  cobrar (`billingDueDatesToIssue`, `billingNextCycleIsOpen`, `billingDueDate`) e o
+  documento do e-mail (`billingNewInvoiceEmail`, `billingReminderEmail`). O ciclo
+  em si é `billingRunCycle()` em `billing_delivery.php`, e `api/cron/billing.php`
+  fica só com a porta de entrada (segredo, relógio, resposta). Foi assim que o
+  link do boleto vazio passou despercebido: com o HTML copiado dentro do cron,
+  nenhum teste conseguia renderizar o e-mail.
+- **O cron roda TODO DIA e é idempotente.** Cada execução garante, para cada
+  cliente ativo com valor mensal, o vencimento do mês corrente (enquanto não
+  passou, hoje inclusive) e o do mês seguinte (a partir do dia 30, ou do último
+  dia do mês). Era só o dia 30: cliente cadastrado no dia 3 com vencimento no dia 5
+  ficava um mês sem boleto, e um dia 30 perdido (cron fora do ar, Asaas caído)
+  perdia o mês inteiro sem ninguém saber. Nunca se emite data passada.
+- **Uma fatura por cliente por mês.** `billingFindMonthInvoice()` considera
+  qualquer fatura do cliente no mês, de qualquer data e **inclusive cancelada**:
+  é o que impede cobrança dupla depois de uma fatura avulsa ou de uma troca de
+  `due_day`, e de recriar o que a operadora cancelou de propósito. A tela de
+  Faturas, ao contrário, deixa gerar de novo para o mesmo vencimento depois de
+  cancelar.
+- **Cada execução deixa rastro.** `billingRecordRun()` grava `billing_cron_run`
+  em `activity_logs` (horário em UTC dentro do JSON, pelo PHP). A tela de Faturas
+  lê isso e avisa quando o cron nunca rodou ou parou há mais de 36 horas
+  (`lib/billing-status.ts`). É o único sinal de que o agendamento do servidor
+  existe. O passo a passo do agendamento está em `docs/deploy.md`.
+- **Lembrete não vai junto com a fatura nova.** Nos dias 3 e 7 o lembrete pula
+  fatura emitida há menos de 20 horas (`BILLING_REMINDER_MIN_AGE`), inclusive
+  entre duas execuções do cron no mesmo dia.
+- **Valor mínimo de R$ 5,00.** O Asaas não cobra menos; `BILLING_MIN_VALUE`
+  (PHP) e `MIN_MONTHLY_VALUE` em `components/ClienteForm.tsx` são espelhos.
+  Cadastro e edição barram antes, em vez de a fatura falhar todo dia.
 - **Cliente com `monthly_value > 0` precisa de CPF/CNPJ.** O Asaas cadastra o
-  cliente sem documento e recusa a COBRANÇA — recusa que só aconteceria no dia
-  30, dentro do `try/catch` do cron, no `error_log`. Cadastro e edição barram
-  antes; o cron registra o cadastro incompleto em vez de tentar.
+  cliente sem documento e recusa a COBRANÇA. Cadastro e edição barram antes; o
+  cron devolve o cadastro incompleto em `errors` (HTTP 502) em vez de sumir.
+  Cliente sem e-mail e sem WhatsApp também vira erro (`errors.destino`): a fatura
+  existe e ninguém é avisado.
 - **Os dois webhooks falham fechados.** `api/webhooks/asaas.php` exige
   `ASAAS_WEBHOOK_TOKEN` no cabeçalho `asaas-access-token`; `api/cron/billing.php`
   exige `CRON_SECRET` (cabeçalho `X-Cron-Secret`, ou `?secret=` por

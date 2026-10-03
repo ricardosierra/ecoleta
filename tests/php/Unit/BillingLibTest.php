@@ -22,44 +22,103 @@ final class BillingLibTest extends TestCase
     // ── Quando cobrar ───────────────────────────────────────────────────────
 
     /** @return array<string, array{0:string, 1:bool}> */
-    public static function diasDeEmissao(): array
+    public static function diasDaJanelaDoMesSeguinte(): array
     {
         return [
+            'mês de 31 dias, dia 29' => ['2026-01-29', false],
             'mês de 31 dias, dia 30' => ['2026-01-30', true],
-            'mês de 31 dias, dia 31' => ['2026-01-31', false],
+            'mês de 31 dias, dia 31' => ['2026-01-31', true],
+            'mês de 30 dias, dia 29' => ['2026-04-29', false],
             'mês de 30 dias, dia 30' => ['2026-04-30', true],
-            'fevereiro comum, dia 28' => ['2026-02-28', true],
             'fevereiro comum, dia 27' => ['2026-02-27', false],
-            'fevereiro bissexto, dia 29' => ['2028-02-29', true],
+            'fevereiro comum, dia 28' => ['2026-02-28', true],
             'fevereiro bissexto, dia 28' => ['2028-02-28', false],
+            'fevereiro bissexto, dia 29' => ['2028-02-29', true],
             'dia comum' => ['2026-06-15', false],
+            'primeiro dia do mês' => ['2026-10-01', false],
         ];
     }
 
-    #[PHPUnit\Framework\Attributes\DataProvider('diasDeEmissao')]
-    public function testDecideODiaDeEmissao(string $data, bool $esperado): void
+    #[PHPUnit\Framework\Attributes\DataProvider('diasDaJanelaDoMesSeguinte')]
+    public function testJanelaDoMesSeguinteAbreNoDia30OuNoUltimoDiaDoMes(string $data, bool $esperado): void
     {
-        self::assertSame($esperado, billingShouldIssue(new DateTimeImmutable($data)), $data);
+        self::assertSame($esperado, billingNextCycleIsOpen(new DateTimeImmutable($data)), $data);
     }
 
-    public function testEmiteExatamenteUmaVezPorMes(): void
+    public function testJanelaDoMesSeguinteNaoFechaAntesDoFimDoMes(): void
     {
+        // O que torna o cron diário capaz de recuperar uma execução perdida: depois que a
+        // janela abre ela fica aberta até o último dia, em qualquer mês do ano.
         foreach (range(1, 12) as $mes) {
             $primeiro = new DateTimeImmutable(sprintf('2026-%02d-01', $mes));
             $totalDias = (int) $primeiro->format('t');
 
-            $diasQueDisparam = [];
+            $abriu = false;
             for ($dia = 1; $dia <= $totalDias; $dia++) {
-                if (billingShouldIssue($primeiro->setDate(2026, $mes, $dia))) {
-                    $diasQueDisparam[] = $dia;
+                $aberta = billingNextCycleIsOpen($primeiro->setDate(2026, $mes, $dia));
+                if ($abriu) {
+                    self::assertTrue($aberta, sprintf('mês %d fechou de novo no dia %d', $mes, $dia));
                 }
+                $abriu = $abriu || $aberta;
             }
 
-            self::assertCount(1, $diasQueDisparam, sprintf(
-                'mês %d disparou nos dias %s',
-                $mes,
-                implode(',', $diasQueDisparam)
-            ));
+            self::assertTrue($abriu, sprintf('mês %d nunca abriu a janela do mês seguinte', $mes));
+            self::assertTrue(billingNextCycleIsOpen($primeiro->setDate(2026, $mes, $totalDias)), sprintf('mês %d fechado no último dia', $mes));
+        }
+    }
+
+    public function testClienteCadastradoNoDia3ComVencimentoNoDia5RecebeAFaturaDoMesCorrente(): void
+    {
+        // O caso da cliente: antes, a primeira fatura só saía em 30/10, para 05/11.
+        self::assertSame(['2026-10-05'], billingDueDatesToIssue(new DateTimeImmutable('2026-10-03'), 5));
+    }
+
+    public function testVencimentoDeHojeAindaEEmitido(): void
+    {
+        self::assertSame(['2026-10-05'], billingDueDatesToIssue(new DateTimeImmutable('2026-10-05'), 5));
+    }
+
+    public function testVencimentoQueJaPassouNaoEEmitidoRetroativamente(): void
+    {
+        // Cadastrado no dia 6 com vencimento no dia 5: o Asaas recusa data passada, e
+        // cobrar o mês que passou é decisão de quem opera, pela tela de Faturas.
+        self::assertSame([], billingDueDatesToIssue(new DateTimeImmutable('2026-10-06'), 5));
+    }
+
+    public function testNoDia30EmiteOMesSeguinteEOCorrenteQuandoAindaVale(): void
+    {
+        // Vencimento já passado no mês corrente: só o do mês seguinte.
+        self::assertSame(['2026-10-05'], billingDueDatesToIssue(new DateTimeImmutable('2026-09-30'), 5));
+        // Vencimento ainda por vir no mês corrente: os dois, em ordem.
+        self::assertSame(['2026-09-30', '2026-10-31'], billingDueDatesToIssue(new DateTimeImmutable('2026-09-30'), 31));
+    }
+
+    public function testExecucaoPerdidaNoDia30ERecuperadaNosDiasSeguintes(): void
+    {
+        // Cron fora do ar em 30/09: em 01/10 o vencimento de 05/10 ainda é emitido.
+        self::assertSame(['2026-10-05'], billingDueDatesToIssue(new DateTimeImmutable('2026-10-01'), 5));
+        // E, no mesmo mês, em 31/10 a emissão de novembro continua aberta.
+        self::assertSame(['2026-11-05'], billingDueDatesToIssue(new DateTimeImmutable('2026-10-31'), 5));
+    }
+
+    public function testVencimentoEncolheEmMesCurtoNoMesCorrente(): void
+    {
+        self::assertSame(['2026-02-28'], billingDueDatesToIssue(new DateTimeImmutable('2026-02-10'), 31));
+    }
+
+    public function testNuncaDevolveDataPassadaNemRepetida(): void
+    {
+        $inicio = new DateTimeImmutable('2026-01-01');
+        for ($offset = 0; $offset < 730; $offset++) {
+            $hoje = $inicio->modify("+{$offset} days");
+            for ($dueDay = 1; $dueDay <= 31; $dueDay++) {
+                $datas = billingDueDatesToIssue($hoje, $dueDay);
+                self::assertLessThanOrEqual(2, count($datas), $hoje->format('Y-m-d') . " dia {$dueDay}");
+                self::assertSame($datas, array_values(array_unique($datas)));
+                foreach ($datas as $data) {
+                    self::assertGreaterThanOrEqual($hoje->format('Y-m-d'), $data, $hoje->format('Y-m-d') . " dia {$dueDay}");
+                }
+            }
         }
     }
 

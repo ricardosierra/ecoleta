@@ -95,15 +95,46 @@ final class BillingCronTest extends TestCase
         self::assertStringContainsString('Cron rodou com sucesso', $res->body);
     }
 
-    public function testSemClienteCobravelNaoGeraFatura(): void
+    public function testCadastroIncompletoApareceNoRetornoEmVezDeSumir(): void
     {
-        // Cliente inativo e cliente sem Asaas ficam de fora da emissão.
-        $this->db->seedClient('Inativo', 100.0, 10, 'inactive', null, 'cus_1');
-        $this->db->seedClient('Sem Asaas', 100.0, 10, 'active', null, null);
+        // Vencimento no dia 31 garante um vencimento-alvo em qualquer dia do mês, então o
+        // teste não depende de quando roda. Cliente inativo fica de fora; o ativo sem
+        // CPF/CNPJ (e sem Asaas) é registrado, em vez de passar calado como antes.
+        $this->db->seedClient('Inativo', 100.0, 31, 'inactive', null, 'cus_1');
+        $semCadastro = $this->db->seedClient('Sem Asaas', 100.0, 31, 'active', null, null);
+
+        $res = $this->chamar(['server' => ['HTTP_X_CRON_SECRET' => self::SECRET]]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(502, $res->status, $res->body);
+        $errors = $res->json()['errors'];
+        self::assertCount(1, $errors);
+        self::assertSame($semCadastro, $errors[0]['client_id']);
+        self::assertSame(0, $this->db->count('invoices'));
+    }
+
+    public function testTodaExecucaoFicaRegistradaParaATelaDeFaturas(): void
+    {
+        self::assertSame(0, $this->db->count('activity_logs'));
 
         $res = $this->chamar(['server' => ['HTTP_X_CRON_SECRET' => self::SECRET]]);
 
         self::assertSame(200, $res->status, $res->body);
-        self::assertSame(0, $this->db->count('invoices'));
+        $logs = $this->db->rows('activity_logs');
+        self::assertCount(1, $logs);
+        self::assertSame('billing_cron_run', $logs[0]['action']);
+        $run = json_decode((string) $logs[0]['description'], true);
+        self::assertSame(0, $run['generated']);
+        self::assertSame(0, $run['errors']);
+        self::assertEqualsWithDelta(time(), strtotime($run['at']), 30);
+    }
+
+    public function testExecucaoRecusadaPeloSegredoNaoFicaRegistrada(): void
+    {
+        // O registro é o sinal de que o agendamento funciona: uma chamada de quem não
+        // tem o segredo não pode fabricá-lo.
+        $this->chamar(['query' => ['secret' => 'invalido']]);
+
+        self::assertSame(0, $this->db->count('activity_logs'));
     }
 }

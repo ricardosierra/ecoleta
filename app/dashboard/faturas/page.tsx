@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { DashboardGate, useDashboardAuth } from "@/components/DashboardGate";
 import { apiPostJson } from "@/lib/dashboard-api";
+import { describeBillingRun, type BillingCronRun, type BillingCronStatus } from "@/lib/billing-status";
 import { formatOsDate } from "@/lib/os-share";
 import { isAdmin } from "@/lib/authz";
 
@@ -35,6 +36,13 @@ function FaturasMain() {
   const [dueDate, setDueDate] = useState("");
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const [cronStatus, setCronStatus] = useState<BillingCronStatus | null>(null);
+
+  /** Aplica a listagem da API: as faturas e o que se sabe do faturamento automático. */
+  function applyListing(data: { invoices: Invoice[]; billing_cron?: BillingCronRun | null }) {
+    setInvoices(data.invoices);
+    setCronStatus(describeBillingRun(data.billing_cron ?? null, new Date()));
+  }
 
   async function submit(body: Record<string, unknown>) {
     setBusy(true); setFeedback("");
@@ -50,7 +58,7 @@ function FaturasMain() {
       }
       const list = await fetch("/api/invoices/index.php");
       const result = await list.json();
-      if (list.ok && result.ok) setInvoices(result.invoices);
+      if (list.ok && result.ok) applyListing(result);
     } catch (e) { setFeedback(e instanceof Error ? e.message : "Erro de conexão."); }
     finally { setBusy(false); }
   }
@@ -69,7 +77,7 @@ function FaturasMain() {
     fetch("/api/invoices/index.php")
       .then(res => res.json())
       .then(data => {
-        if (data.ok) setInvoices(data.invoices);
+        if (data.ok) applyListing(data);
         else throw new Error(data.error || "Erro ao carregar faturas.");
       })
       .catch(e => setFeedback(e.message || "Erro ao carregar faturas."))
@@ -86,6 +94,20 @@ function FaturasMain() {
           Acompanhamento das cobranças geradas. O status é sincronizado automaticamente via Webhook do Asaas.
         </p>
       </div>
+
+      {cronStatus && (
+        <section
+          aria-labelledby="faturamento-automatico"
+          className={`rounded-2xl border p-4 text-sm ${
+            cronStatus.tone === "ok"
+              ? "border-[var(--color-border-dark)] bg-white/5"
+              : "border-yellow-500/40 bg-yellow-500/10"
+          }`}
+        >
+          <h2 id="faturamento-automatico" className="font-semibold">Faturamento automático</h2>
+          <p className="mt-1 text-[var(--color-text-on-dark)]">{cronStatus.message}</p>
+        </section>
+      )}
 
       <form onSubmit={e => { e.preventDefault(); void submit({ action: "create", client_id: Number(clientId), value: Number(value), due_date: dueDate }); }} className="grid gap-4 sm:grid-cols-3 p-6 border border-[var(--color-border-dark)] rounded-2xl">
         <h2 className="text-xl font-semibold sm:col-span-3">Gerar fatura</h2>

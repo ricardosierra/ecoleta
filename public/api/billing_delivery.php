@@ -33,17 +33,30 @@ function billingIssueInvoice(PDO $db, array $client, float $value, string $dueDa
     if (trim((string) ($client['document'] ?? '')) === '') throw new InvalidArgumentException('Preencha o CPF/CNPJ do cliente antes de gerar a fatura.');
     if (empty($client['asaas_customer_id'])) throw new InvalidArgumentException('Cliente não sincronizado com o Asaas.');
     if (($client['status'] ?? '') !== 'active') throw new InvalidArgumentException('Ative o cliente antes de gerar a fatura.');
-    if (!is_finite($value) || $value < 5) throw new InvalidArgumentException('A cobrança deve ser de pelo menos R$ 5,00.');
+    if (!is_finite($value) || $value < BILLING_MIN_VALUE) throw new InvalidArgumentException('A cobrança deve ser de pelo menos R$ 5,00.');
     $date = DateTimeImmutable::createFromFormat('!Y-m-d', $dueDate);
     if (!$date || $date->format('Y-m-d') !== $dueDate) throw new InvalidArgumentException('Data de vencimento inválida.');
     $request ??= 'asaasRequest';
     return billingLocked($db, 'issue:' . $client['id'] . ':' . $dueDate, function () use ($db, $client, $value, $dueDate, $request): array {
-        $lookup = $db->prepare('SELECT * FROM invoices WHERE client_id = ? AND due_date = ? LIMIT 1');
+        // Fatura cancelada não conta: quem cancelou e gera de novo para o mesmo vencimento
+        // espera uma cobrança nova. Antes, o cancelamento era devolvido como "fatura já
+        // existente", nada era criado nem enviado, e a tela dizia que deu certo.
+        $lookup = $db->prepare("SELECT * FROM invoices WHERE client_id = ? AND due_date = ? AND status <> 'DELETED' ORDER BY id DESC LIMIT 1");
         $lookup->execute([$client['id'], $dueDate]);
         if ($existing = $lookup->fetch()) return $existing + ['created' => false];
         $reference = 'ecoleva:client:' . $client['id'] . ':due:' . $dueDate;
         $found = $request('/payments?externalReference=' . rawurlencode($reference), 'GET', []);
-        $payment = $found['data'][0] ?? null;
+        // A cobrança cancelada pode voltar pela mesma referência; reaproveitá-la
+        // ressuscitaria uma fatura morta (e bateria na chave única de asaas_payment_id).
+        $known = $db->prepare('SELECT status FROM invoices WHERE asaas_payment_id = ?');
+        $payment = null;
+        foreach ($found['data'] ?? [] as $candidate) {
+            if (!empty($candidate['deleted']) || ($candidate['status'] ?? '') === 'DELETED') continue;
+            $known->execute([(string) ($candidate['id'] ?? '')]);
+            if ($known->fetchColumn() === 'DELETED') continue;
+            $payment = $candidate;
+            break;
+        }
         if (!$payment) {
             $payment = $request('/payments', 'POST', [
                 'customer' => $client['asaas_customer_id'], 'billingType' => 'BOLETO',
@@ -161,7 +174,146 @@ function billingDeliverInvoice(PDO $db, array $invoice, array $client, string $e
             error_log('Falha no envio de ' . $channel . ' da fatura #' . $invoice['id']);
         }
     }
+    // Os dois canais sem destinatário: a cobrança existe no Asaas, mas ninguém recebe
+    // aviso. Sem este erro a tela dizia "notificações processadas" e o cron "rodou com
+    // sucesso" para uma fatura que nunca chegou a quem deveria pagá-la.
+    if ($result['email'] === 'skipped' && $result['whatsapp'] === 'skipped') {
+        $result['errors']['destino'] = 'Cliente sem e-mail e sem WhatsApp cadastrados: ninguém foi avisado desta fatura.';
+    }
     return $result;
+}
+
+/**
+ * A fatura do cliente no mês de `$dueDate`: a do próprio vencimento, se houver,
+ * senão qualquer outra daquele mês. Conta fatura cancelada também.
+ *
+ * É o que impede o ciclo automático de cobrar duas vezes o mesmo mês quando a
+ * operadora já gerou uma fatura avulsa com outra data, e de refazer uma fatura
+ * que ela cancelou de propósito.
+ */
+function billingFindMonthInvoice(PDO $db, int $clientId, string $dueDate): ?array
+{
+    $first = (new DateTimeImmutable(substr($dueDate, 0, 7) . '-01'));
+    $stmt = $db->prepare("SELECT * FROM invoices WHERE client_id = ? AND due_date BETWEEN ? AND ? ORDER BY (status = 'DELETED') ASC, (due_date = ?) DESC, due_date ASC, id DESC LIMIT 1");
+    $stmt->execute([$clientId, $first->format('Y-m-d'), $first->format('Y-m-t'), $dueDate]);
+    $row = $stmt->fetch();
+    return $row ?: null;
+}
+
+/**
+ * O ciclo diário do faturamento automático.
+ *
+ * Roda todo dia e é idempotente: cada cliente ativo com valor mensal tem os
+ * vencimentos de `billingDueDatesToIssue()` garantidos, e o que já foi emitido ou
+ * enviado é reconhecido e pulado. Por isso um dia perdido, uma falha do Asaas ou um
+ * cliente cadastrado no meio do mês se resolvem na execução seguinte, sem que ninguém
+ * precise lembrar de nada.
+ *
+ * Os lembretes (dias 3 e 7) pulam a fatura emitida há menos de `BILLING_REMINDER_MIN_AGE`:
+ * uma fatura nova num dia de lembrete sairia duas vezes, em seguida, e isso vale também
+ * entre execuções, quando o cron roda duas vezes no mesmo dia (um disparo manual de teste
+ * depois do deploy, mais o agendado).
+ *
+ * @return array{clients:int, generated:int, reminders:int, errors:list<array<string,mixed>>}
+ */
+function billingRunCycle(PDO $db, DateTimeImmutable $today, ?callable $request = null, ?callable $mail = null, ?callable $whatsapp = null): array
+{
+    $generated = 0;
+    $reminders = 0;
+    $errors = [];
+
+    $clients = $db->query("SELECT * FROM clients WHERE monthly_value > 0 AND status = 'active' ORDER BY id")->fetchAll();
+    foreach ($clients as $client) {
+        foreach (billingDueDatesToIssue($today, (int) $client['due_day']) as $dueDate) {
+            try {
+                $invoice = billingFindMonthInvoice($db, (int) $client['id'], $dueDate);
+                if ($invoice !== null) {
+                    $invoice += ['created' => false];
+                } else {
+                    $invoice = billingIssueInvoice($db, $client, (float) $client['monthly_value'], $dueDate, $request);
+                }
+                if ($invoice['created']) $generated++;
+                $delivery = billingDeliverInvoice($db, $invoice, $client, 'new', $mail, $whatsapp);
+                if ($delivery['errors']) $errors[] = ['client_id' => $client['id'], 'due_date' => $dueDate, 'delivery' => $delivery];
+            } catch (InvalidArgumentException $e) {
+                // Cadastro incompleto (sem CPF/CNPJ, sem Asaas, valor abaixo do mínimo): o
+                // próximo vencimento falharia igual, então registra uma vez e passa ao cliente seguinte.
+                $errors[] = ['client_id' => $client['id'], 'due_date' => $dueDate, 'error' => $e->getMessage()];
+                break;
+            } catch (Throwable $e) {
+                $errors[] = ['client_id' => $client['id'], 'due_date' => $dueDate, 'error' => $e->getMessage()];
+            }
+        }
+    }
+
+    if (billingShouldRemind($today)) {
+        $stmt = $db->prepare("SELECT i.*, c.name, c.email, c.whatsapp FROM invoices i JOIN clients c ON c.id = i.client_id WHERE i.status IN ('PENDING', 'OVERDUE') AND c.status = 'active' AND i.due_date BETWEEN ? AND ?");
+        $stmt->execute([$today->format('Y-m-01'), $today->format('Y-m-t')]);
+        foreach ($stmt->fetchAll() as $invoice) {
+            // created_at é gravado pelo MySQL no fuso da sessão, que pode diferir do do PHP em
+            // algumas horas: a margem de BILLING_REMINDER_MIN_AGE absorve isso. Data ilegível
+            // vira idade enorme, e o lembrete sai como sempre saiu.
+            $age = $today->getTimestamp() - (int) strtotime((string) ($invoice['created_at'] ?? ''));
+            if ($age < BILLING_REMINDER_MIN_AGE) continue;
+            $client = ['id' => $invoice['client_id'], 'name' => $invoice['name'], 'email' => $invoice['email'], 'whatsapp' => $invoice['whatsapp']];
+            $delivery = billingDeliverInvoice($db, $invoice, $client, 'reminder:' . $today->format('Y-m-d'), $mail, $whatsapp);
+            if ($delivery['email'] === 'sent' || $delivery['whatsapp'] === 'accepted') $reminders++;
+            if ($delivery['errors']) $errors[] = ['invoice_id' => $invoice['id'], 'delivery' => $delivery];
+        }
+    }
+
+    return ['clients' => count($clients), 'generated' => $generated, 'reminders' => $reminders, 'errors' => $errors];
+}
+
+/**
+ * Deixa registrado que o ciclo rodou, e com que resultado.
+ *
+ * É o único sinal de que o agendamento do servidor existe: a tela de Faturas lê
+ * este registro e avisa quando ele some. O horário é gravado pelo PHP, em UTC, e não
+ * por `CURRENT_TIMESTAMP`, pelo mesmo motivo das tabelas do WhatsApp: o fuso da sessão
+ * do MySQL não é necessariamente o do PHP.
+ *
+ * Falha em gravar não derruba o cron: as faturas já foram emitidas.
+ *
+ * @param array{generated:int, reminders:int, errors:list<mixed>} $summary
+ */
+function billingRecordRun(PDO $db, array $summary): void
+{
+    try {
+        $description = json_encode([
+            'at' => gmdate('Y-m-d\TH:i:s\Z'),
+            'generated' => $summary['generated'],
+            'reminders' => $summary['reminders'],
+            'errors' => count($summary['errors']),
+        ]);
+        $stmt = $db->prepare("INSERT INTO activity_logs (action, description, performed_by_login, ip_address, user_agent) VALUES ('billing_cron_run', ?, 'billing', ?, 'EcoletaBilling/1.0')");
+        $stmt->execute([$description, apiClientIp()]);
+    } catch (Throwable $e) {
+        error_log('Não consegui registrar a execução do faturamento: ' . $e->getMessage());
+    }
+}
+
+/**
+ * A última execução registrada do ciclo, ou null se nunca houve (ou se a leitura falhar).
+ *
+ * @return array{at:string, generated:int, reminders:int, errors:int}|null
+ */
+function billingLastRun(PDO $db): ?array
+{
+    try {
+        $stmt = $db->query("SELECT description FROM activity_logs WHERE action = 'billing_cron_run' ORDER BY id DESC LIMIT 1");
+        $data = json_decode((string) $stmt->fetchColumn(), true);
+    } catch (Throwable $e) {
+        return null;
+    }
+    if (!is_array($data) || !isset($data['at']) || !is_string($data['at'])) return null;
+
+    return [
+        'at' => $data['at'],
+        'generated' => (int) ($data['generated'] ?? 0),
+        'reminders' => (int) ($data['reminders'] ?? 0),
+        'errors' => (int) ($data['errors'] ?? 0),
+    ];
 }
 
 function billingWhatsAppPayload(string $to, string $name, array $invoice, string $text, bool $windowOpen): array

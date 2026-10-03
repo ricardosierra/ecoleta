@@ -15,6 +15,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../authz.php';
 require_once __DIR__ . '/../asaas_lib.php';
+require_once __DIR__ . '/../billing_lib.php';
 require_once __DIR__ . '/phone_lib.php';
 
 startSecureSession();
@@ -93,6 +94,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!is_finite($monthlyValue) || $monthlyValue < 0) {
         apiJsonResponse(400, ['error' => 'Valor mensal não pode ser negativo ou inválido.']);
+    }
+    // O Asaas não cria cobrança abaixo do mínimo. Sem esta trava o cadastro passava e
+    // a fatura mensal falhava todo dia, sem que a tela dissesse por quê.
+    if ($monthlyValue > 0 && $monthlyValue < BILLING_MIN_VALUE) {
+        apiJsonResponse(400, ['error' => 'O valor mensal mínimo é R$ 5,00, o menor valor que o Asaas aceita cobrar.']);
     }
     if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         apiJsonResponse(400, ['error' => 'E-mail inválido.']);

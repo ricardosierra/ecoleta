@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ClientesPage from "@/app/dashboard/clientes/page";
@@ -148,6 +148,57 @@ describe("/dashboard/clientes/novo — Cadastro e Cobrança Mensal", () => {
     expect(corpo.monthly_value).toBe(450);
     expect(corpo.document).toBe("12345678000199");
   }, 15_000);
+});
+
+describe("/dashboard/clientes/novo — valor mínimo da cobrança mensal", () => {
+  it("barra valor abaixo de R$ 5,00 no próprio campo, sem chamar a API", async () => {
+    const api = installApiMock({ [ME]: { body: sessionOf("root") }, [CLIENTS]: rotaClientes });
+    render(<NovoClientePage />);
+
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Nome / Empresa *"), "Valor Baixo");
+    await user.click(screen.getByRole("switch", { name: /cobrança mensal/i }));
+    const campoValor = screen.getByLabelText("Valor Mensal Fixo (R$) *");
+    await user.type(campoValor, "4.99");
+    await user.type(screen.getByLabelText(/CPF\/CNPJ \*/i), "12345678000199");
+    await user.click(screen.getByRole("button", { name: "Salvar Cliente" }));
+
+    expect(campoValor).toBeInvalid();
+    const post = api.fetch.mock.calls.find(
+      ([url, init]) => String(url).startsWith(CLIENTS) && init?.method === "POST"
+    );
+    expect(post).toBeUndefined();
+  }, 15_000);
+
+  it("explica o mínimo em texto mesmo quando a validação nativa do navegador é contornada", async () => {
+    const api = installApiMock({ [ME]: { body: sessionOf("root") }, [CLIENTS]: rotaClientes });
+    render(<NovoClientePage />);
+
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Nome / Empresa *"), "Valor Baixo");
+    await user.click(screen.getByRole("switch", { name: /cobrança mensal/i }));
+    await user.type(screen.getByLabelText("Valor Mensal Fixo (R$) *"), "4.99");
+    await user.type(screen.getByLabelText(/CPF\/CNPJ \*/i), "12345678000199");
+    fireEvent.submit(screen.getByRole("button", { name: "Salvar Cliente" }).closest("form")!);
+
+    expect(await screen.findByText(/valor mensal mínimo é R\$ 5,00/i)).toBeVisible();
+    const post = api.fetch.mock.calls.find(
+      ([url, init]) => String(url).startsWith(CLIENTS) && init?.method === "POST"
+    );
+    expect(post).toBeUndefined();
+  }, 15_000);
+
+  it("explica quando a primeira fatura sai, em vez de prometer uma assinatura no Asaas", async () => {
+    installApiMock({ [ME]: { body: sessionOf("root") }, [CLIENTS]: rotaClientes });
+    render(<NovoClientePage />);
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("switch", { name: /cobrança mensal/i }));
+
+    expect(screen.getByText(/a primeira sai no próximo ciclo diário/i)).toBeVisible();
+    expect(screen.getByText(/a partir do dia 30/i)).toBeVisible();
+    expect(screen.queryByText(/ativada no Asaas todo mês/i)).not.toBeInTheDocument();
+  });
 });
 
 describe("/dashboard/clientes/editar — Edição e Toggle", () => {

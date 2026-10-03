@@ -11,6 +11,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../authz.php';
+require_once __DIR__ . '/../billing_delivery.php';
 
 startSecureSession();
 apiRequireCsrfToken();
@@ -26,12 +27,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         JOIN clients c ON i.client_id = c.id
         ORDER BY i.due_date DESC
     ");
-    echo json_encode(['ok' => true, 'invoices' => $stmt->fetchAll()]);
+    // `billing_cron` é a última execução do faturamento automático (ou null): a tela
+    // avisa a operadora quando o agendamento do servidor nunca rodou ou parou.
+    echo json_encode(['ok' => true, 'invoices' => $stmt->fetchAll(), 'billing_cron' => billingLastRun($db)]);
     exit;
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    require_once __DIR__ . '/../billing_delivery.php';
     $body = json_decode((string) file_get_contents('php://input'), true);
     if (!is_array($body)) apiJsonResponse(400, ['error' => 'Dados inválidos.']);
     $action = $body['action'] ?? 'create';
@@ -99,6 +101,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 apiJsonResponse(400, ['error' => 'O vencimento deve ser hoje ou uma data futura.']);
             }
             $invoice = billingIssueInvoice($db, $client, (float) ($body['value'] ?? $client['monthly_value']), $dueDate);
+            // Reaproveitada e já quitada (ou estornada): não há o que enviar. Dizer que
+            // "as notificações foram processadas" para uma fatura paga engana quem gerou.
+            if (!$invoice['created'] && !in_array($invoice['status'], ['PENDING', 'OVERDUE'], true)) {
+                $situacao = ['RECEIVED' => 'paga', 'CONFIRMED' => 'confirmada', 'REFUNDED' => 'estornada', 'CHARGEBACK_REQUESTED' => 'contestada'][$invoice['status']] ?? 'encerrada';
+                apiJsonResponse(409, ['error' => 'Já existe uma fatura ' . $situacao . ' deste cliente para este vencimento. Escolha outra data.']);
+            }
         }
         if ($client['status'] !== 'active') apiJsonResponse(400, ['error' => 'Cliente inativo.']);
         $delivery = billingDeliverInvoice($db, $invoice, $client);

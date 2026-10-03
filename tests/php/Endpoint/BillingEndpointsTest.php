@@ -435,5 +435,120 @@ final class BillingEndpointsTest extends TestCase
         self::assertSame(502, $res->status, $res->body);
         self::assertStringContainsString('ASAAS_API_KEY não configurada.', (string) ($res->json()['error'] ?? ''));
     }
-}
 
+    // ── Valor mínimo da cobrança mensal ──────────────────────────────────────
+
+    public function testCadastroRecusaValorMensalAbaixoDoMinimoDoAsaas(): void
+    {
+        // O Asaas não cobra menos de R$ 5,00. Sem esta trava o cadastro passava e a
+        // fatura mensal falhava todo dia, sem a tela dizer por quê.
+        $res = Endpoint::call('clients/index.php', [
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'body' => ['name' => 'Valor Baixo', 'monthly_value' => 4.99, 'document' => '11144477735'],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(400, $res->status, $res->body);
+        self::assertStringContainsString('R$ 5,00', (string) $res->error());
+        self::assertSame(0, $this->db->count('clients'));
+    }
+
+    public function testEdicaoRecusaValorMensalAbaixoDoMinimoDoAsaas(): void
+    {
+        $clientId = $this->db->seedClient('Cliente Mensal', 250.0, 10, 'active', null, null, null, '11144477735');
+
+        $res = Endpoint::call('clients/edit.php', [
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'body' => ['client_id' => $clientId, 'monthly_value' => 1],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(400, $res->status, $res->body);
+        self::assertSame(250.0, (float) $this->db->rows('clients')[0]['monthly_value']);
+    }
+
+    public function testEdicaoAindaAceitaDesligarACobrancaComValorZero(): void
+    {
+        $clientId = $this->db->seedClient('Cliente Mensal', 250.0, 10, 'active', null, null, null, '11144477735');
+
+        $res = Endpoint::call('clients/edit.php', [
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'body' => ['client_id' => $clientId, 'monthly_value' => 0],
+        ]);
+
+        self::assertSame(200, $res->status, $res->body);
+        self::assertSame(0.0, (float) $this->db->rows('clients')[0]['monthly_value']);
+    }
+
+    public function testCadastroAntigoComValorBaixoContinuaEditavelNosOutrosCampos(): void
+    {
+        // A trava olha só o que a requisição enviou: quem muda o vencimento de um
+        // cadastro antigo não fica travado por um valor que nem tocou.
+        $clientId = $this->db->seedClient('Cadastro Antigo', 3.0);
+
+        $res = Endpoint::call('clients/edit.php', [
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'body' => ['client_id' => $clientId, 'due_day' => 15],
+        ]);
+
+        self::assertSame(200, $res->status, $res->body);
+        self::assertSame(15, (int) $this->db->rows('clients')[0]['due_day']);
+    }
+
+    // ── Faturamento automático visível na tela de Faturas ────────────────────
+
+    public function testListagemDeFaturasDizQueOFaturamentoAutomaticoNuncaRodou(): void
+    {
+        $res = Endpoint::call('invoices/index.php', [
+            'method' => 'GET',
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(200, $res->status, $res->body);
+        self::assertArrayHasKey('billing_cron', $res->json());
+        self::assertNull($res->json()['billing_cron']);
+    }
+
+    public function testListagemDeFaturasTrazAUltimaExecucaoDoFaturamentoAutomatico(): void
+    {
+        $stmt = $this->db->pdo()->prepare("INSERT INTO activity_logs (action, description, ip_address) VALUES ('billing_cron_run', ?, '127.0.0.1')");
+        $stmt->execute(['{"at":"2026-10-01T11:00:00Z","generated":1,"reminders":0,"errors":0}']);
+        $stmt->execute(['{"at":"2026-10-03T11:00:05Z","generated":3,"reminders":2,"errors":1}']);
+
+        $res = Endpoint::call('invoices/index.php', [
+            'method' => 'GET',
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+        ]);
+
+        self::assertSame(200, $res->status, $res->body);
+        self::assertSame(
+            ['at' => '2026-10-03T11:00:05Z', 'generated' => 3, 'reminders' => 2, 'errors' => 1],
+            $res->json()['billing_cron']
+        );
+    }
+
+    public function testGerarFaturaParaVencimentoJaPagoResponde409EmVezDeFingirSucesso(): void
+    {
+        $clientId = $this->db->seedClient('Cliente Pago', 100.0, 10, 'active', null, 'cus_pago', 'pago@example.com', '11144477735');
+        $this->db->seedInvoice($clientId, 'pay_ja_paga', 100.0, '2099-01-10', 'RECEIVED');
+
+        $res = Endpoint::call('invoices/index.php', [
+            'method' => 'POST',
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'body' => ['action' => 'create', 'client_id' => $clientId, 'value' => 100, 'due_date' => '2099-01-10'],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(409, $res->status, $res->body);
+        self::assertStringContainsString('paga', (string) $res->error());
+        self::assertSame(1, $this->db->count('invoices'));
+    }
+}

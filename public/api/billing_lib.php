@@ -20,25 +20,32 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/security.php';
 
-/** Dia em que as cobranças do mês seguinte são emitidas. */
+/** Dia a partir do qual a emissão do mês seguinte fica aberta. */
 const BILLING_ISSUE_DAY = 30;
 
 /** Dias em que o que continua pendente é relembrado. */
 const BILLING_REMINDER_DAYS = [3, 7];
 
-/**
- * Hoje é dia de emitir as cobranças do mês que vem?
- *
- * Dia 30, ou o último dia do mês quando o mês não chega ao 30 (fevereiro). A
- * condição `< BILLING_ISSUE_DAY` é o que impede o dia 31 de disparar uma segunda
- * emissão nos meses de 31 dias.
- */
-function billingShouldIssue(DateTimeInterface $today): bool
-{
-    $day = (int) $today->format('d');
-    $lastDay = (int) $today->format('t');
+/** Idade mínima, em segundos, de uma fatura para receber lembrete: quem acabou de receber a fatura não precisa ser lembrado dela. */
+const BILLING_REMINDER_MIN_AGE = 20 * 3600;
 
-    return $day === BILLING_ISSUE_DAY || ($day === $lastDay && $day < BILLING_ISSUE_DAY);
+/** Menor valor que o Asaas aceita cobrar, em reais. */
+const BILLING_MIN_VALUE = 5.0;
+
+/**
+ * A emissão das cobranças do mês seguinte já abriu?
+ *
+ * Abre no dia 30 (ou no último dia do mês, quando o mês não chega ao 30) e
+ * continua aberta até o fim do mês. Ficar aberta em vez de valer só naquele dia
+ * é o que deixa o cron diário recuperar uma execução perdida: quando a emissão
+ * era exclusiva do dia 30, um agendamento que falhasse naquela data deixava o
+ * mês inteiro sem cobrança, sem que ninguém ficasse sabendo.
+ */
+function billingNextCycleIsOpen(DateTimeInterface $today): bool
+{
+    $issueDay = min(BILLING_ISSUE_DAY, (int) $today->format('t'));
+
+    return (int) $today->format('d') >= $issueDay;
 }
 
 /** Hoje é dia de lembrete? */
@@ -48,20 +55,60 @@ function billingShouldRemind(DateTimeInterface $today): bool
 }
 
 /**
- * Vencimento da cobrança de um cliente no mês seguinte, respeitando o `due_day`
- * do cadastro e o tamanho do mês (dia 31 em um mês de 30 vira dia 30).
+ * Vencimento de um cliente no mês de `$month` (qualquer data dele), respeitando
+ * o `due_day` do cadastro e o tamanho do mês (dia 31 em um mês de 30 vira 30).
  */
-function billingDueDate(DateTimeInterface $today, int $dueDay): string
+function billingDueDateInMonth(DateTimeInterface $month, int $dueDay): string
 {
-    $nextMonth = (new DateTimeImmutable($today->format('Y-m-d')))->modify('first day of next month');
-    $lastDay = (int) $nextMonth->format('t');
+    $lastDay = (int) $month->format('t');
 
     return sprintf(
         '%04d-%02d-%02d',
-        (int) $nextMonth->format('Y'),
-        (int) $nextMonth->format('m'),
+        (int) $month->format('Y'),
+        (int) $month->format('m'),
         min(max($dueDay, 1), $lastDay)
     );
+}
+
+/** Vencimento da cobrança de um cliente no mês seguinte a `$today`. */
+function billingDueDate(DateTimeInterface $today, int $dueDay): string
+{
+    $nextMonth = (new DateTimeImmutable($today->format('Y-m-d')))->modify('first day of next month');
+
+    return billingDueDateInMonth($nextMonth, $dueDay);
+}
+
+/**
+ * Vencimentos que o cliente deve ter faturados a partir de hoje, em ordem.
+ *
+ * São até dois:
+ *
+ *  - o do mês corrente, enquanto ele não passou (hoje inclusive). É o que cobre
+ *    o cliente cadastrado, reativado ou com valor mensal ligado depois do dia 30
+ *    do mês anterior: sem ele, a primeira fatura só saía no dia 30, para o mês
+ *    seguinte, e quem cadastrava um cliente no dia 3 com vencimento no dia 5
+ *    ficava um mês sem boleto;
+ *  - o do mês seguinte, quando a emissão dele já abriu.
+ *
+ * Nunca devolve data passada: o Asaas recusa vencimento anterior a hoje, e
+ * cobrar retroativamente é decisão de quem opera, pela tela de Faturas.
+ *
+ * @return list<string> datas no formato Y-m-d
+ */
+function billingDueDatesToIssue(DateTimeInterface $today, int $dueDay): array
+{
+    $dates = [];
+
+    $current = billingDueDateInMonth($today, $dueDay);
+    if ($current >= $today->format('Y-m-d')) {
+        $dates[] = $current;
+    }
+
+    if (billingNextCycleIsOpen($today)) {
+        $dates[] = billingDueDate($today, $dueDay);
+    }
+
+    return $dates;
 }
 
 /** Escapa um valor para caber dentro do HTML do e-mail. */

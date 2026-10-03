@@ -4,13 +4,13 @@ import { describe, expect, it, vi } from "vitest";
 import FaturasPage from "@/app/dashboard/faturas/page";
 import { sessionOf } from "../support/api-mock";
 
-function mockApi(delivery: object = { email: "sent", whatsapp: "accepted", errors: {} }) {
+function mockApi(delivery: object = { email: "sent", whatsapp: "accepted", errors: {} }, billingCron: object | null = null) {
   const posts: object[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     if (url.includes("/auth/me.php")) return Response.json(sessionOf("root"));
     if (url.includes("/clients/")) return Response.json({ ok: true, clients: [{ id: 1, name: "Cliente QA", monthly_value: 7.5, status: "active" }] });
     if (init?.method === "POST") { posts.push(JSON.parse(String(init.body))); return Response.json({ ok: true, invoice: { id: 1 }, delivery }); }
-    return Response.json({ ok: true, invoices: [{ id: 1, client_id: 1, client_name: "Cliente QA", value: "7.50", due_date: "2026-09-10", status: "PENDING", invoice_url: "https://example.com/invoice" }] });
+    return Response.json({ ok: true, billing_cron: billingCron, invoices: [{ id: 1, client_id: 1, client_name: "Cliente QA", value: "7.50", due_date: "2026-09-10", status: "PENDING", invoice_url: "https://example.com/invoice" }] });
   }));
   return posts;
 }
@@ -41,5 +41,43 @@ describe("Faturas", () => {
     expect(confirmSpy).toHaveBeenCalled();
     await waitFor(() => expect(posts).toEqual([{ action: "cancel", id: 1 }]));
     confirmSpy.mockRestore();
+  });
+
+  describe("faturamento automático", () => {
+    const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
+
+    it("avisa que o agendamento nunca rodou, para a operadora não esperar um boleto que não vem", async () => {
+      mockApi(undefined, null);
+      render(<FaturasPage />);
+
+      const aviso = await screen.findByRole("region", { name: "Faturamento automático" });
+      expect(aviso).toHaveTextContent("ainda não registrou nenhuma execução");
+    });
+
+    it("mostra a última execução quando o agendamento está em dia", async () => {
+      mockApi(undefined, { at: hoursAgo(2), generated: 3, reminders: 0, errors: 0 });
+      render(<FaturasPage />);
+
+      const aviso = await screen.findByRole("region", { name: "Faturamento automático" });
+      expect(aviso).toHaveTextContent("Em dia.");
+      expect(aviso).toHaveTextContent("3 faturas geradas");
+    });
+
+    it("avisa quando o agendamento parou há mais de um dia e meio", async () => {
+      mockApi(undefined, { at: hoursAgo(80), generated: 0, reminders: 0, errors: 0 });
+      render(<FaturasPage />);
+
+      const aviso = await screen.findByRole("region", { name: "Faturamento automático" });
+      expect(aviso).toHaveTextContent("não roda desde");
+    });
+
+    it("não atrapalha o aviso de status da fatura gerada à mão", async () => {
+      mockApi(undefined, { at: hoursAgo(2), generated: 0, reminders: 0, errors: 0 });
+      const user = userEvent.setup();
+      render(<FaturasPage />);
+
+      await user.click(await screen.findByRole("button", { name: "Tentar envios pendentes" }));
+      expect(await screen.findByRole("status")).toHaveTextContent("Fatura registrada e notificações processadas.");
+    });
   });
 });

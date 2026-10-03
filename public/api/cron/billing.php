@@ -4,19 +4,26 @@ declare(strict_types=1);
 /**
  * Faturamento mensal automático.
  *
- * Roda por cron (HTTP ou CLI) e faz duas coisas, cada uma no seu dia:
+ * Roda por cron (HTTP ou CLI), UMA VEZ POR DIA, e a cada execução faz duas coisas:
  *
- *   dia 30 (ou o último do mês, quando o mês não chega ao 30)
- *       gera a cobrança do mês seguinte no Asaas para cada cliente ativo com
- *       valor mensal positivo, grava em `invoices` e manda o e-mail com o Pix e
- *       o link do boleto.
+ *   garante a fatura de cada cliente ativo com valor mensal positivo
+ *       o vencimento do mês corrente, enquanto ele não passou, e o do mês seguinte
+ *       a partir do dia 30 (ou do último dia do mês, quando o mês não chega ao 30).
+ *       O que já existe é reconhecido e pulado, então rodar todo dia é seguro e
+ *       recupera sozinho um dia perdido, uma falha do Asaas e o cliente cadastrado
+ *       no meio do mês. Cria a cobrança no Asaas, grava em `invoices` e manda o
+ *       e-mail e o WhatsApp com o Pix e o link do boleto.
  *
  *   dias 3 e 7
- *       relembra o que continua `PENDING` com vencimento dentro do mês.
+ *       relembra o que continua `PENDING`/`OVERDUE` com vencimento dentro do mês.
  *
  * A decisão de quando cobrar e o documento que o cliente recebe moram em
- * `billing_lib.php`, onde a suíte consegue exercitá-los. Aqui fica só o efeito
- * colateral: segredo, banco, Asaas e e-mail.
+ * `billing_lib.php`, onde a suíte consegue exercitá-los; o ciclo em si
+ * (`billingRunCycle`) mora em `billing_delivery.php`, pelo mesmo motivo. Aqui fica
+ * só o que é porta de entrada: segredo, relógio e resposta.
+ *
+ * Cada execução deixa um registro (`billingRecordRun`) que a tela de Faturas lê:
+ * é o que avisa a operadora quando o agendamento do servidor deixa de rodar.
  */
 
 require_once __DIR__ . '/../db.php';
@@ -59,36 +66,23 @@ if ($enviado === '' || !hash_equals($cronSecret, $enviado)) {
 }
 
 require_once __DIR__ . '/../billing_delivery.php';
+
+// Uma fatura emitida no Asaas e ainda não gravada é o pior estado possível: a
+// execução precisa terminar mesmo que quem agendou o cron desconecte, e o limite
+// de 30 segundos de uma hospedagem compartilhada é curto para uma carteira grande.
+ignore_user_abort(true);
+if (function_exists('set_time_limit')) {
+    @set_time_limit(300);
+}
+
 $db = getDbConnection();
 $today = new DateTimeImmutable('now', new DateTimeZone('America/Sao_Paulo'));
-$generated = 0;
-$reminders = 0;
-$errors = [];
+$summary = billingRunCycle($db, $today);
+billingRecordRun($db, $summary);
 
-if (billingShouldIssue($today)) {
-    $clients = $db->query("SELECT * FROM clients WHERE monthly_value > 0 AND status = 'active'")->fetchAll();
-    foreach ($clients as $client) {
-        try {
-            $invoice = billingIssueInvoice($db, $client, (float) $client['monthly_value'], billingDueDate($today, (int) $client['due_day']));
-            if ($invoice['created']) $generated++;
-            $delivery = billingDeliverInvoice($db, $invoice, $client);
-            if ($delivery['errors']) $errors[] = ['client_id' => $client['id'], 'delivery' => $delivery];
-        } catch (Throwable $e) {
-            $errors[] = ['client_id' => $client['id'], 'error' => $e->getMessage()];
-        }
-    }
-}
-
-if (billingShouldRemind($today)) {
-    $stmt = $db->prepare("SELECT i.*, c.name, c.email, c.whatsapp FROM invoices i JOIN clients c ON c.id = i.client_id WHERE i.status IN ('PENDING', 'OVERDUE') AND c.status = 'active' AND i.due_date BETWEEN ? AND ?");
-    $stmt->execute([$today->format('Y-m-01'), $today->format('Y-m-t')]);
-    foreach ($stmt->fetchAll() as $invoice) {
-        $client = ['id' => $invoice['client_id'], 'name' => $invoice['name'], 'email' => $invoice['email'], 'whatsapp' => $invoice['whatsapp']];
-        $delivery = billingDeliverInvoice($db, $invoice, $client, 'reminder:' . $today->format('Y-m-d'));
-        if ($delivery['email'] === 'sent' || $delivery['whatsapp'] === 'accepted') $reminders++;
-        if ($delivery['errors']) $errors[] = ['invoice_id' => $invoice['id'], 'delivery' => $delivery];
-    }
-}
+$generated = $summary['generated'];
+$reminders = $summary['reminders'];
+$errors = $summary['errors'];
 
 if ($errors) {
     http_response_code(502);
