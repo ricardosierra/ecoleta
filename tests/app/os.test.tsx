@@ -141,8 +141,14 @@ describe("/dashboard/os — encaminhamento", () => {
   });
 
   it("mostra o erro do servidor, que nomeia o campo, ao gerar a OS", async () => {
-    montar({
-      [OS]: { status: 400, body: { error: "Qtd. sacos deve ser um número inteiro de 0 a 99999." } },
+    // A listagem (GET) carrega normalmente; só a criação (POST) é recusada.
+    const api = montar();
+    const original = api.fetch.getMockImplementation()!;
+    api.fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).startsWith(OS) && init?.method === "POST") {
+        return Response.json({ error: "Qtd. sacos deve ser um número inteiro de 0 a 99999." }, { status: 400 });
+      }
+      return original(input, init);
     });
     render(<OSPage />);
 
@@ -317,6 +323,102 @@ describe("/dashboard/os — encaminhamento", () => {
       expect(screen.getByRole("status")).toHaveTextContent("não está configurado");
     });
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("/dashboard/os — falha ao carregar a tela", () => {
+  /**
+   * Sessão vencida, 503 de schema ou rede caída: o histórico mostrava o estado
+   * vazio ("Nenhuma OS encontrada.") e o select de clientes ficava vazio, sem
+   * nenhum aviso de que algo tinha dado errado.
+   */
+  it("avisa que o histórico não carregou, em vez de dizer que não há OS", async () => {
+    montar({ [OS]: { status: 503, body: { error: "O banco de dados está desatualizado." } } });
+    render(<OSPage />);
+
+    const aviso = await screen.findByRole("alert");
+    expect(aviso).toHaveTextContent("Não foi possível carregar");
+    expect(aviso).toHaveTextContent("Histórico de OS: O banco de dados está desatualizado.");
+    expect(screen.queryByText("Nenhuma OS encontrada.")).toBeNull();
+    expect(screen.getByText("Histórico indisponível.")).toBeVisible();
+  });
+
+  it("avisa que a lista de clientes não carregou", async () => {
+    montar({ [CLIENTS]: { status: 403, body: { error: "Acesso negado." } } });
+    render(<OSPage />);
+
+    const aviso = await screen.findByRole("alert");
+    expect(aviso).toHaveTextContent("Lista de clientes: Acesso negado.");
+    // O histórico carregou normalmente e continua na tela.
+    expect(await screen.findByText("#00042")).toBeVisible();
+  });
+
+  it("explica a rede caída pelo nome, sem mostrar o texto técnico do navegador", async () => {
+    const api = montar();
+    const original = api.fetch.getMockImplementation()!;
+    api.fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).startsWith(OS)) throw new TypeError("Failed to fetch");
+      return original(input, init);
+    });
+    render(<OSPage />);
+
+    const aviso = await screen.findByRole("alert");
+    expect(aviso).toHaveTextContent("Histórico de OS: Sem conexão com o servidor.");
+    expect(aviso).not.toHaveTextContent("Failed to fetch");
+    expect(screen.queryByText("Nenhuma OS encontrada.")).toBeNull();
+  });
+
+  it("trata resposta que não é JSON (página de erro do servidor) como falha de carga", async () => {
+    const api = montar();
+    const original = api.fetch.getMockImplementation()!;
+    api.fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).startsWith(OS)) return new Response("<html>Erro 500</html>", { status: 500 });
+      return original(input, init);
+    });
+    render(<OSPage />);
+
+    const aviso = await screen.findByRole("alert");
+    expect(aviso).toHaveTextContent("Histórico de OS: O servidor respondeu 500.");
+  });
+
+  it("recarrega ao clicar em tentar novamente e limpa o aviso quando dá certo", async () => {
+    const api = montar();
+    const original = api.fetch.getMockImplementation()!;
+    let caiu = true;
+    api.fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (caiu && String(input).startsWith(OS)) throw new TypeError("Failed to fetch");
+      return original(input, init);
+    });
+    render(<OSPage />);
+
+    const user = userEvent.setup();
+    await screen.findByRole("alert");
+
+    caiu = false;
+    await user.click(screen.getByRole("button", { name: "Tentar novamente" }));
+
+    expect(await screen.findByText("#00042")).toBeVisible();
+    await waitFor(() => expect(screen.queryByText(/Não foi possível carregar/)).toBeNull());
+  });
+
+  it("mostra 'Carregando' enquanto o histórico não chegou, e não 'Nenhuma OS encontrada.'", async () => {
+    const api = montar();
+    const original = api.fetch.getMockImplementation()!;
+    api.fetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) =>
+      String(input).startsWith(OS) ? new Promise<Response>(() => {}) : original(input, init)
+    );
+    render(<OSPage />);
+
+    expect(await screen.findByText("Carregando…")).toBeVisible();
+    expect(screen.queryByText("Nenhuma OS encontrada.")).toBeNull();
+  });
+
+  it("continua dizendo 'Nenhuma OS encontrada.' quando o servidor responde com a lista vazia", async () => {
+    montar({ [OS]: { body: { ok: true, service_orders: [] } } });
+    render(<OSPage />);
+
+    expect(await screen.findByText("Nenhuma OS encontrada.")).toBeVisible();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });
 

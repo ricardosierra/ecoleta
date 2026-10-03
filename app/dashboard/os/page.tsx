@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { DashboardGate, useDashboardAuth } from "@/components/DashboardGate";
 import { DashboardModal, ModalActions } from "@/components/DashboardModal";
 import {
@@ -45,6 +45,35 @@ const cardClass = "rounded-2xl border border-[var(--color-border-dark)] bg-[rgba
 
 const secondaryButton =
   "inline-flex items-center justify-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20 disabled:opacity-50";
+
+/**
+ * GET de uma lista do dashboard. Devolve os itens ou o motivo da falha, sem nunca
+ * lançar: resposta de erro do servidor (sessão vencida, 503 de schema), corpo que
+ * não é JSON e rede caída são três falhas distintas, e as três precisam chegar à
+ * tela como aviso, não como lista vazia.
+ */
+async function carregarLista<T>(url: string, chave: string): Promise<{ itens: T[] } | { erro: string }> {
+  try {
+    const res = await fetch(url);
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok || !data?.ok || !Array.isArray(data[chave])) {
+      return { erro: typeof data?.error === "string" && data.error !== "" ? data.error : `O servidor respondeu ${res.status}.` };
+    }
+
+    return { itens: data[chave] as T[] };
+  } catch {
+    return { erro: "Sem conexão com o servidor." };
+  }
+}
+
+/** As duas listas da tela, buscadas juntas. Nunca lança (ver `carregarLista`). */
+function buscarTela() {
+  return Promise.all([
+    carregarLista<Client>("/api/clients/index.php", "clients"),
+    carregarLista<ServiceOrder>("/api/os/index.php", "service_orders"),
+  ]);
+}
 
 /** Cor do selo de WhatsApp: verde só quando a mensagem chegou ao cliente. */
 const WHATSAPP_TONE_CLASS = {
@@ -113,11 +142,40 @@ function OSMain() {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [reenvio, setReenvio] = useState<ReenvioWhatsApp | null>(null);
 
+  // Clientes e histórico vêm de duas chamadas. Cada uma pode falhar sozinha, e o
+  // aviso diz qual: antes o erro era engolido e a falha aparecia como lista
+  // vazia ("Nenhuma OS encontrada.", select de clientes sem opções).
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [loadErrors, setLoadErrors] = useState<{ clients?: string; history?: string }>({});
+
+  const aplicarCarga = useCallback(([clientes, historico]: Awaited<ReturnType<typeof buscarTela>>) => {
+    if ("itens" in clientes) setClients(clientes.itens);
+    if ("itens" in historico) setHistory(historico.itens);
+    setLoadErrors({
+      clients: "erro" in clientes ? clientes.erro : undefined,
+      history: "erro" in historico ? historico.erro : undefined,
+    });
+    setHistoryLoading(false);
+  }, []);
+
   useEffect(() => {
     if (!isUserAdmin) return;
-    fetch("/api/clients/index.php").then(r => r.json()).then(d => { if(d.ok) setClients(d.clients); });
-    fetch("/api/os/index.php").then(r => r.json()).then(d => { if(d.ok) setHistory(d.service_orders); });
-  }, [isUserAdmin]);
+
+    let ativo = true;
+    void buscarTela().then(carga => {
+      if (ativo) aplicarCarga(carga);
+    });
+
+    return () => {
+      ativo = false;
+    };
+  }, [isUserAdmin, aplicarCarga]);
+
+  const recarregar = () => {
+    setHistoryLoading(true);
+    setLoadErrors({});
+    void buscarTela().then(aplicarCarga);
+  };
 
   /** Abre uma OS na pré-visualização e zera o que era do documento anterior. */
   const abrirOS = (os: ServiceOrder) => {
@@ -267,6 +325,19 @@ function OSMain() {
           Gere a OS de coleta e encaminhe ao cliente.
         </p>
       </div>
+
+      {(loadErrors.history || loadErrors.clients) && (
+        <div role="alert" className="rounded-xl border border-red-500/40 bg-red-950/60 p-4 text-sm text-red-200 print:hidden">
+          <p className="font-semibold">Não foi possível carregar a tela por completo.</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5">
+            {loadErrors.history && <li>Histórico de OS: {loadErrors.history}</li>}
+            {loadErrors.clients && <li>Lista de clientes: {loadErrors.clients}</li>}
+          </ul>
+          <button type="button" onClick={recarregar} className={`${secondaryButton} mt-3`}>
+            Tentar novamente
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 print:hidden lg:grid-cols-2">
         {/* Formulário */}
@@ -466,7 +537,9 @@ function OSMain() {
       <section className={`${cardClass} overflow-hidden print:hidden`}>
         <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border-dark)] p-4">
           <h3 className="font-semibold">Histórico de OS Geradas</h3>
-          <span className="text-xs text-white/50">{history.length} {history.length === 1 ? "registro" : "registros"}</span>
+          {!historyLoading && !loadErrors.history && (
+            <span className="text-xs text-white/50">{history.length} {history.length === 1 ? "registro" : "registros"}</span>
+          )}
         </div>
         <div className="data-table-wrap">
           <table className="data-table text-white/85">
@@ -482,7 +555,11 @@ function OSMain() {
           </thead>
           <tbody>
             {history.length === 0 ? (
-              <tr><td colSpan={6} className="data-table-empty py-8 text-center text-sm text-white/50">Nenhuma OS encontrada.</td></tr>
+              <tr>
+                <td colSpan={6} className="data-table-empty py-8 text-center text-sm text-white/50">
+                  {historyLoading ? "Carregando…" : loadErrors.history ? "Histórico indisponível." : "Nenhuma OS encontrada."}
+                </td>
+              </tr>
             ) : history.map(os => {
               const ativa = activeOS?.id === os.id;
               return (
