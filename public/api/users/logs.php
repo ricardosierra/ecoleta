@@ -70,12 +70,18 @@ if (empty($logs)) {
     $logs = $legacyStmt->fetchAll();
 }
 
-// Busca histórico de auditoria de hash de senha (capturado por trigger MySQL ou ações do sistema)
+// Busca histórico de auditoria de troca de senha (capturado por trigger MySQL ou
+// ações do sistema). Só o RASTRO sai daqui: tipo, autor, origem e data. As
+// colunas old_hash e new_hash ficam de fora de propósito, nem no SELECT — um
+// bcrypt nas mãos de um master (que lê o histórico de qualquer conta, root
+// inclusive) é o que permite quebrar a senha offline. A tela nunca usou esses
+// campos, e quem precisa saber se uma senha já valeu é users/password_history_check.php,
+// que responde "sem expor hash".
 $passwordHistory = [];
 try {
     $pwdStmt = $db->prepare("
-        SELECT id, user_id, old_hash, new_hash, change_type, changed_by_login, ip_address, user_agent, created_at 
-        FROM password_hash_history 
+        SELECT id, user_id, change_type, changed_by_login, ip_address, user_agent, created_at
+        FROM password_hash_history
         WHERE user_id = ? 
         ORDER BY created_at DESC, id DESC 
         LIMIT 50
