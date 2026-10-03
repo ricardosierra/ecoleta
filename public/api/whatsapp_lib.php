@@ -239,10 +239,37 @@ function waExtractSentMessageId(array $response): ?string
 }
 
 /**
+ * Opções do cURL do upload de mídia.
+ *
+ * Separadas da chamada para a suíte poder conferir o que não dá para testar sem
+ * rede: o upload TEM prazo. Sem `CURLOPT_TIMEOUT`, uma Meta que aceita a conexão
+ * e não responde deixava a requisição do painel (e o webhook, no caso do robô)
+ * pendurada até o servidor derrubar o processo.
+ *
+ * @return array<int,mixed>
+ */
+function waUploadMediaCurlOptions(string $filePath, string $mimeType, string $token, ?string $filename = null): array
+{
+    return [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => [
+            'file' => new CURLFile($filePath, $mimeType, $filename ?? basename($filePath)),
+            'messaging_product' => 'whatsapp',
+            'type' => $mimeType,
+        ],
+        CURLOPT_HTTPHEADER => ["Authorization: Bearer $token"],
+        // Mídia chega a 16 MB: mais folga que o envio de texto, mas com limite.
+        CURLOPT_TIMEOUT => 45,
+        CURLOPT_CONNECTTIMEOUT => 10,
+    ];
+}
+
+/**
  * Faz upload de mídia para a API do WhatsApp.
  * Retorna o ID da mídia para ser usado no envio.
  */
-function waUploadMedia(string $filePath, string $mimeType): string
+function waUploadMedia(string $filePath, string $mimeType, ?string $filename = null): string
 {
     $phoneId = apiSecret('WHATSAPP_PHONE_ID');
     $token = apiSecret('WHATSAPP_ACCESS_TOKEN');
@@ -252,22 +279,30 @@ function waUploadMedia(string $filePath, string $mimeType): string
     }
 
     $version = WHATSAPP_API_VERSION;
-    $ch = curl_init("https://graph.facebook.com/{$version}/{$phoneId}/media");
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, [
-        'file' => new CURLFile($filePath, $mimeType, basename($filePath)),
-        'messaging_product' => 'whatsapp',
-        'type' => $mimeType,
-    ]);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ["Authorization: Bearer $token"]);
+    $ch = curl_init("https://graph.facebook.com/{$version}/" . rawurlencode($phoneId) . '/media');
+    curl_setopt_array($ch, waUploadMediaCurlOptions($filePath, $mimeType, $token, $filename));
 
     $response = curl_exec($ch);
-    $statusCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $statusCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
     curl_close($ch);
-    
-    if ($statusCode !== 200) {
-        throw new RuntimeException('Falha ao subir mídia: ' . $response);
+
+    if ($response === false) {
+        throw new RuntimeException('Erro na comunicação com o WhatsApp ao subir a mídia: ' . $curlError);
     }
-    return json_decode($response, true)['id'] ?? '';
+
+    $decoded = json_decode((string) $response, true);
+    $decoded = is_array($decoded) ? $decoded : [];
+
+    if ($statusCode !== 200) {
+        $error = is_array($decoded['error'] ?? null) ? $decoded['error'] : [];
+        $detalhe = trim((string) ($error['error_user_msg'] ?? $error['message'] ?? ''));
+
+        // O token vazaria no log se a mensagem da Meta ecoasse a requisição.
+        error_log(sprintf('WhatsApp Cloud API respondeu %d ao subir mídia: %s', $statusCode, $detalhe));
+
+        throw new RuntimeException('Falha ao subir mídia: ' . ($detalhe !== '' ? $detalhe : mb_substr((string) $response, 0, 300)));
+    }
+
+    return (string) ($decoded['id'] ?? '');
 }

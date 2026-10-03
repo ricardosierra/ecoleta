@@ -198,9 +198,20 @@ foreach ($evento['entry'] as $entrada) {
 
                 if ($gravada !== null) {
                     $recebidas++;
-                    
-                    // Auto-resposta do QR Code caso seja uma mensagem recebida
-                    waAutoReplyWithPix($db, $from, (string)waExtractBody($mensagem));
+
+                    // Robô de fatura: só texto com pedido claro dispara (mídia, emoji
+                    // e o rótulo "[imagem]" nunca), no máximo uma vez por janela.
+                    // Falha dele não pode contar como falha de gravar a mensagem.
+                    try {
+                        waAutoReplyWithPix(
+                            $db,
+                            $from,
+                            (string) waExtractBody($mensagem),
+                            (string) ($mensagem['type'] ?? '')
+                        );
+                    } catch (\Throwable $e) {
+                        error_log('Webhook do WhatsApp: falha no robô de fatura: ' . $e->getMessage());
+                    }
                 }
             } catch (\Throwable $e) {
                 // Uma mensagem problemática não pode derrubar as outras do lote.
