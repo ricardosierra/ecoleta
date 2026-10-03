@@ -4,14 +4,30 @@ require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../authz.php';
 require_once __DIR__ . '/logo_lib.php';
 
-startSecureSession();
+// A leitura (GET) é pública: quem visita o site não tem sessão, e abrir uma para
+// cada visitante gravava um arquivo no servidor e devolvia Set-Cookie sem
+// necessidade. A sessão só é consultada quando o navegador já mandou o cookie
+// dela (o admin logado no painel). As escritas sempre abrem, por causa do CSRF.
+if ($_SERVER['REQUEST_METHOD'] !== 'GET' || (string) ($_COOKIE[API_SESSION_NAME] ?? '') !== '') {
+    startSecureSession();
+}
 apiRequireCsrfToken();
 apiSendJsonHeaders();
 
 $db = getDbConnection();
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    $stmt = $db->query("SELECT id, name, logo_url, is_active FROM site_clients ORDER BY name ASC");
+    // "Tirar do site" tem de tirar da resposta, não só da tela: o visitante só
+    // recebe empresa ativa. O painel (sessão de admin) segue vendo todas, porque
+    // é lá que se reativa. Quem não é admin, logado ou não, recebe a lista pública.
+    $actor = session_status() === PHP_SESSION_ACTIVE ? apiSessionActor() : null;
+    $isAdmin = $actor !== null && apiRoleIsAdmin($actor['role']);
+
+    $stmt = $db->query(
+        'SELECT id, name, logo_url, is_active FROM site_clients'
+        . ($isAdmin ? '' : ' WHERE is_active = 1')
+        . ' ORDER BY name ASC'
+    );
     $companies = $stmt->fetchAll();
     echo json_encode(['ok' => true, 'companies' => $companies]);
     exit;

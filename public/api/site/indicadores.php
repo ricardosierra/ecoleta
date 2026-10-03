@@ -3,7 +3,12 @@ declare(strict_types=1);
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../authz.php';
 
-startSecureSession();
+// O GET é público e devolve o mesmo para todo mundo, inclusive para o painel:
+// não precisa de sessão. Abrir uma para cada visitante da página ESG gravava um
+// arquivo no servidor e devolvia Set-Cookie à toa. Só a escrita (POST) abre.
+if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+    startSecureSession();
+}
 apiRequireCsrfToken();
 apiSendJsonHeaders();
 

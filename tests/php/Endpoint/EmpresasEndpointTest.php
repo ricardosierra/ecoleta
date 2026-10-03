@@ -57,9 +57,11 @@ final class EmpresasEndpointTest extends TestCase
         return $path;
     }
 
-    public function testListagemEPublicaEDevolveAsEmpresas(): void
+    public function testListagemEPublicaEDevolveSoAsEmpresasAtivas(): void
     {
         $this->seedEmpresa('Heineken');
+        // Desativada pelo painel: não pode aparecer para o visitante.
+        $this->seedEmpresa('Escondida', '/logos/escondida.png', 0);
 
         $res = Endpoint::call('site/empresas.php', [
             'method' => 'GET',
@@ -68,7 +70,23 @@ final class EmpresasEndpointTest extends TestCase
 
         self::assertNull($res->fatal, (string) $res->fatal);
         self::assertSame(200, $res->status, $res->body);
+        self::assertCount(1, $res->json()['companies']);
         self::assertSame('Heineken', $res->json()['companies'][0]['name'] ?? null);
+    }
+
+    public function testListagemDoAdminIncluiAsEmpresasDesativadas(): void
+    {
+        $this->seedEmpresa('Heineken');
+        $this->seedEmpresa('Escondida', '/logos/escondida.png', 0);
+
+        $res = Endpoint::call('site/empresas.php', [
+            'method' => 'GET',
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+        ]);
+
+        self::assertSame(200, $res->status, $res->body);
+        self::assertSame(['Escondida', 'Heineken'], array_column($res->json()['companies'], 'name'));
     }
 
     public function testEscritaExigePapelAdmin(): void
