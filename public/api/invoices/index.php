@@ -13,6 +13,24 @@ require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../authz.php';
 require_once __DIR__ . '/../billing_delivery.php';
 
+/** O que a tela mostra quando a falha é nossa e não da integração. */
+const INVOICES_GENERIC_ERROR = 'Não foi possível concluir a operação agora. Tente novamente em instantes.';
+
+/**
+ * Registra uma falha interna sem o texto dela: a mensagem de um erro de banco
+ * pode carregar dado pessoal. Classe, código e local bastam para achar a causa.
+ */
+function invoicesLogInternalError(Throwable $e): void
+{
+    error_log(sprintf(
+        'Faturas: falha interna %s (código %s) em %s:%d',
+        get_class($e),
+        (string) $e->getCode(),
+        basename($e->getFile()),
+        $e->getLine()
+    ));
+}
+
 startSecureSession();
 apiRequireCsrfToken();
 apiSendJsonHeaders();
@@ -113,8 +131,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         apiJsonResponse(200, ['ok' => true, 'invoice' => $invoice, 'delivery' => $delivery]);
     } catch (InvalidArgumentException $e) {
         apiJsonResponse(400, ['error' => $e->getMessage()]);
-    } catch (Throwable $e) {
+    } catch (PDOException $e) {
+        // PDOException É uma RuntimeException: precisa vir antes dela. A mensagem do
+        // driver traz nome de tabela e coluna, e numa chave duplicada o próprio
+        // valor (e-mail, CPF). Vai para quem opera só o aviso genérico; o log
+        // guarda a classe e o SQLSTATE, sem a mensagem.
+        invoicesLogInternalError($e);
+        apiJsonResponse(500, ['error' => INVOICES_GENERIC_ERROR]);
+    } catch (RuntimeException $e) {
+        // Falha da integração (Asaas recusou, sem chave, fora do ar, cobrança em
+        // processamento): essa mensagem é a explicação útil e segue para a tela.
         apiJsonResponse(502, ['error' => $e->getMessage()]);
+    } catch (Throwable $e) {
+        // Qualquer outra coisa é erro nosso (TypeError, ValueError...), e o texto
+        // dele não diz nada a quem clicou.
+        invoicesLogInternalError($e);
+        apiJsonResponse(500, ['error' => INVOICES_GENERIC_ERROR]);
     }
 }
 

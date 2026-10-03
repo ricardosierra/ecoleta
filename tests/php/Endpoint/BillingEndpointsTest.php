@@ -470,6 +470,57 @@ final class BillingEndpointsTest extends TestCase
         self::assertStringContainsString('ASAAS_API_KEY não configurada.', (string) ($res->json()['error'] ?? ''));
     }
 
+    // ── Mensagens de erro de /invoices ───────────────────────────────────────
+
+    /**
+     * Quem for administrador lia, no corpo da resposta, o texto cru do banco
+     * ("SQLSTATE[HY000]: ... no such table: invoices"): nome de tabela e de
+     * coluna que não servem a quem opera a tela e ajudam quem a investiga.
+     */
+    public function testFalhaDeBancoNaFaturaNaoVazaTextoDeSql(): void
+    {
+        $clientId = $this->db->seedClient('Cliente Falha');
+        $invoiceId = $this->db->seedInvoice($clientId, 'pay_falha', 100.0, '2026-10-10', 'PENDING');
+        $this->db->dropTable('invoices');
+
+        $res = Endpoint::call('invoices/index.php', [
+            'method' => 'POST',
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'body' => ['action' => 'cancel', 'id' => $invoiceId],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(500, $res->status, $res->body);
+
+        $erro = (string) $res->error();
+        self::assertStringNotContainsString('SQLSTATE', $erro);
+        self::assertStringNotContainsString('invoices', $erro);
+        self::assertStringContainsString('Tente novamente', $erro);
+
+        // O diagnóstico vai para o log do servidor, sem a mensagem do driver (que
+        // pode trazer o valor de uma chave duplicada: e-mail, CPF).
+        self::assertStringContainsString('PDOException', $res->errorLog);
+        self::assertStringNotContainsString('no such table', $res->errorLog);
+    }
+
+    public function testMensagemDoAsaasContinuaChegandoATela(): void
+    {
+        $clientId = $this->db->seedClient('Cliente Asaas', 100.0, 10, 'active', null, 'cus_x', 'a@b.com', '11144477735');
+
+        $res = Endpoint::call('invoices/index.php', [
+            'method' => 'POST',
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'body' => ['action' => 'create', 'client_id' => $clientId, 'value' => 100, 'due_date' => '2099-01-10'],
+        ]);
+
+        // Sem chave do Asaas a chamada para no pedido remoto, com a mensagem da
+        // própria integração: essa é útil e precisa continuar visível.
+        self::assertSame(502, $res->status, $res->body);
+        self::assertStringContainsString('ASAAS_API_KEY não configurada.', (string) $res->error());
+    }
+
     // ── Valor mínimo da cobrança mensal ──────────────────────────────────────
 
     public function testCadastroRecusaValorMensalAbaixoDoMinimoDoAsaas(): void
