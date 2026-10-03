@@ -133,6 +133,42 @@ function apiSecret(string $name): string
     return trim($value);
 }
 
+/**
+ * URL absoluta https, sem credencial embutida e sem espaço ou caractere de
+ * controle. Serve a todo campo que o painel grava e depois entrega como `src`
+ * ou `href` — hoje, a URL do relatório Power BI de cada grupo.
+ *
+ * Só esquema https de propósito: `javascript:` e `data:` num `src` de iframe
+ * executam no navegador de quem abre o painel, e `http:` seria conteúdo misto
+ * dentro de uma página servida por https. A credencial embutida
+ * (`https://app.powerbi.com@outro.site/`) é a máscara clássica de link falso:
+ * o host de verdade é o que vem depois do `@`.
+ */
+function apiIsHttpsUrl(string $url): bool
+{
+    if ($url === '' || strlen($url) > 2048) {
+        return false;
+    }
+
+    if (preg_match('/[\x00-\x20\x7f]/', $url) === 1) {
+        return false;
+    }
+
+    if (filter_var($url, FILTER_VALIDATE_URL) === false) {
+        return false;
+    }
+
+    $parts = parse_url($url);
+    if (!is_array($parts)) {
+        return false;
+    }
+
+    return strtolower((string) ($parts['scheme'] ?? '')) === 'https'
+        && (string) ($parts['host'] ?? '') !== ''
+        && !isset($parts['user'])
+        && !isset($parts['pass']);
+}
+
 function apiSendJsonHeaders(): void
 {
     if (headers_sent()) {

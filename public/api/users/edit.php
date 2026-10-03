@@ -4,6 +4,7 @@ require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../authz.php';
 require_once __DIR__ . '/../security_alerts.php';
 require_once __DIR__ . '/../auth/password_audit_lib.php';
+require_once __DIR__ . '/../auth/identity_lib.php';
 
 startSecureSession();
 apiRequireCsrfToken();
@@ -83,18 +84,21 @@ if ($groupId) {
     $groupName = $grp['name'];
 }
 
-// Verifica unicidade de login e email
-$checkUnique = $db->prepare("SELECT id, login, email FROM users WHERE (login = ? OR email = ?) AND id != ? LIMIT 1");
-$checkUnique->execute([$login, $email, $targetUserId]);
-$duplicate = $checkUnique->fetch();
-
-if ($duplicate) {
+// Formato do login: vale para o que entra, não para o que já existe. Conta antiga
+// com login fora do padrão continua editável enquanto o login não mudar; do
+// contrário, corrigir o e-mail de quem tem um espaço no login passaria a falhar.
+if ($login !== (string) $targetUser['login'] && !apiLoginFormatIsValid($login)) {
     http_response_code(400);
-    if ($duplicate['login'] === $login) {
-        echo json_encode(['error' => 'Este login já está em uso por outro usuário.']);
-    } else {
-        echo json_encode(['error' => 'Este e-mail já está em uso por outro usuário.']);
-    }
+    echo json_encode(['error' => 'Login inválido. Use de 3 a 50 caracteres: letras sem acento, números, ponto, hífen e sublinhado.']);
+    exit;
+}
+
+// Unicidade de login e e-mail, incluindo os cruzamentos que a busca do login
+// enxerga (login igual ao e-mail de outra conta, e o inverso).
+$clash = apiIdentityClash($db, $login, $email, $targetUserId);
+if ($clash !== null) {
+    http_response_code(400);
+    echo json_encode(['error' => apiIdentityClashMessage($clash['kind'])]);
     exit;
 }
 

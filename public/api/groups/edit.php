@@ -38,6 +38,14 @@ if (preg_match('/<iframe.*?src=["\']([^"\']+)["\']/i', $powerbiUrl, $matches)) {
     $powerbiUrl = $matches[1];
 }
 
+// A URL vira o src de um <iframe> no painel de todo usuário do grupo: só https
+// válido (vazio continua permitido e limpa o campo). Ver apiIsHttpsUrl().
+if ($powerbiUrl !== '' && !apiIsHttpsUrl($powerbiUrl)) {
+    http_response_code(400);
+    echo json_encode(['error' => 'A URL do Power BI deve ser um endereço https válido (https://...).']);
+    exit;
+}
+
 $db = getDbConnection();
 
 // Busca o grupo existente
