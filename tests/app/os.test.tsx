@@ -57,9 +57,69 @@ describe("/dashboard/os — encaminhamento", () => {
     await abrirOS(userEvent.setup());
 
     const documento = document.querySelector("#os-print-area");
-    expect(documento?.textContent).toContain("Endereço da Coleta: Av. das Américas, 500");
-    expect(documento?.textContent).toContain("Horário Aproximado: 14:30");
-    expect(documento?.textContent).toContain("Material Coletado: Óleo vegetal usado");
+    expect(documento?.textContent).toContain("Endereço da coleta: Av. das Américas, 500");
+    expect(documento?.textContent).toContain("Horário aproximado: 14:30");
+    expect(documento?.textContent).toContain("Material coletado: Óleo vegetal usado");
+  });
+
+  /**
+   * A pré-visualização tem de mostrar o que o cliente recebe: os rótulos, a
+   * ordem e o marcador de vazio do documento do PHP (os_lib.php), e não uma
+   * redação própria. Estas são as mesmas linhas de tests/php/Unit/OsLibTest.php.
+   */
+  it("mostra os campos na ordem e com os rótulos do documento que o cliente recebe", async () => {
+    montar();
+    render(<OSPage />);
+    await abrirOS(userEvent.setup());
+
+    const documento = document.querySelector("#os-print-area");
+    expect(documento?.textContent).toContain(
+      [
+        "Cliente: Heineken",
+        "Endereço da coleta: Av. das Américas, 500",
+        "Data da coleta: 03/09/2026",
+        "Horário aproximado: 14:30",
+        "Material coletado: Óleo vegetal usado",
+        "Pesagem: 150 kg",
+        "Responsável pela coleta: Equipe A",
+        "Qtd. sacos: 12",
+        "Qtd. contêineres: 2",
+      ].join("")
+    );
+  });
+
+  it("marca os campos vazios com hífen, como o documento do cliente", async () => {
+    montar({
+      [OS]: {
+        body: {
+          ok: true,
+          service_orders: [
+            { ...ordem, collection_address: null, weight: "", collection_date: null, bags_count: null, responsible: "  " },
+          ],
+        },
+      },
+    });
+    render(<OSPage />);
+    await abrirOS(userEvent.setup());
+
+    const texto = document.querySelector("#os-print-area")?.textContent ?? "";
+    expect(texto).toContain("Endereço da coleta: -");
+    expect(texto).toContain("Data da coleta: -");
+    expect(texto).toContain("Pesagem: -");
+    expect(texto).toContain("Responsável pela coleta: -");
+    expect(texto).toContain("Qtd. sacos: -");
+    expect(texto).not.toContain("—");
+  });
+
+  it("oferece o mesmo WhatsApp de suporte que o documento do PHP, com a mesma frase", async () => {
+    montar();
+    render(<OSPage />);
+    await abrirOS(userEvent.setup());
+
+    const documento = document.querySelector("#os-print-area");
+    expect(documento?.textContent).toContain(
+      "Caso precise de suporte ou esclarecimentos, envie mensagem para nosso WhatsApp: (21) 99152-9383"
+    );
   });
 
   it("mostra a assinatura da responsável no documento", async () => {
@@ -84,7 +144,7 @@ describe("/dashboard/os — encaminhamento", () => {
     });
 
     const documento = document.querySelector("#os-print-area");
-    expect(documento?.textContent).toContain("Data da Coleta: 03/09/2026");
+    expect(documento?.textContent).toContain("Data da coleta: 03/09/2026");
   });
 
   it("envia por e-mail para o endereço do cliente, já preenchido", async () => {

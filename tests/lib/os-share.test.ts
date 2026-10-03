@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  OS_SUPPORT_PHONE,
   formatOsDate,
   formatOsDateTime,
+  osDocumentFields,
   osFieldValue,
   osNumber,
   osShareMessage,
@@ -51,11 +53,12 @@ describe("formatOsDate", () => {
     expect(formatOsDate("2026-09-03 14:22:00")).toBe("03/09/2026");
   });
 
-  it("devolve travessão para vazio, nulo e lixo", () => {
-    expect(formatOsDate("")).toBe("—");
-    expect(formatOsDate(null)).toBe("—");
-    expect(formatOsDate(undefined)).toBe("—");
-    expect(formatOsDate("0000-00-00")).toBe("—");
+  /** O marcador de campo vazio é o hífen, o mesmo que `osFormatDate()` usa no PHP. */
+  it("devolve o marcador de campo vazio para vazio, nulo e lixo", () => {
+    expect(formatOsDate("")).toBe("-");
+    expect(formatOsDate(null)).toBe("-");
+    expect(formatOsDate(undefined)).toBe("-");
+    expect(formatOsDate("0000-00-00")).toBe("-");
   });
 });
 
@@ -79,27 +82,93 @@ describe("osFieldValue", () => {
     expect(osFieldValue(0)).toBe("0");
   });
 
-  it("troca vazio e nulo por travessão", () => {
-    expect(osFieldValue("")).toBe("—");
-    expect(osFieldValue("   ")).toBe("—");
-    expect(osFieldValue(null)).toBe("—");
-    expect(osFieldValue(undefined)).toBe("—");
+  it("troca vazio e nulo pelo marcador de campo vazio (hífen)", () => {
+    expect(osFieldValue("")).toBe("-");
+    expect(osFieldValue("   ")).toBe("-");
+    expect(osFieldValue(null)).toBe("-");
+    expect(osFieldValue(undefined)).toBe("-");
+  });
+});
+
+/**
+ * O documento que o cliente recebe sai do PHP (`osDocumentHtml()`, `osEmailText()`
+ * e `osWhatsAppText()` em public/api/os/os_lib.php). Estas linhas são as mesmas
+ * que tests/php/Unit/OsLibTest.php confere do outro lado: rótulo, ordem e
+ * marcador de vazio idênticos. Mexeu aqui, mexa lá.
+ */
+const LINHAS_DA_OS = [
+  "Cliente: Heineken",
+  "Endereço da coleta: Av. das Américas, 500",
+  "Data da coleta: 03/09/2026",
+  "Horário aproximado: 14:30",
+  "Material coletado: Óleo vegetal usado",
+  "Pesagem: 150 kg",
+  "Responsável pela coleta: Equipe A",
+  "Qtd. sacos: 12",
+  "Qtd. contêineres: 2",
+];
+
+const LINHAS_DA_OS_VAZIA = [
+  "Cliente: Heineken",
+  "Endereço da coleta: -",
+  "Data da coleta: -",
+  "Horário aproximado: -",
+  "Material coletado: -",
+  "Pesagem: -",
+  "Responsável pela coleta: -",
+  "Qtd. sacos: -",
+  "Qtd. contêineres: -",
+];
+
+describe("osDocumentFields", () => {
+  it("segue a ordem e os rótulos do documento do PHP", () => {
+    const linhas = osDocumentFields(OS).map(({ label, value }) => `${label}: ${value}`);
+
+    expect(linhas).toEqual(LINHAS_DA_OS);
+  });
+
+  it("usa o hífen nos campos vazios, inclusive quantidade zero preservada", () => {
+    const vazia: ServiceOrder = { id: 42, client_name: "Heineken" };
+    expect(osDocumentFields(vazia).map(({ label, value }) => `${label}: ${value}`)).toEqual(LINHAS_DA_OS_VAZIA);
+
+    const zero = osDocumentFields({ ...OS, bags_count: 0 }).find(campo => campo.label === "Qtd. sacos");
+    expect(zero?.value).toBe("0");
   });
 });
 
 describe("osShareMessage", () => {
-  it("leva os dados da coleta e o link", () => {
+  it("leva os dados da coleta, na ordem do documento, e o link", () => {
+    const [titulo, ...resto] = osShareMessage(OS).split("\n");
+
+    expect(titulo).toContain("*Ordem de Serviço Nº 00042*");
+    expect(resto).toEqual([
+      "",
+      ...LINHAS_DA_OS,
+      "",
+      "Abrir e imprimir: https://ecolevaeco.com/api/os/view.php?id=42&t=abc",
+      "",
+      "Caso precise, envie WhatsApp para (21) 99152-9383.",
+    ]);
+  });
+
+  it("põe o responsável antes das quantidades, como o documento", () => {
     const texto = osShareMessage(OS);
 
-    expect(texto).toContain("*Ordem de Serviço Nº 00042*");
-    expect(texto).toContain("Cliente: Heineken");
-    expect(texto).toContain("Endereço da coleta: Av. das Américas, 500");
-    expect(texto).toContain("Data da coleta: 03/09/2026");
-    expect(texto).toContain("Horário aproximado: 14:30");
-    expect(texto).toContain("Material coletado: Óleo vegetal usado");
-    expect(texto).toContain("Pesagem: 150 kg");
-    expect(texto).toContain("Qtd. contêineres: 2");
-    expect(texto).toContain("Abrir e imprimir: https://ecolevaeco.com/api/os/view.php?id=42&t=abc");
+    expect(texto.indexOf("Responsável pela coleta")).toBeLessThan(texto.indexOf("Qtd. sacos"));
+    expect(texto.indexOf("Qtd. sacos")).toBeLessThan(texto.indexOf("Qtd. contêineres"));
+  });
+
+  it("marca os campos vazios com hífen, sem misturar com travessão", () => {
+    const [, ...resto] = osShareMessage({ id: 42, client_name: "Heineken" }).split("\n");
+
+    expect(resto.slice(1, 1 + LINHAS_DA_OS_VAZIA.length)).toEqual(LINHAS_DA_OS_VAZIA);
+    // O único travessão da mensagem é o do título; nenhum campo o usa.
+    expect(resto.join("\n")).not.toContain("—");
+  });
+
+  it("usa o telefone de suporte da constante", () => {
+    expect(OS_SUPPORT_PHONE).toBe("(21) 99152-9383");
+    expect(osShareMessage(OS)).toContain(`envie WhatsApp para ${OS_SUPPORT_PHONE}.`);
   });
 
   it("omite a linha do link quando a OS ainda não tem um", () => {

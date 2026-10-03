@@ -27,6 +27,40 @@ const OS_LOGO_IMAGE = 'ecoleva-logo-dark.png';
 const OS_MAIL_FROM_DEFAULT = 'noreply@ecoleva.com';
 
 /**
+ * WhatsApp de suporte que o documento e a mensagem oferecem ao cliente. Espelho
+ * de `OS_SUPPORT_PHONE` em `lib/os-share.ts`: mexeu em um, mexa no outro.
+ */
+const OS_SUPPORT_PHONE = '(21) 99152-9383';
+
+/**
+ * Marcador de campo vazio em TODO texto do documento (HTML, e-mail e WhatsApp).
+ * É um hífen, e o mesmo do navegador (`OS_EMPTY_FIELD` em `lib/os-share.ts`):
+ * o texto do robô misturava hífen e travessão conforme o campo, e a
+ * pré-visualização desenhava outro marcador do que o cliente recebia.
+ */
+const OS_EMPTY_FIELD = '-';
+
+/**
+ * Rótulo de cada campo da OS, na ordem do documento (o cliente vem antes).
+ *
+ * É a ordem e a redação que o cliente lê na página pública, no e-mail e no
+ * WhatsApp, e que `osDocumentFields()` em `lib/os-share.ts` repete na
+ * pré-visualização e no WhatsApp pessoal. As chaves são as colunas de
+ * `service_orders`, para a validação de `os/index.php` falar do campo pelo mesmo
+ * nome que o cliente vê.
+ */
+const OS_FIELD_LABELS = [
+    'collection_address' => 'Endereço da coleta',
+    'collection_date' => 'Data da coleta',
+    'approximate_time' => 'Horário aproximado',
+    'material_collected' => 'Material coletado',
+    'weight' => 'Pesagem',
+    'responsible' => 'Responsável pela coleta',
+    'bags_count' => 'Qtd. sacos',
+    'containers_count' => 'Qtd. contêineres',
+];
+
+/**
  * Segredo do link público de uma OS.
  *
  * 32 bytes de `random_bytes` — não é derivado do id, então conhecer uma OS não
@@ -178,25 +212,41 @@ function osNumber(int $id): string
     return str_pad((string) $id, 5, '0', STR_PAD_LEFT);
 }
 
-/** Data ISO do banco em dd/mm/aaaa. String vazia e nulo viram travessão. */
+/** Data ISO do banco em dd/mm/aaaa. String vazia e nulo viram o marcador de vazio. */
 function osFormatDate(?string $isoDate): string
 {
     $isoDate = trim((string) $isoDate);
     if ($isoDate === '' || str_starts_with($isoDate, '0000')) {
-        return '—';
+        return OS_EMPTY_FIELD;
     }
 
     $date = date_create($isoDate);
 
-    return $date === false ? '—' : $date->format('d/m/Y');
+    return $date === false ? OS_EMPTY_FIELD : $date->format('d/m/Y');
 }
 
-/** Valor de campo opcional, já escapado, com travessão quando vazio. */
-function osField($value): string
+/**
+ * Os campos do documento em texto puro (rótulo => valor), na ordem do documento
+ * e com o marcador de vazio onde não há valor. O cliente não está aqui: cada
+ * canal o trata a seu modo.
+ *
+ * É a única fonte de rótulo, ordem e marcador do HTML, do e-mail e do WhatsApp.
+ * Com três listas escritas à mão elas divergiram: o robô mandava sacos antes do
+ * responsável, o documento depois.
+ *
+ * @param array<string,mixed> $os
+ * @return array<string,string>
+ */
+function osDocumentFields(array $os): array
 {
-    $value = trim((string) ($value ?? ''));
+    $campos = [];
+    foreach (OS_FIELD_LABELS as $coluna => $rotulo) {
+        $campos[$rotulo] = $coluna === 'collection_date'
+            ? osFormatDate(isset($os['collection_date']) ? (string) $os['collection_date'] : null)
+            : osPlainField($os[$coluna] ?? null);
+    }
 
-    return $value === '' ? '—' : osEsc($value);
+    return $campos;
 }
 
 /**
@@ -211,31 +261,16 @@ function osField($value): string
 function osDocumentHtml(array $os, string $baseUrl): string
 {
     $numero = osNumber((int) $os['id']);
-    $cliente = osEsc((string) ($os['client_name'] ?? ''));
-    $endereco = osField($os['collection_address'] ?? null);
-    $data = osFormatDate(isset($os['collection_date']) ? (string) $os['collection_date'] : null);
-    $horario = osField($os['approximate_time'] ?? null);
-    $material = osField($os['material_collected'] ?? null);
-    $peso = osField($os['weight'] ?? null);
-    $responsavel = osField($os['responsible'] ?? null);
-    $sacos = osField($os['bags_count'] ?? null);
-    $containers = osField($os['containers_count'] ?? null);
     $assinatura = osEsc((string) ($os['signature_text'] ?? 'Responsável Técnica - ECOLEVA'));
     $logo = osEsc($baseUrl . OS_LOGO_IMAGE);
     $rubrica = osEsc($baseUrl . OS_SIGNATURE_IMAGE);
+    $suporte = osEsc(OS_SUPPORT_PHONE);
 
     $linhas = '';
-    $campos = [
-        'Cliente' => $cliente,
-        'Endereço da coleta' => $endereco,
-        'Data da coleta' => $data,
-        'Horário aproximado' => $horario,
-        'Material coletado' => $material,
-        'Pesagem' => $peso,
-        'Responsável pela coleta' => $responsavel,
-        'Qtd. sacos' => $sacos,
-        'Qtd. contêineres' => $containers,
-    ];
+    $campos = ['Cliente' => osEsc((string) ($os['client_name'] ?? ''))];
+    foreach (osDocumentFields($os) as $rotulo => $valor) {
+        $campos[$rotulo] = osEsc($valor);
+    }
     foreach ($campos as $rotulo => $valor) {
         $linhas .= '<tr>'
             . '<td style="padding:10px 0;color:#5A5A5A;font-size:13px;width:190px;vertical-align:top;">' . osEsc($rotulo) . '</td>'
@@ -274,7 +309,7 @@ function osDocumentHtml(array $os, string $baseUrl): string
   <table role="presentation" style="width:100%;border-collapse:collapse;margin-top:40px;border-top:1px solid #ECF5FB;">
     <tr>
       <td style="padding-top:16px;text-align:center;font-size:12px;color:#5A5A5A;">
-        Caso precise de suporte ou esclarecimentos, envie mensagem para nosso WhatsApp: <strong>(21) 99152-9383</strong>
+        Caso precise de suporte ou esclarecimentos, envie mensagem para nosso WhatsApp: <strong>{$suporte}</strong>
       </td>
     </tr>
   </table>
@@ -359,19 +394,17 @@ function osEmailText(array $os, string $shareUrl): string
         'ORDEM DE SERVIÇO Nº ' . osNumber((int) $os['id']),
         '',
         'Cliente: ' . trim((string) ($os['client_name'] ?? '')),
-        'Endereço da coleta: ' . osPlainField($os['collection_address'] ?? null),
-        'Data da coleta: ' . osFormatDate(isset($os['collection_date']) ? (string) $os['collection_date'] : null),
-        'Horário aproximado: ' . osPlainField($os['approximate_time'] ?? null),
-        'Material coletado: ' . osPlainField($os['material_collected'] ?? null),
-        'Pesagem: ' . osPlainField($os['weight'] ?? null),
-        'Responsável pela coleta: ' . osPlainField($os['responsible'] ?? null),
-        'Qtd. sacos: ' . osPlainField($os['bags_count'] ?? null),
-        'Qtd. contêineres: ' . osPlainField($os['containers_count'] ?? null),
+    ];
+    foreach (osDocumentFields($os) as $rotulo => $valor) {
+        $linhas[] = $rotulo . ': ' . $valor;
+    }
+    array_push(
+        $linhas,
         '',
         'Abrir e imprimir: ' . $shareUrl,
         '',
-        (string) ($os['signature_text'] ?? 'Responsável Técnica - ECOLEVA'),
-    ];
+        (string) ($os['signature_text'] ?? 'Responsável Técnica - ECOLEVA')
+    );
 
     return implode("\n", $linhas);
 }
@@ -391,15 +424,10 @@ function osWhatsAppText(array $os, string $shareUrl): string
         '*Ordem de Serviço Nº ' . osNumber((int) $os['id']) . '* — Ecoleva',
         '',
         'Cliente: ' . osPlainField($os['client_name'] ?? null),
-        'Endereço da coleta: ' . osPlainField($os['collection_address'] ?? null),
-        'Data da coleta: ' . osFormatDate(isset($os['collection_date']) ? (string) $os['collection_date'] : null),
-        'Horário aproximado: ' . osPlainField($os['approximate_time'] ?? null),
-        'Material coletado: ' . osPlainField($os['material_collected'] ?? null),
-        'Pesagem: ' . osPlainField($os['weight'] ?? null),
-        'Qtd. sacos: ' . osPlainField($os['bags_count'] ?? null),
-        'Qtd. contêineres: ' . osPlainField($os['containers_count'] ?? null),
-        'Responsável pela coleta: ' . osPlainField($os['responsible'] ?? null),
     ];
+    foreach (osDocumentFields($os) as $rotulo => $valor) {
+        $linhas[] = $rotulo . ': ' . $valor;
+    }
 
     if ($shareUrl !== '') {
         $linhas[] = '';
@@ -407,17 +435,20 @@ function osWhatsAppText(array $os, string $shareUrl): string
     }
 
     $linhas[] = '';
-    $linhas[] = 'Caso precise, envie WhatsApp para (21) 99152-9383.';
+    $linhas[] = 'Caso precise, envie WhatsApp para ' . OS_SUPPORT_PHONE . '.';
 
     return implode("\n", $linhas);
 }
 
-/** Igual a osField(), sem escapar — o texto puro não passa por HTML. */
+/**
+ * Valor de campo opcional em texto puro (sem escapar: não passa por HTML), com o
+ * marcador de vazio quando não há nada.
+ */
 function osPlainField($value): string
 {
     $value = trim((string) ($value ?? ''));
 
-    return $value === '' ? '-' : $value;
+    return $value === '' ? OS_EMPTY_FIELD : $value;
 }
 
 /**

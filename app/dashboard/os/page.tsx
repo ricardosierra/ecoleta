@@ -14,8 +14,10 @@ import {
 import { isAdmin } from "@/lib/authz";
 import { apiPostJson } from "@/lib/dashboard-api";
 import {
+  OS_SUPPORT_PHONE,
   formatOsDate,
   formatOsDateTime,
+  osDocumentFields,
   osFieldValue,
   osNumber,
   osWhatsAppLink,
@@ -375,18 +377,16 @@ function OSMain() {
                   </div>
                 </div>
 
-                <div className="space-y-3 text-sm sm:text-base">
-                  <p><span className="font-semibold text-gray-700">Cliente:</span> {activeOS.client_name}</p>
-                  <p><span className="font-semibold text-gray-700">Endereço da Coleta:</span> {osFieldValue(activeOS.collection_address)}</p>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <p><span className="font-semibold text-gray-700">Data da Coleta:</span> {formatOsDate(activeOS.collection_date)}</p>
-                    <p><span className="font-semibold text-gray-700">Horário Aproximado:</span> {osFieldValue(activeOS.approximate_time)}</p>
-                    <p><span className="font-semibold text-gray-700">Material Coletado:</span> {osFieldValue(activeOS.material_collected)}</p>
-                    <p><span className="font-semibold text-gray-700">Pesagem:</span> {osFieldValue(activeOS.weight)}</p>
-                    <p><span className="font-semibold text-gray-700">Responsável:</span> {osFieldValue(activeOS.responsible)}</p>
-                    <p><span className="font-semibold text-gray-700">Qtd. Sacos:</span> {osFieldValue(activeOS.bags_count)}</p>
-                    <p><span className="font-semibold text-gray-700">Qtd. Contêineres:</span> {osFieldValue(activeOS.containers_count)}</p>
-                  </div>
+                {/* Rótulos, ordem e marcador de vazio vêm de osDocumentFields(): é o
+                    documento que o PHP entrega ao cliente (os_lib.php), e a
+                    pré-visualização não pode ter redação própria. Cliente e
+                    endereço ocupam a linha toda. */}
+                <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 sm:text-base">
+                  {osDocumentFields(activeOS).map(({ label, value }, indice) => (
+                    <p key={label} className={indice < 2 ? "sm:col-span-2" : undefined}>
+                      <span className="font-semibold text-gray-700">{label}:</span> {value}
+                    </p>
+                  ))}
                 </div>
 
                 <div className="mt-14 text-center sm:mt-20">
@@ -402,7 +402,7 @@ function OSMain() {
                     {activeOS.signature_text || "Responsável Técnica - ECOLEVA"}
                   </p>
                   <p className="mt-8 text-xs text-gray-500">
-                    Caso precise de suporte ou esclarecimentos, envie WhatsApp para <strong>(21) 99152-9383</strong>
+                    Caso precise de suporte ou esclarecimentos, envie mensagem para nosso WhatsApp: <strong>{OS_SUPPORT_PHONE}</strong>
                   </p>
                 </div>
               </div>
