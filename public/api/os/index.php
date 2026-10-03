@@ -42,11 +42,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // OS faria uma consulta por linha da tabela.
     $janelas = waWindowsByPhone($db, array_column($linhas, 'client_whatsapp'));
 
+    // Idem para o que aconteceu com a última mensagem de cada OS (entregue, lida,
+    // falhou). Sem isto a tela só sabia que a Meta aceitou o pedido.
+    $mensagens = osLastWhatsAppMessages($db);
+
     $baseUrl = osBaseUrl();
     $ordens = [];
     foreach ($linhas as $row) {
         $telefone = normalizePhone((string) ($row['client_whatsapp'] ?? ''));
-        $ordens[] = osPresent($row, $baseUrl, $janelas[$telefone] ?? null);
+        $ordens[] = osPresent($row, $baseUrl, $janelas[$telefone] ?? null, $mensagens[(int) $row['id']] ?? null);
     }
 
     apiJsonResponse(200, ['ok' => true, 'service_orders' => $ordens]);

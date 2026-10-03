@@ -8,6 +8,8 @@ import {
   osNumber,
   osShareMessage,
   osWhatsAppLink,
+  osWhatsAppStatusLabel,
+  osWhatsAppStatusTone,
   type ServiceOrder,
 } from "@/lib/os-share";
 
@@ -119,6 +121,36 @@ const LINHAS_DA_OS_VAZIA = [
   "Qtd. sacos: -",
   "Qtd. contêineres: -",
 ];
+
+describe("osWhatsAppStatus", () => {
+  /**
+   * `whatsapp_sent_at` só diz que a Meta ACEITOU o pedido. O que a tela mostra
+   * vem do status da última mensagem, que o webhook vai atualizando.
+   */
+  it("dá a cada status da Meta o seu rótulo, sem chamar tudo de enviada", () => {
+    expect(osWhatsAppStatusLabel("accepted")).toBe("Aceita pela Meta");
+    expect(osWhatsAppStatusLabel("sent")).toBe("Enviada ao WhatsApp");
+    expect(osWhatsAppStatusLabel("delivered")).toBe("Entregue");
+    expect(osWhatsAppStatusLabel("read")).toBe("Lida");
+    expect(osWhatsAppStatusLabel("failed")).toBe("Falhou");
+  });
+
+  it("devolve null quando o robô nunca enviou a OS, e o texto cru para status que não conhece", () => {
+    expect(osWhatsAppStatusLabel(null)).toBeNull();
+    expect(osWhatsAppStatusLabel(undefined)).toBeNull();
+    expect(osWhatsAppStatusLabel("")).toBeNull();
+    expect(osWhatsAppStatusLabel("em_analise")).toBe("em_analise");
+  });
+
+  it("separa o que deu certo, o que ainda espera e o que falhou", () => {
+    expect(osWhatsAppStatusTone("delivered")).toBe("ok");
+    expect(osWhatsAppStatusTone("read")).toBe("ok");
+    expect(osWhatsAppStatusTone("accepted")).toBe("pendente");
+    expect(osWhatsAppStatusTone("sent")).toBe("pendente");
+    expect(osWhatsAppStatusTone("failed")).toBe("erro");
+    expect(osWhatsAppStatusTone(null)).toBe("pendente");
+  });
+});
 
 describe("osDocumentFields", () => {
   it("segue a ordem e os rótulos do documento do PHP", () => {

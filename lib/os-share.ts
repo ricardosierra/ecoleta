@@ -33,6 +33,16 @@ export type ServiceOrder = {
   /** Último disparo pelo WhatsApp do robô (`os/whatsapp.php`). */
   whatsapp_sent_at?: string | null;
   whatsapp_sent_to?: string | null;
+  /**
+   * O que aconteceu com a última mensagem do robô para esta OS: accepted, sent,
+   * delivered, read ou failed. `whatsapp_sent_at` só diz que a Meta ACEITOU o
+   * pedido; a falha de um número fixo chega depois, pelo webhook, e é aqui que
+   * aparece. `null` quando o robô nunca enviou esta OS (ou ela é anterior ao
+   * registro das mensagens).
+   */
+  whatsapp_status?: string | null;
+  /** Motivo da falha informado pela Meta, quando `whatsapp_status` é `failed`. */
+  whatsapp_error?: string | null;
   created_at?: string | null;
   /** Link público com token, montado por `osPresent()` no PHP. */
   share_url?: string | null;
@@ -109,6 +119,38 @@ export function osFieldValue(value?: string | number | null): string {
   const text = value === null || value === undefined ? "" : String(value).trim();
 
   return text === "" ? OS_EMPTY_FIELD : text;
+}
+
+const WHATSAPP_STATUS_LABELS: Record<string, string> = {
+  accepted: "Aceita pela Meta",
+  sent: "Enviada ao WhatsApp",
+  delivered: "Entregue",
+  read: "Lida",
+  failed: "Falhou",
+};
+
+/**
+ * Rótulo do status da última mensagem do robô. `null` quando não há status.
+ *
+ * `accepted` é o estado logo depois do envio: a Meta aceitou o pedido, nada além.
+ * Só `delivered` e `read` dizem que o cliente recebeu. Um status que a tela não
+ * conhece aparece como veio, em vez de ser escondido atrás de um rótulo errado.
+ */
+export function osWhatsAppStatusLabel(status?: string | null): string | null {
+  if (!status) {
+    return null;
+  }
+
+  return WHATSAPP_STATUS_LABELS[status] ?? status;
+}
+
+/** Como pintar o status: `ok` chegou ao cliente, `erro` falhou, `pendente` ainda espera. */
+export function osWhatsAppStatusTone(status?: string | null): "ok" | "pendente" | "erro" {
+  if (status === "delivered" || status === "read") {
+    return "ok";
+  }
+
+  return status === "failed" ? "erro" : "pendente";
 }
 
 /**

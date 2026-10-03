@@ -242,7 +242,7 @@ describe("/dashboard/os — encaminhamento", () => {
     await user.click(screen.getByRole("button", { name: "WhatsApp do robô" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("status")).toHaveTextContent("Enviada pelo robô para 5521999887766.");
+      expect(screen.getByRole("status")).toHaveTextContent("Aceita pela Meta para 5521999887766.");
     });
 
     const post = api.fetch.mock.calls.find(([url]) => String(url) === WHATSAPP);
@@ -317,6 +317,126 @@ describe("/dashboard/os — encaminhamento", () => {
       expect(screen.getByRole("status")).toHaveTextContent("não está configurado");
     });
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("/dashboard/os — o que aconteceu com a mensagem do robô", () => {
+  const enviada = {
+    whatsapp_sent_at: "2026-09-03 14:22:00",
+    whatsapp_sent_to: "5521999887766",
+  };
+
+  const comStatus = (id: number, status: string | null, extra: object = {}) => ({
+    ...ordem,
+    id,
+    client_name: `Cliente ${id}`,
+    ...enviada,
+    whatsapp_status: status,
+    ...extra,
+  });
+
+  /**
+   * Número fixo ou sem WhatsApp falha DEPOIS de a Meta aceitar o pedido, pelo
+   * webhook. A tela só sabia de `whatsapp_sent_at` e mostrava sempre o selo verde
+   * de "enviada".
+   */
+  it("mostra no histórico o que a Meta informou de cada envio, e não sempre 'enviada'", async () => {
+    montar({
+      [OS]: {
+        body: {
+          ok: true,
+          service_orders: [
+            comStatus(1, "accepted"),
+            comStatus(2, "delivered"),
+            comStatus(3, "read"),
+            comStatus(4, "failed", { whatsapp_error: "Message undeliverable" }),
+          ],
+        },
+      },
+    });
+    render(<OSPage />);
+
+    expect(await screen.findByText("Aceita pela Meta")).toBeVisible();
+    expect(screen.getByText("Entregue")).toBeVisible();
+    expect(screen.getByText("Lida")).toBeVisible();
+    expect(screen.getByText("Falhou")).toBeVisible();
+    expect(screen.queryByText(/^Enviada$/)).toBeNull();
+  });
+
+  it("pinta a falha de vermelho e leva o motivo da Meta no tooltip", async () => {
+    montar({
+      [OS]: { body: { ok: true, service_orders: [comStatus(4, "failed", { whatsapp_error: "Message undeliverable" })] } },
+    });
+    render(<OSPage />);
+
+    const selo = (await screen.findByText("Falhou")).closest("span[title]")!;
+    expect(selo.className).toContain("red");
+    expect(selo.getAttribute("title")).toContain("Message undeliverable");
+    expect(selo.getAttribute("title")).toContain("5521999887766");
+  });
+
+  it("não pinta de verde o que a Meta só aceitou", async () => {
+    montar({
+      [OS]: { body: { ok: true, service_orders: [comStatus(1, "accepted"), comStatus(2, "delivered")] } },
+    });
+    render(<OSPage />);
+
+    const aceita = (await screen.findByText("Aceita pela Meta")).closest("span[title]")!;
+    const entregue = screen.getByText("Entregue").closest("span[title]")!;
+    expect(aceita.className).not.toContain("accent");
+    expect(entregue.className).toContain("accent");
+  });
+
+  it("mantém 'Enviada' só para a OS antiga, enviada antes de o status ser guardado", async () => {
+    montar({ [OS]: { body: { ok: true, service_orders: [comStatus(1, null)] } } });
+    render(<OSPage />);
+
+    expect(await screen.findByText("Enviada")).toBeVisible();
+  });
+
+  it("não mostra selo de WhatsApp para a OS que o robô nunca enviou", async () => {
+    montar();
+    render(<OSPage />);
+
+    await screen.findByText("#00042");
+    expect(screen.queryByText("Aceita pela Meta")).toBeNull();
+    expect(screen.queryByText("Enviada")).toBeNull();
+  });
+
+  it("mostra o status também na pré-visualização da OS", async () => {
+    montar({ [OS]: { body: { ok: true, service_orders: [comStatus(7, "delivered")] } } });
+    render(<OSPage />);
+    await abrirOS(userEvent.setup());
+
+    // O <dt> do robô guarda o nome só para leitor de tela (sr-only).
+    const envios = screen.getByText("WhatsApp do robô", { selector: ".sr-only" }).closest("div")!;
+    expect(envios).toHaveTextContent("5521999887766");
+    expect(envios).toHaveTextContent("Entregue");
+  });
+
+  it("depois de enviar pelo robô, a OS passa a constar como aceita pela Meta, não como entregue", async () => {
+    montar({
+      [WHATSAPP]: {
+        body: {
+          ok: true,
+          whatsapp_sent_to: "5521999887766",
+          whatsapp_sent_at: "2026-09-03 14:22:00",
+          whatsapp_status: "accepted",
+        },
+      },
+    });
+    render(<OSPage />);
+
+    const user = userEvent.setup();
+    await abrirOS(user);
+    await user.click(screen.getByRole("button", { name: "WhatsApp do robô" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent("A entrega é confirmada em seguida");
+    });
+    // Uma vez na linha do histórico e outra na pré-visualização.
+    expect(screen.getAllByText("Aceita pela Meta")).toHaveLength(2);
+    expect(screen.queryByText("Entregue")).toBeNull();
   });
 });
 

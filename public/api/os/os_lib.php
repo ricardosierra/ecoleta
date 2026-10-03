@@ -166,9 +166,10 @@ function osFindShared(PDO $db, int $id, string $token): ?array
  *
  * @param array<string,mixed> $row
  * @param array{open:bool,expires_at:?string,minutes_left:?int}|null $whatsappWindow
+ * @param array{status:?string,error:?string}|null $whatsappMessage a última mensagem do robô para esta OS (ver `osLastWhatsAppMessages()`)
  * @return array<string,mixed>
  */
-function osPresent(array $row, ?string $baseUrl = null, ?array $whatsappWindow = null): array
+function osPresent(array $row, ?string $baseUrl = null, ?array $whatsappWindow = null, ?array $whatsappMessage = null): array
 {
     $id = (int) $row['id'];
     $token = (string) ($row['share_token'] ?? '');
@@ -198,7 +199,50 @@ function osPresent(array $row, ?string $baseUrl = null, ?array $whatsappWindow =
         // de verde na tela: dentro da janela o envio é texto livre, que a Meta
         // não cobra. `null` quando o cliente nunca escreveu para o número.
         'whatsapp_window' => $whatsappWindow,
+        // O que aconteceu com a última mensagem do robô: accepted, sent, delivered,
+        // read ou failed. `whatsapp_sent_at` só diz que a Meta ACEITOU o pedido;
+        // número fixo ou sem WhatsApp falha depois, pelo webhook, e é aqui que a
+        // tela fica sabendo. `null` quando o robô nunca enviou esta OS.
+        'whatsapp_status' => $whatsappMessage['status'] ?? null,
+        'whatsapp_error' => $whatsappMessage['error'] ?? null,
     ];
+}
+
+/**
+ * A última mensagem de WhatsApp que o robô enviou para cada OS, em uma consulta
+ * só: uma por linha da tabela faria uma consulta por OS.
+ *
+ * "Última" é a de maior id: o reenvio de uma OS gera uma mensagem nova, e é o
+ * destino dela que importa. Só conta o que saiu (`outgoing`), já que mensagem
+ * recebida não tem status de entrega.
+ *
+ * O status é o que o webhook (`api/webhooks/whatsapp.php`) foi atualizando em
+ * `whatsapp_messages`, então a leitura aqui não depende de mexer nele.
+ *
+ * @return array<int,array{status:?string,error:?string}> por id da OS
+ */
+function osLastWhatsAppMessages(PDO $db): array
+{
+    $stmt = $db->query("
+        SELECT m.service_order_id, m.status, m.error_message
+          FROM whatsapp_messages m
+          JOIN (
+                SELECT service_order_id, MAX(id) AS last_id
+                  FROM whatsapp_messages
+                 WHERE service_order_id IS NOT NULL AND direction = 'outgoing'
+                 GROUP BY service_order_id
+               ) ultimas ON ultimas.last_id = m.id
+    ");
+
+    $porOs = [];
+    foreach ($stmt ? $stmt->fetchAll() : [] as $linha) {
+        $porOs[(int) $linha['service_order_id']] = [
+            'status' => $linha['status'] === null ? null : (string) $linha['status'],
+            'error' => $linha['error_message'] === null ? null : (string) $linha['error_message'],
+        ];
+    }
+
+    return $porOs;
 }
 
 function osEsc(?string $value): string

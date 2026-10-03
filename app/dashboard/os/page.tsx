@@ -22,6 +22,8 @@ import {
   osFieldValue,
   osNumber,
   osWhatsAppLink,
+  osWhatsAppStatusLabel,
+  osWhatsAppStatusTone,
   type ServiceOrder,
 } from "@/lib/os-share";
 import { windowTooltip } from "@/lib/whatsapp";
@@ -43,6 +45,38 @@ const cardClass = "rounded-2xl border border-[var(--color-border-dark)] bg-[rgba
 
 const secondaryButton =
   "inline-flex items-center justify-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20 disabled:opacity-50";
+
+/** Cor do selo de WhatsApp: verde só quando a mensagem chegou ao cliente. */
+const WHATSAPP_TONE_CLASS = {
+  ok: "bg-[var(--color-accent-soft)] text-[var(--color-accent)]",
+  pendente: "bg-white/10 text-white/80",
+  erro: "bg-red-500/20 text-red-300",
+} as const;
+
+/**
+ * O que o robô sabe da última mensagem desta OS. `whatsapp_sent_at` só diz que a
+ * Meta aceitou o pedido; o selo mostra o status que o webhook foi gravando
+ * (aceita, entregue, lida, falhou). OS enviada antes de o status ser guardado
+ * não tem como dizer mais do que "Enviada".
+ */
+function SeloWhatsApp({ os }: { os: ServiceOrder }) {
+  const rotulo = osWhatsAppStatusLabel(os.whatsapp_status) ?? "Enviada";
+  const tom = osWhatsAppStatusTone(os.whatsapp_status);
+  const detalhes = [
+    os.whatsapp_sent_to ? `WhatsApp: ${os.whatsapp_sent_to}` : "WhatsApp",
+    os.whatsapp_status === "failed" && os.whatsapp_error ? os.whatsapp_error : null,
+  ].filter(Boolean);
+
+  return (
+    <span
+      title={detalhes.join(" · ")}
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${WHATSAPP_TONE_CLASS[tom]}`}
+    >
+      <BotIcon width={14} height={14} />
+      {rotulo}
+    </span>
+  );
+}
 
 export default function OSPage() {
   return (
@@ -190,11 +224,18 @@ function OSMain() {
 
       if (res.ok && data.ok) {
         setReenvio(null);
+        // Logo depois do envio a Meta só ACEITOU o pedido: entrega e leitura
+        // chegam depois, pelo webhook, e aparecem na próxima carga do histórico.
         registrarEnvio(activeOS.id, {
           whatsapp_sent_at: data.whatsapp_sent_at ?? null,
           whatsapp_sent_to: data.whatsapp_sent_to ?? null,
+          whatsapp_status: data.whatsapp_status ?? "accepted",
+          whatsapp_error: null,
         });
-        setFeedback({ tone: "ok", text: `Enviada pelo robô para ${data.whatsapp_sent_to}.` });
+        setFeedback({
+          tone: "ok",
+          text: `Aceita pela Meta para ${data.whatsapp_sent_to}. A entrega é confirmada em seguida.`,
+        });
       } else if (data.code === "whatsapp_already_sent") {
         setReenvio({ sentAt: data.whatsapp_sent_at ?? null, sentTo: data.whatsapp_sent_to ?? null });
       } else {
@@ -359,9 +400,13 @@ function OSMain() {
                       </div>
                     )}
                     {activeOS.whatsapp_sent_at && (
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <dt><BotIcon width={14} height={14} className="text-white/60" /><span className="sr-only">WhatsApp do robô</span></dt>
                         <dd className="min-w-0 break-all">{activeOS.whatsapp_sent_to} · {formatOsDateTime(activeOS.whatsapp_sent_at)}</dd>
+                        <dd><SeloWhatsApp os={activeOS} /></dd>
+                        {activeOS.whatsapp_status === "failed" && activeOS.whatsapp_error && (
+                          <dd className="basis-full text-red-300">{activeOS.whatsapp_error}</dd>
+                        )}
                       </div>
                     )}
                   </dl>
@@ -454,12 +499,7 @@ function OSMain() {
                           <span className="sr-only">E-mail enviado</span>
                         </span>
                       )}
-                      {os.whatsapp_sent_at && (
-                        <span title={os.whatsapp_sent_to ? `WhatsApp: ${os.whatsapp_sent_to}` : "WhatsApp"} className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[var(--color-accent-soft)] text-[var(--color-accent)]">
-                          <BotIcon width={14} height={14} />
-                          <span className="sr-only">WhatsApp enviado</span>
-                        </span>
-                      )}
+                      {os.whatsapp_sent_at && <SeloWhatsApp os={os} />}
                       {!os.sent_at && !os.whatsapp_sent_at && <span className="text-white/30">—</span>}
                     </span>
                   </td>

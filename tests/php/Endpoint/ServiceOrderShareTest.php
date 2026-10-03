@@ -98,6 +98,120 @@ final class ServiceOrderShareTest extends TestCase
         self::assertSame('contato@heineken.exemplo', $os['client_email'] ?? null);
     }
 
+    // ── Status da mensagem de WhatsApp na listagem ──────────────────────────
+    //
+    // `whatsapp_sent_at` só diz que a Meta ACEITOU o pedido. Número fixo ou sem
+    // WhatsApp falha depois, pelo webhook, que só atualiza `whatsapp_messages`: a
+    // OS nunca era marcada como falha e a tela seguia dizendo "Enviada".
+
+    /** Grava uma mensagem de saída ligada à OS, como o robô e o webhook deixam. */
+    private function gravarMensagem(int $osId, string $status, ?string $erro = null, string $direcao = 'outgoing'): int
+    {
+        $pdo = $this->db->pdo();
+
+        $conversa = $pdo->query("SELECT id FROM whatsapp_conversations WHERE phone = '5521999887766'")->fetchColumn();
+        if ($conversa === false) {
+            $pdo->prepare('INSERT INTO whatsapp_conversations (phone, created_at, updated_at) VALUES (?, ?, ?)')
+                ->execute(['5521999887766', '2026-09-03 14:00:00', '2026-09-03 14:00:00']);
+            $conversa = $pdo->lastInsertId();
+        }
+
+        $pdo->prepare(
+            'INSERT INTO whatsapp_messages
+                (conversation_id, direction, type, status, error_message, message_at, service_order_id, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        )->execute([$conversa, $direcao, 'text', $status, $erro, '2026-09-03 14:22:00', $osId, '2026-09-03 14:22:00']);
+
+        return (int) $pdo->lastInsertId();
+    }
+
+    /** @return array<int,array<string,mixed>> as OS da listagem, por id */
+    private function listar(): array
+    {
+        $res = Endpoint::call('os/index.php', $this->opcoes([
+            'method' => 'GET',
+            'session' => $this->sessaoAdmin(),
+        ]));
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(200, $res->status, $res->body);
+
+        $porId = [];
+        foreach ($res->json()['service_orders'] as $os) {
+            $porId[(int) $os['id']] = $os;
+        }
+
+        return $porId;
+    }
+
+    public function testListagemTrazOStatusDaUltimaMensagemDeWhatsApp(): void
+    {
+        $id = $this->db->seedServiceOrder($this->clientId, str_repeat('b', 64), '2026-09-03', '2026-09-03 14:22:00', '5521999887766');
+        $this->gravarMensagem($id, 'accepted');
+        $this->gravarMensagem($id, 'delivered');
+
+        self::assertSame('delivered', $this->listar()[$id]['whatsapp_status']);
+    }
+
+    public function testListagemMostraFalhaAssincronaDaMeta(): void
+    {
+        $id = $this->db->seedServiceOrder($this->clientId, str_repeat('b', 64), '2026-09-03', '2026-09-03 14:22:00', '5521999887766');
+        $this->gravarMensagem($id, 'failed', 'Message undeliverable');
+
+        $os = $this->listar()[$id];
+
+        self::assertSame('failed', $os['whatsapp_status']);
+        self::assertSame('Message undeliverable', $os['whatsapp_error']);
+    }
+
+    public function testListagemUsaAMensagemMaisRecenteQuandoHouveNovoEnvio(): void
+    {
+        // Falhou, o operador reenviou e a Meta aceitou: vale o último envio.
+        $id = $this->db->seedServiceOrder($this->clientId, str_repeat('b', 64), '2026-09-03', '2026-09-03 14:22:00', '5521999887766');
+        $this->gravarMensagem($id, 'failed', 'Message undeliverable');
+        $this->gravarMensagem($id, 'accepted');
+
+        $os = $this->listar()[$id];
+
+        self::assertSame('accepted', $os['whatsapp_status']);
+        self::assertNull($os['whatsapp_error'], 'o erro do envio antigo não acompanha o novo');
+    }
+
+    public function testListagemNaoMisturaMensagensDeOrdensDiferentes(): void
+    {
+        $a = $this->db->seedServiceOrder($this->clientId, str_repeat('a', 64), '2026-09-03', '2026-09-03 14:22:00', '5521999887766');
+        $b = $this->db->seedServiceOrder($this->clientId, str_repeat('b', 64), '2026-09-03', '2026-09-03 14:22:00', '5521999887766');
+        $semEnvio = $this->db->seedServiceOrder($this->clientId, str_repeat('c', 64));
+        $this->gravarMensagem($a, 'read');
+        $this->gravarMensagem($b, 'failed', 'Sem WhatsApp');
+
+        $lista = $this->listar();
+
+        self::assertSame('read', $lista[$a]['whatsapp_status']);
+        self::assertSame('failed', $lista[$b]['whatsapp_status']);
+        self::assertNull($lista[$semEnvio]['whatsapp_status']);
+        self::assertNull($lista[$semEnvio]['whatsapp_error']);
+    }
+
+    public function testListagemIgnoraMensagemRecebidaLigadaAOs(): void
+    {
+        // Só o que o robô enviou diz algo sobre a entrega da OS.
+        $id = $this->db->seedServiceOrder($this->clientId, str_repeat('b', 64), '2026-09-03', '2026-09-03 14:22:00', '5521999887766');
+        $this->gravarMensagem($id, 'delivered');
+        $this->gravarMensagem($id, 'received', null, 'incoming');
+
+        self::assertSame('delivered', $this->listar()[$id]['whatsapp_status']);
+    }
+
+    public function testOrdemRecemCriadaNaoTemStatusDeWhatsApp(): void
+    {
+        $res = $this->criar([]);
+
+        self::assertSame(200, $res->status, $res->body);
+        self::assertArrayHasKey('whatsapp_status', $res->json()['service_order']);
+        self::assertNull($res->json()['service_order']['whatsapp_status']);
+    }
+
     // ── Criação ─────────────────────────────────────────────────────────────
 
     public function testCriacaoGeraTokenEDevolveOLinkPronto(): void
