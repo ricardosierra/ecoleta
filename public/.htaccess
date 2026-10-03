@@ -70,3 +70,41 @@ ErrorDocument 404 /404.html
     ExpiresDefault "access plus 6 months"
   </FilesMatch>
 </IfModule>
+
+# --- 4. Arquivos internos que nunca saem pela web -----
+# O deploy por FTP só ENVIA: não apaga nada do servidor. Por isso um script
+# temporário que um dia foi publicado continua lá para sempre, e o api/env.php
+# (credenciais) é gerado a cada deploy dentro do webroot. Nenhum destes tem
+# motivo para responder a um navegador.
+#
+# Fora da lista, de propósito: api/install.php (criação única do root, que se
+# desativa sozinho) e api/migrate.php (chamado pelo deploy, protegido por
+# segredo no cabeçalho). Bloquear os dois quebraria o deploy.
+#
+# `Require all denied` é a sintaxe do Apache 2.4 e a que o LiteSpeed entende
+# (o deploy já a grava em api/migrations/.htaccess). O padrão é ancorado nos
+# dois lados: sem isso, "meu_env.php" ou "env.php.bak" também casariam.
+<FilesMatch "^(env\.php|env\.example\.php|composer\.json|composer\.lock|temp_reset\.php|migrate_temp\.php|setup_db\.php|apply_mig_13\.php)$">
+  Require all denied
+</FilesMatch>
+
+# api/vendor/ (Composer e PHPMailer): só o PHP precisa dele, por require no
+# sistema de arquivos — negar o acesso HTTP não afeta isso. Tem script solto
+# (phpmailer/get_oauth_token.php) que não deve ser alcançável de fora.
+# <DirectoryMatch> não vale em .htaccess (só em configuração de servidor), então
+# o diretório é negado por RewriteRule, que este arquivo já usa.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule ^api/vendor(/|$) - [F,NC,L]
+</IfModule>
+
+# --- 5. Permissions-Policy ----------------------------
+# Recursos do navegador que o site não usa ficam desligados para a página e para
+# qualquer iframe dela. O microfone fica liberado só para a própria origem: o
+# painel de WhatsApp grava mensagem de voz (getUserMedia de áudio). Tela cheia e
+# área de transferência não entram na lista: o Power BI embutido usa a primeira, e
+# o dashboard copia senha gerada e link de OS. Sem CSP nem HSTS aqui: um erro em
+# qualquer dos dois derruba o site e não há como testar contra o servidor real.
+<IfModule mod_headers.c>
+  Header always set Permissions-Policy "camera=(), geolocation=(), microphone=(self), payment=(), usb=()"
+</IfModule>

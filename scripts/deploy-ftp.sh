@@ -102,7 +102,7 @@ FTP_UPLOAD_PATH="${FTP_UPLOAD_PATH:-.}"
 # começa com "$". Sem aspas simples no .env, o `source` lá em cima expande esse
 # "$aact_..." como se fosse nome de variável e a chave chega aqui mutilada — sem
 # erro nenhum, e a API do Asaas só responde 401 depois de publicado.
-for secret in DB_PASS DASHBOARD_INSTALL_TOKEN ASAAS_API_KEY CRON_SECRET ASAAS_WEBHOOK_TOKEN WHATSAPP_ACCESS_TOKEN WHATSAPP_APP_SECRET WHATSAPP_WEBHOOK_VERIFY_TOKEN; do
+for secret in DB_PASS DASHBOARD_INSTALL_TOKEN ASAAS_API_KEY CRON_SECRET ASAAS_WEBHOOK_TOKEN WHATSAPP_ACCESS_TOKEN WHATSAPP_APP_SECRET WHATSAPP_WEBHOOK_VERIFY_TOKEN CONTACT_TO_EMAIL CONTACT_FROM_EMAIL SECURITY_ALERT_EMAIL; do
   if [[ "${!secret:-}" == *"'"* ]]; then
     echo "$secret contém aspa simples — quebraria api/env.php." >&2
     exit 1
@@ -142,8 +142,10 @@ define('SMTP_PORT', '${SMTP_PORT:-465}');
 define('SMTP_SECURE', '${SMTP_SECURE:-true}');
 define('SMTP_USER', '${SMTP_USER:-}');
 define('SMTP_PASS', '${SMTP_PASS:-}');
+define('CONTACT_TO_EMAIL', '${CONTACT_TO_EMAIL:-}');
 define('CONTACT_FROM_EMAIL', '${CONTACT_FROM_EMAIL:-}');
 define('CONTACT_FROM_NAME', '${CONTACT_FROM_NAME:-}');
+define('SECURITY_ALERT_EMAIL', '${SECURITY_ALERT_EMAIL:-}');
 define('WHATSAPP_OS_TEMPLATE', '${WHATSAPP_OS_TEMPLATE:-}');
 define('WHATSAPP_OS_TEMPLATE_LANG', '${WHATSAPP_OS_TEMPLATE_LANG:-}');
 define('WHATSAPP_BILLING_TEMPLATE', '${WHATSAPP_BILLING_TEMPLATE:-}');

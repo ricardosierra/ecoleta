@@ -45,6 +45,20 @@ define('DASHBOARD_INSTALL_TOKEN', '');
 // do site (components/PowerBIViewer.tsx) — não é segredo.
 define('NEXT_PUBLIC_POWERBI_URL', '');
 
+// ── E-mail do site ───────────────────────────────────────────────────────────
+
+// Para onde vai o formulário de contato (public/contact.php). Vazio usa o
+// endereço padrão do código.
+define('CONTACT_TO_EMAIL', '');
+
+// Remetente do formulário de contato e do envio por SMTP. Vazio cai no
+// SMTP_USER e, na falta dele, no remetente padrão.
+define('CONTACT_FROM_EMAIL', '');
+
+// Para onde vão os alertas de segurança (senha trocada, tentativa bloqueada).
+// Vazio, ou um valor que não é e-mail, mantém o destinatário padrão do código.
+define('SECURITY_ALERT_EMAIL', '');
+
 // ── Ordem de Serviço: encaminhamento por e-mail e WhatsApp ───────────────────
 
 // Raiz absoluta do site, com ou sem barra final. É o que monta o link com token
