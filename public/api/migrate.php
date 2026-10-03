@@ -23,10 +23,10 @@ if ($cronSecret === '') {
     apiJsonResponse(503, ['ok' => false, 'error' => 'CRON_SECRET não configurado no servidor.']);
 }
 
+// Só por cabeçalho. O segredo em `?secret=` ia parar no log de acesso do servidor
+// (e no histórico e no Referer de quem abrisse a URL), e este é o segredo que roda
+// DDL. scripts/deploy-ftp.sh já chama com X-Deploy-Token.
 $sentSecret = trim((string) (apiRequestHeader('X-Deploy-Token') ?: apiRequestHeader('X-Cron-Secret')));
-if ($sentSecret === '') {
-    $sentSecret = trim((string) ($_GET['secret'] ?? ''));
-}
 
 // Em CLI no servidor ou contexto de teste autorizado
 if (PHP_SAPI === 'cli' && getenv('ECOLETA_TEST_CONTEXT') === false) {
