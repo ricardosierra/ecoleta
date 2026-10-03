@@ -184,19 +184,43 @@ function waEnsureConversation(PDO $db, string $phone, array $extra = []): ?int
 
     $now = waNow();
 
-    $stmt = $db->prepare('
-        INSERT INTO whatsapp_conversations
-            (phone, wa_id, profile_name, client_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ');
-    $stmt->execute([
-        $phone,
-        $extra['wa_id'] ?? null,
-        $extra['profile_name'] ?? null,
-        $extra['client_id'] ?? waFindClientIdByPhone($db, $phone),
-        $now,
-        $now,
-    ]);
+    try {
+        $stmt = $db->prepare('
+            INSERT INTO whatsapp_conversations
+                (phone, wa_id, profile_name, client_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ');
+        $stmt->execute([
+            $phone,
+            $extra['wa_id'] ?? null,
+            $extra['profile_name'] ?? null,
+            $extra['client_id'] ?? waFindClientIdByPhone($db, $phone),
+            $now,
+            $now,
+        ]);
+    } catch (PDOException $e) {
+        // 23000 = violação do índice único do telefone: duas mensagens
+        // simultâneas de um número novo olharam, nenhuma achou a linha, as duas
+        // inseriram. A que perdeu não pode descartar a mensagem dela, então
+        // adota a conversa que a vencedora criou. O 23000 também cobre chave
+        // estrangeira inválida; nesse caso a releitura não acha nada e o erro
+        // original sobe.
+        if ($e->getCode() !== '23000') {
+            throw $e;
+        }
+
+        $stmt = $db->prepare("SELECT id FROM whatsapp_conversations WHERE phone IN ($placeholders) ORDER BY id ASC LIMIT 1");
+        $stmt->execute($variants);
+        $id = $stmt->fetchColumn();
+
+        if ($id === false || $id === null) {
+            throw $e;
+        }
+
+        waUpdateConversationIdentity($db, (int) $id, $extra);
+
+        return (int) $id;
+    }
 
     return (int) $db->lastInsertId();
 }
@@ -215,8 +239,12 @@ function waUpdateConversationIdentity(PDO $db, int $conversationId, array $extra
         }
     }
 
+    // O dono da conversa só é PREENCHIDO, nunca trocado. Dois clientes podem
+    // cadastrar o mesmo telefone; se cada chamada (a sincronização da lista, o
+    // robô, a OS) regravasse o client_id, a conversa mudaria de nome a cada
+    // GET. COALESCE mantém o que já está lá e só age sobre NULL.
     if (isset($extra['client_id']) && $extra['client_id'] !== null) {
-        $campos[] = 'client_id = ?';
+        $campos[] = 'client_id = COALESCE(client_id, ?)';
         $valores[] = (int) $extra['client_id'];
     }
 
@@ -257,6 +285,148 @@ function waFindClientIdByPhone(PDO $db, string $phone): ?int
     }
 
     return null;
+}
+
+/**
+ * `$candidato` é igual ou posterior a `$atual`? Sem valor atual, sempre.
+ *
+ * Comparação textual: os dois lados são DATETIME UTC no formato `Y-m-d H:i:s`,
+ * que ordena lexicograficamente.
+ */
+function waInstantIsNotOlder(string $candidato, ?string $atual): bool
+{
+    $atual = trim((string) $atual);
+    if ($atual === '' || str_starts_with($atual, '0000')) {
+        return true;
+    }
+
+    return $candidato >= $atual;
+}
+
+/** O mais tardio de dois instantes UTC, ignorando os vazios. `null` quando os dois são vazios. */
+function waLaterInstant(?string $a, ?string $b): ?string
+{
+    $a = trim((string) $a);
+    $b = trim((string) $b);
+    $a = ($a === '' || str_starts_with($a, '0000')) ? null : $a;
+    $b = ($b === '' || str_starts_with($b, '0000')) ? null : $b;
+
+    if ($a === null) {
+        return $b;
+    }
+
+    return $b === null || $a >= $b ? $a : $b;
+}
+
+/**
+ * Funde a conversa duplicada na que fica (12 e 13 dígitos do mesmo celular).
+ *
+ * Mantém a conversa de `$manterId` e apaga a de `$descartarId`, depois de levar
+ * para a mantida TUDO que dava valor à outra. Jogar a descartada fora sem copiar
+ * o estado fazia o cliente que escreveu há 4 horas voltar da unificação com a
+ * janela fechada, zero não lidas e a conversa encerrada.
+ *
+ *  - janela e último inbound: o MAIOR dos dois (a janela é do cliente, e quem
+ *    escreveu por último abriu a mais longa);
+ *  - não lidas: a SOMA;
+ *  - status: aberta se qualquer uma estava aberta;
+ *  - perfil e cliente: os da mantida, e só na falta deles os da descartada;
+ *  - prévia da lista: a da mensagem mais recente depois de juntar as mensagens.
+ *
+ * Tudo numa transação: o DELETE final só vale se as cópias valeram.
+ */
+function waMergeConversations(PDO $db, int $manterId, int $descartarId): void
+{
+    if ($manterId === $descartarId) {
+        return;
+    }
+
+    $stmt = $db->prepare('SELECT * FROM whatsapp_conversations WHERE id IN (?, ?)');
+    $stmt->execute([$manterId, $descartarId]);
+
+    $linhas = [];
+    foreach ($stmt->fetchAll() as $linha) {
+        $linhas[(int) $linha['id']] = $linha;
+    }
+
+    // Outra requisição (ou uma execução anterior) já fundiu este par.
+    if (!isset($linhas[$manterId], $linhas[$descartarId])) {
+        return;
+    }
+
+    $manter = $linhas[$manterId];
+    $descartar = $linhas[$descartarId];
+
+    $abreTransacao = !$db->inTransaction();
+    if ($abreTransacao) {
+        $db->beginTransaction();
+    }
+
+    try {
+        $db->prepare('UPDATE whatsapp_messages SET conversation_id = ? WHERE conversation_id = ?')
+            ->execute([$manterId, $descartarId]);
+
+        $stmt = $db->prepare('
+            SELECT message_at, body, type, direction
+              FROM whatsapp_messages
+             WHERE conversation_id = ?
+             ORDER BY message_at DESC, id DESC
+             LIMIT 1
+        ');
+        $stmt->execute([$manterId]);
+        $ultima = $stmt->fetch();
+
+        if (is_array($ultima)) {
+            $ultimaEm = (string) $ultima['message_at'];
+            $previa = waPreview($ultima['body'], $ultima['type']);
+            $direcao = $ultima['direction'];
+        } else {
+            // Sem mensagens para reler: vale o cabeçalho da conversa mais recente.
+            $maisRecente = waLaterInstant($manter['last_message_at'], $descartar['last_message_at']) === ($manter['last_message_at'] ?? null)
+                ? $manter
+                : $descartar;
+            $ultimaEm = $maisRecente['last_message_at'];
+            $previa = $maisRecente['last_message_preview'];
+            $direcao = $maisRecente['last_message_direction'];
+        }
+
+        $perfil = trim((string) ($manter['profile_name'] ?? '')) !== ''
+            ? $manter['profile_name']
+            : $descartar['profile_name'];
+
+        $db->prepare('
+            UPDATE whatsapp_conversations
+               SET service_window_expires_at = ?, last_inbound_at = ?, unread_count = ?,
+                   status = ?, profile_name = ?, client_id = ?,
+                   last_message_at = ?, last_message_preview = ?, last_message_direction = ?,
+                   updated_at = ?
+             WHERE id = ?
+        ')->execute([
+            waLaterInstant($manter['service_window_expires_at'], $descartar['service_window_expires_at']),
+            waLaterInstant($manter['last_inbound_at'], $descartar['last_inbound_at']),
+            (int) $manter['unread_count'] + (int) $descartar['unread_count'],
+            ($manter['status'] === 'open' || $descartar['status'] === 'open') ? 'open' : 'closed',
+            $perfil,
+            $manter['client_id'] ?? $descartar['client_id'],
+            $ultimaEm,
+            $previa,
+            $direcao,
+            waNow(),
+            $manterId,
+        ]);
+
+        $db->prepare('DELETE FROM whatsapp_conversations WHERE id = ?')->execute([$descartarId]);
+
+        if ($abreTransacao) {
+            $db->commit();
+        }
+    } catch (\Throwable $e) {
+        if ($abreTransacao && $db->inTransaction()) {
+            $db->rollBack();
+        }
+
+        throw $e;
+    }
 }
 
 /** Resumo de uma linha na lista de conversas: corpo curto, sem quebra. */
@@ -334,27 +504,52 @@ function waRecordMessage(PDO $db, int $conversationId, array $mensagem): ?int
 
     $id = (int) $db->lastInsertId();
 
-    $campos = [
-        'last_message_at = ?',
-        'last_message_preview = ?',
-        'last_message_direction = ?',
-        'updated_at = ?',
-    ];
-    $valores = [
-        $messageAt,
-        waPreview($mensagem['body'] ?? null, $mensagem['type'] ?? null),
-        $direction,
-        $now,
-    ];
+    // O cabeçalho da conversa (prévia, direção, janela) só AVANÇA. A Meta
+    // reentrega com atraso, e fora de ordem, eventos que não tínhamos visto:
+    // uma mensagem das 09:00 chegando depois de uma das 10:00 não pode puxar a
+    // janela de 24h para trás (o cliente passaria a parecer fora da janela, e
+    // o envio seria tarifado sem necessidade) nem trocar a prévia da lista.
+    //
+    // A decisão é tomada AQUI, lendo o valor atual, e não com CASE no UPDATE: o
+    // MySQL avalia as atribuições da esquerda para a direita usando as colunas
+    // já alteradas, o SQLite usa as originais, e um CASE que compara uma coluna
+    // com outra atribuída antes daria resultados diferentes nos dois bancos.
+    $stmt = $db->prepare(
+        'SELECT last_message_at, last_inbound_at, service_window_expires_at
+           FROM whatsapp_conversations WHERE id = ? LIMIT 1'
+    );
+    $stmt->execute([$conversationId]);
+    $atual = $stmt->fetch();
+    $atual = is_array($atual) ? $atual : [];
+
+    $campos = ['updated_at = ?'];
+    $valores = [$now];
+
+    if (waInstantIsNotOlder($messageAt, $atual['last_message_at'] ?? null)) {
+        $campos[] = 'last_message_at = ?';
+        $valores[] = $messageAt;
+        $campos[] = 'last_message_preview = ?';
+        $valores[] = waPreview($mensagem['body'] ?? null, $mensagem['type'] ?? null);
+        $campos[] = 'last_message_direction = ?';
+        $valores[] = $direction;
+    }
 
     if ($direction === 'incoming') {
-        $campos[] = 'last_inbound_at = ?';
-        $valores[] = $messageAt;
-        $campos[] = 'service_window_expires_at = ?';
-        $valores[] = gmdate('Y-m-d H:i:s', strtotime($messageAt . ' UTC') + WA_SERVICE_WINDOW_SECONDS);
-        $campos[] = 'status = ?';
-        $valores[] = 'open';
+        // Receber reabre a conversa e soma nas não lidas, mesmo atrasada: é uma
+        // mensagem que a equipe ainda não viu.
+        $campos[] = "status = 'open'";
         $campos[] = 'unread_count = unread_count + 1';
+
+        if (waInstantIsNotOlder($messageAt, $atual['last_inbound_at'] ?? null)) {
+            $campos[] = 'last_inbound_at = ?';
+            $valores[] = $messageAt;
+        }
+
+        $novaJanela = gmdate('Y-m-d H:i:s', strtotime($messageAt . ' UTC') + WA_SERVICE_WINDOW_SECONDS);
+        if (waInstantIsNotOlder($novaJanela, $atual['service_window_expires_at'] ?? null)) {
+            $campos[] = 'service_window_expires_at = ?';
+            $valores[] = $novaJanela;
+        }
     }
 
     $valores[] = $conversationId;

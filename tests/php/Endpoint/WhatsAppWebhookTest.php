@@ -343,4 +343,24 @@ final class WhatsAppWebhookTest extends TestCase
 
         return $this->postar($evento);
     }
+
+    /**
+     * Reentrega atrasada pela Meta: um evento das 14:22 chegando depois de um
+     * das 15:22 não pode encurtar a janela (nem trocar a prévia da lista). A
+     * mensagem atrasada ainda conta como não lida.
+     */
+    public function testMensagemAtrasadaNaoEncurtaAJanela(): void
+    {
+        $this->postar($this->eventoDeMensagem('wamid.NOVA', 'das quinze e vinte e dois', 1772551320));
+        $res = $this->postar($this->eventoDeMensagem('wamid.VELHA', 'das quatorze e vinte e dois', 1772547720));
+
+        self::assertSame(200, $res->status, $res->body);
+
+        $conversa = $this->db->rows('whatsapp_conversations')[0];
+        self::assertSame('2026-03-04 15:22:00', $conversa['service_window_expires_at']);
+        self::assertSame('2026-03-03 15:22:00', $conversa['last_inbound_at']);
+        self::assertSame('das quinze e vinte e dois', $conversa['last_message_preview']);
+        self::assertSame(2, (int) $conversa['unread_count']);
+        self::assertSame(2, $this->db->count('whatsapp_messages'));
+    }
 }

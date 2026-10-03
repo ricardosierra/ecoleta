@@ -127,13 +127,14 @@ if ($method !== 'GET') {
 }
 
 // ── 1. Unificação de conversas duplicadas (12 e 13 dígitos para o mesmo celular) ──
+// Mantém a de menor id; waMergeConversations() leva o estado da outra junto
+// (janela, não lidas, status, perfil, cliente) antes de apagá-la.
 try {
     $dupQuery = $db->query("
-        SELECT c1.id AS id1, c1.phone AS phone1, c1.client_id AS client1,
-               c2.id AS id2, c2.phone AS phone2, c2.client_id AS client2
+        SELECT c1.id AS id1, c2.id AS id2
           FROM whatsapp_conversations c1
-          JOIN whatsapp_conversations c2 
-            ON c1.id < c2.id 
+          JOIN whatsapp_conversations c2
+            ON c1.id < c2.id
            AND c1.phone LIKE '55%' AND c2.phone LIKE '55%'
            AND (
                (LENGTH(c1.phone) = 13 AND LENGTH(c2.phone) = 12 AND SUBSTR(c1.phone, 1, 4) = SUBSTR(c2.phone, 1, 4) AND SUBSTR(c1.phone, 6) = SUBSTR(c2.phone, 5))
@@ -143,32 +144,7 @@ try {
     ");
     if ($dupQuery) {
         foreach ($dupQuery->fetchAll() as $dup) {
-            $idManter = (int) $dup['id1'];
-            $idDescartar = (int) $dup['id2'];
-
-            $upMsgs = $db->prepare('UPDATE whatsapp_messages SET conversation_id = ? WHERE conversation_id = ?');
-            $upMsgs->execute([$idManter, $idDescartar]);
-
-            if ($dup['client2'] !== null && $dup['client1'] === null) {
-                $db->prepare('UPDATE whatsapp_conversations SET client_id = ? WHERE id = ?')
-                    ->execute([(int) $dup['client2'], $idManter]);
-            }
-
-            $stmtLast = $db->prepare('
-                SELECT message_at, body, type, direction 
-                  FROM whatsapp_messages 
-                 WHERE conversation_id = ? 
-                 ORDER BY message_at DESC, id DESC 
-                 LIMIT 1
-            ');
-            $stmtLast->execute([$idManter]);
-            $last = $stmtLast->fetch();
-            if ($last) {
-                $db->prepare('UPDATE whatsapp_conversations SET last_message_at = ?, last_message_preview = ?, last_message_direction = ? WHERE id = ?')
-                    ->execute([$last['message_at'], waPreview($last['body'], $last['type']), $last['direction'], $idManter]);
-            }
-
-            $db->prepare('DELETE FROM whatsapp_conversations WHERE id = ?')->execute([$idDescartar]);
+            waMergeConversations($db, (int) $dup['id1'], (int) $dup['id2']);
         }
     }
 } catch (\Throwable $e) {
@@ -214,6 +190,9 @@ try {
 }
 
 // ── 3. Sincronização automática de clientes com WhatsApp cadastrado ───────────
+// Só cria conversa para quem não tem nenhuma NAQUELE NÚMERO. Dois clientes podem
+// cadastrar o mesmo telefone: o segundo não ganha conversa própria (o telefone é
+// único) nem rouba a do primeiro, senão a conversa trocava de dono a cada GET.
 try {
     $syncStmt = $db->query("
         SELECT c.id, c.name, c.whatsapp
@@ -222,9 +201,15 @@ try {
            AND NOT EXISTS (
                SELECT 1 FROM whatsapp_conversations wc WHERE wc.client_id = c.id
            )
+         ORDER BY c.id ASC
     ");
     if ($syncStmt) {
         foreach ($syncStmt->fetchAll() as $cl) {
+            $existente = waFindConversationByPhone($db, (string) $cl['whatsapp']);
+            if ($existente !== null && $existente['client_id'] !== null) {
+                continue;
+            }
+
             waEnsureConversation($db, (string) $cl['whatsapp'], [
                 'client_id' => (int) $cl['id'],
                 'profile_name' => (string) $cl['name'],
@@ -253,7 +238,11 @@ if ($unreadOnly) {
 
 if ($search !== '') {
     $termo = '%' . $search . '%';
-    $digitos = preg_replace('/\D/', '', $search) ?? '';
+    // Só procura no telefone quando o termo É um telefone (dígitos e a pontuação
+    // de máscara). "Posto 3" é nome com número: tratar o 3 como telefone casava
+    // com toda conversa cujo número tivesse um 3.
+    $pareceTelefone = preg_match('/^[\d\s().+\-]+$/', $search) === 1;
+    $digitos = $pareceTelefone ? (preg_replace('/\D/', '', $search) ?? '') : '';
     if ($digitos !== '') {
         $where[] = '(cl.name LIKE ? OR c.profile_name LIKE ? OR c.phone LIKE ? OR c.last_message_preview LIKE ?)';
         $params[] = $termo;
@@ -270,6 +259,21 @@ if ($search !== '') {
 
 $whereClause = $where !== [] ? 'WHERE ' . implode(' AND ', $where) : '';
 
+// A lista é cortada nas conversas mais recentes. A resposta diz quantas existem
+// de verdade, e a tela avisa — sem isso, a conversa 301 em diante simplesmente
+// não existia para quem olhava. A busca (`q`) roda aqui, no banco inteiro.
+const WA_CONVERSATION_LIST_LIMIT = 300;
+const WA_CLIENT_LIST_LIMIT = 200;
+
+$countStmt = $db->prepare("
+    SELECT COUNT(*)
+      FROM whatsapp_conversations c
+      LEFT JOIN clients cl ON cl.id = c.client_id
+      {$whereClause}
+");
+$countStmt->execute($params);
+$totalConversas = (int) $countStmt->fetchColumn();
+
 $sql = "
     SELECT c.id, c.phone, c.wa_id, c.profile_name, c.client_id, c.status, c.unread_count,
            c.last_inbound_at, c.last_message_at, c.last_message_preview, c.last_message_direction,
@@ -279,7 +283,7 @@ $sql = "
       LEFT JOIN clients cl ON cl.id = c.client_id
       {$whereClause}
      ORDER BY (c.last_message_at IS NULL), c.last_message_at DESC, c.id DESC
-     LIMIT 300
+     LIMIT " . WA_CONVERSATION_LIST_LIMIT . "
 ";
 
 $stmt = $db->prepare($sql);
@@ -306,8 +310,10 @@ foreach ($stmt->fetchAll() as $linha) {
 }
 
 $clientesCadastrados = [];
+$totalClientes = 0;
 try {
-    $clStmt = $db->query("SELECT id, name, whatsapp FROM clients WHERE whatsapp IS NOT NULL AND whatsapp != '' ORDER BY name ASC LIMIT 200");
+    $totalClientes = (int) $db->query("SELECT COUNT(*) FROM clients WHERE whatsapp IS NOT NULL AND whatsapp != ''")->fetchColumn();
+    $clStmt = $db->query("SELECT id, name, whatsapp FROM clients WHERE whatsapp IS NOT NULL AND whatsapp != '' ORDER BY name ASC LIMIT " . WA_CLIENT_LIST_LIMIT);
     if ($clStmt) {
         foreach ($clStmt->fetchAll() as $cl) {
             $clientesCadastrados[] = [
@@ -323,5 +329,8 @@ try {
 apiJsonResponse(200, [
     'ok' => true,
     'conversations' => $conversas,
+    'total' => $totalConversas,
+    'truncated' => $totalConversas > count($conversas),
     'clients' => $clientesCadastrados,
+    'clients_total' => $totalClientes,
 ]);

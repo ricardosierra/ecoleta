@@ -146,18 +146,28 @@ if (!is_array($conversa)) {
     apiJsonResponse(404, ['error' => 'Conversa não encontrada.']);
 }
 
+// A tela mostra o fim da conversa, então o corte tem que ficar com as mais
+// RECENTES: ORDER BY ... ASC LIMIT devolvia as 500 mais antigas, e numa conversa
+// longa as mensagens novas sumiam. Busca uma a mais que o limite só para saber
+// se há anteriores (`truncated`), e devolve em ordem cronológica.
+const WA_MESSAGE_PAGE_SIZE = 500;
+
 $stmt = $db->prepare('
     SELECT id, wa_message_id, direction, type, status, body, error_message,
            message_at, sent_by_user_id, service_order_id
       FROM whatsapp_messages
      WHERE conversation_id = ?
-     ORDER BY message_at ASC, id ASC
-     LIMIT 500
+     ORDER BY message_at DESC, id DESC
+     LIMIT ' . (WA_MESSAGE_PAGE_SIZE + 1) . '
 ');
 $stmt->execute([$conversationId]);
 
+$linhas = $stmt->fetchAll();
+$truncated = count($linhas) > WA_MESSAGE_PAGE_SIZE;
+$linhas = array_reverse(array_slice($linhas, 0, WA_MESSAGE_PAGE_SIZE));
+
 $mensagens = [];
-foreach ($stmt->fetchAll() as $linha) {
+foreach ($linhas as $linha) {
     $mensagens[] = [
         'id' => (int) $linha['id'],
         'direction' => (string) $linha['direction'],
@@ -187,4 +197,5 @@ apiJsonResponse(200, [
         'window' => waWindowState($conversa['service_window_expires_at'], $agora),
     ],
     'messages' => $mensagens,
+    'truncated' => $truncated,
 ]);
