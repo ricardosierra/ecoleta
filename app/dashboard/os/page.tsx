@@ -31,7 +31,14 @@ import Logo from "@/components/Logo";
 
 type Client = { id: number; name: string };
 
-type Feedback = { tone: "ok" | "erro"; text: string; oferecerMeuWhatsApp?: boolean };
+type Feedback = { tone: "ok" | "aviso" | "erro"; text: string; oferecerMeuWhatsApp?: boolean };
+
+/** Cor do texto de retorno: verde deu certo, amarelo é aviso, vermelho falhou. */
+const FEEDBACK_TONE_CLASS = {
+  ok: "text-[var(--color-accent)]",
+  aviso: "text-yellow-300",
+  erro: "text-red-400",
+} as const;
 
 /** Dados do reenvio pendente de confirmação (resposta 409 de os/whatsapp.php). */
 type ReenvioWhatsApp = { sentAt: string | null; sentTo: string | null };
@@ -263,7 +270,13 @@ function OSMain() {
 
       if (res.ok && data.ok) {
         registrarEnvio(activeOS.id, { sent_at: data.sent_at ?? null, sent_to: data.sent_to ?? null });
-        setFeedback({ tone: "ok", text: `Enviada para ${data.sent_to}.` });
+        // Servidor em modo de teste (MAIL_TRANSPORT=log): o destinatário só foi para
+        // o log, nada saiu. "Enviada" seria mentira.
+        setFeedback(
+          data.logged_only
+            ? { tone: "aviso", text: `Registrada em log (modo teste): o e-mail para ${data.sent_to} não foi enviado.` }
+            : { tone: "ok", text: `Enviada para ${data.sent_to}.` }
+        );
       } else {
         setFeedback({ tone: "erro", text: data.error ?? "Não foi possível enviar o e-mail." });
       }
@@ -489,7 +502,7 @@ function OSMain() {
                 {feedback && (
                   <p
                     role="status"
-                    className={`text-sm ${feedback.tone === "ok" ? "text-[var(--color-accent)]" : "text-red-400"}`}
+                    className={`text-sm ${FEEDBACK_TONE_CLASS[feedback.tone]}`}
                   >
                     {feedback.text}
                   </p>

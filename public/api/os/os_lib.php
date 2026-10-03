@@ -736,19 +736,129 @@ function osPlainField($value): string
 }
 
 /**
- * Assunto do e-mail, já codificado para caber em um cabeçalho ASCII.
+ * Assunto do e-mail, em texto puro.
+ *
+ * Quem o codifica é o envio, e só no ramo que precisa (`osMailEncodeSubject()`,
+ * para o `mail()`). Antes esta função já devolvia o cabeçalho codificado, e o
+ * ramo do SMTP desfazia a codificação na mão para o PHPMailer codificar de novo.
  *
  * @param array<string,mixed> $os
  */
 function osEmailSubject(array $os): string
 {
-    $assunto = sprintf(
+    return sprintf(
         'Ordem de Serviço Nº %s — %s',
         osNumber((int) $os['id']),
         trim((string) ($os['client_name'] ?? ''))
     );
+}
 
-    return '=?UTF-8?B?' . base64_encode($assunto) . '?=';
+/**
+ * Assunto pronto para o `mail()` do PHP, que não codifica nada sozinho.
+ *
+ * Cada palavra codificada de um cabeçalho (RFC 2047) tem no máximo 75
+ * caracteres. O assunto saía como UMA palavra só, que passava disso com um nome
+ * de cliente longo, e servidores mais rigorosos recusam ou truncam. O
+ * `mb_encode_mimeheader` divide em quantas palavras forem precisas, dobrando a
+ * linha com espaço, e deixa intacto o que é só ASCII.
+ *
+ * Quebra de linha vira espaço antes de tudo: é por ela que um assunto forjado
+ * abriria um cabeçalho novo (`Bcc:`).
+ */
+function osMailEncodeSubject(string $subject): string
+{
+    $subject = trim(preg_replace('/[\r\n]+/', ' ', $subject) ?? '');
+
+    // O recuo é o tamanho de "Subject: ", que o mail() escreve antes do valor.
+    return mb_encode_mimeheader($subject, 'UTF-8', 'B', "\r\n", strlen('Subject: '));
+}
+
+/** Tempo limite, em segundos, de conexão e leitura do SMTP. O padrão do PHPMailer é 300. */
+const OS_SMTP_TIMEOUT = 15;
+
+/**
+ * `true` no modo de teste (`MAIL_TRANSPORT=log`): `osSendMail()` só registra o
+ * destinatário no log e responde sucesso sem enviar nada. A tela precisa saber,
+ * para não dizer "Enviada para X" de um e-mail que não saiu.
+ */
+function osMailIsLogOnly(): bool
+{
+    return strcasecmp(apiSecret('MAIL_TRANSPORT'), 'log') === 0;
+}
+
+/**
+ * Remetente do e-mail da OS (e dos demais e-mails que passam por `osSendMail`).
+ *
+ * `OS_MAIL_FROM` vale nos DOIS ramos, como o `env.example.php` promete: só o do
+ * `mail()` o lia, e com SMTP configurado ele era ignorado. Valor que não é um
+ * e-mail é ignorado.
+ *
+ * Sem override: o `mail()` cai no padrão; o SMTP segue `CONTACT_FROM_EMAIL`, depois
+ * o usuário do próprio SMTP (o servidor costuma exigir um remetente que a conta
+ * autentique), e só então o padrão.
+ */
+function osMailFrom(bool $smtp): string
+{
+    $override = apiSecret('OS_MAIL_FROM');
+    if ($override !== '' && filter_var($override, FILTER_VALIDATE_EMAIL) !== false) {
+        return $override;
+    }
+
+    if ($smtp) {
+        foreach (['CONTACT_FROM_EMAIL', 'SMTP_USER'] as $nome) {
+            $valor = apiSecret($nome);
+            if ($valor !== '') {
+                return $valor;
+            }
+        }
+    }
+
+    return OS_MAIL_FROM_DEFAULT;
+}
+
+/**
+ * O PHPMailer já configurado para o SMTP, sem enviar. Fica separado de
+ * `osSendMail()` para dar para conferir remetente, assunto e tempo limite sem
+ * abrir conexão nenhuma.
+ *
+ * O assunto entra em texto puro: o PHPMailer o codifica sozinho.
+ *
+ * @throws \PHPMailer\PHPMailer\Exception endereço inválido
+ */
+function osBuildSmtpMailer(string $to, string $subject, string $html, string $text, ?string $replyTo): \PHPMailer\PHPMailer\PHPMailer
+{
+    require_once __DIR__ . '/../vendor/autoload.php';
+
+    $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
+    $mail->CharSet = 'UTF-8';
+    $mail->isSMTP();
+    $mail->Host = apiSecret('SMTP_HOST');
+    $mail->SMTPAuth = true;
+    $mail->Username = apiSecret('SMTP_USER');
+    $mail->Password = apiSecret('SMTP_PASS');
+
+    $smtpSecure = strcasecmp(apiSecret('SMTP_SECURE'), 'true') === 0
+        ? \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS
+        : \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
+    $mail->SMTPSecure = (int) apiSecret('SMTP_PORT') === 465 ? \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS : $smtpSecure;
+    $mail->Port = (int) apiSecret('SMTP_PORT');
+
+    // O padrão do PHPMailer é 300 segundos: com o SMTP fora do ar o botão ficava
+    // cinco minutos pendurado, segurando o processo do PHP.
+    $mail->Timeout = OS_SMTP_TIMEOUT;
+
+    $mail->setFrom(osMailFrom(true), apiSecret('CONTACT_FROM_NAME') ?: 'Ecoleva');
+    $mail->addAddress($to);
+    if ($replyTo !== null && filter_var($replyTo, FILTER_VALIDATE_EMAIL)) {
+        $mail->addReplyTo($replyTo);
+    }
+
+    $mail->isHTML(true);
+    $mail->Subject = $subject;
+    $mail->Body = $html;
+    $mail->AltBody = $text;
+
+    return $mail;
 }
 
 /**
@@ -761,24 +871,17 @@ function osEmailSubject(array $os): string
  */
 function osSendMail(string $to, string $subject, string $html, string $text, ?string $replyTo = null): bool
 {
-    if (strcasecmp(apiSecret('MAIL_TRANSPORT'), 'log') === 0) {
+    if (osMailIsLogOnly()) {
         error_log(sprintf('MAIL_TRANSPORT=log: e-mail de OS para %s não foi enviado.', $to));
         return true;
     }
 
-    $smtpHost = apiSecret('SMTP_HOST');
-    
     // Se SMTP não estiver configurado, faz fallback pro mail()
-    if (empty($smtpHost)) {
-        $from = apiSecret('OS_MAIL_FROM');
-        if ($from === '' || !filter_var($from, FILTER_VALIDATE_EMAIL)) {
-            $from = OS_MAIL_FROM_DEFAULT;
-        }
-
+    if (apiSecret('SMTP_HOST') === '') {
         $boundary = '----=_' . bin2hex(random_bytes(8));
 
         $headers = [
-            'From: Ecoleva <' . $from . '>',
+            'From: Ecoleva <' . osMailFrom(false) . '>',
             'MIME-Version: 1.0',
             'Content-Type: multipart/alternative; boundary="' . $boundary . '"',
         ];
@@ -795,57 +898,25 @@ function osSendMail(string $to, string $subject, string $html, string $text, ?st
             . quoted_printable_encode($html)
             . "\r\n--{$boundary}--";
 
-        return mail($to, $subject, $mime, implode("\r\n", $headers));
+        // O mail() não codifica o assunto sozinho (o PHPMailer, abaixo, sim).
+        return mail($to, osMailEncodeSubject($subject), $mime, implode("\r\n", $headers));
     }
-    
+
     // Envio autenticado via PHPMailer / SMTP
-    $vendorPath = __DIR__ . '/../vendor/autoload.php';
-    if (!file_exists($vendorPath)) {
+    if (!file_exists(__DIR__ . '/../vendor/autoload.php')) {
         error_log('PHPMailer não instalado. Rode: composer require phpmailer/phpmailer');
         return false;
     }
-    require_once $vendorPath;
-    
-    $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
-    
+
+    $mail = null;
     try {
-        $mail->CharSet = 'UTF-8';
-        $mail->isSMTP();
-        $mail->Host       = $smtpHost;
-        $mail->SMTPAuth   = true;
-        $mail->Username   = apiSecret('SMTP_USER');
-        $mail->Password   = apiSecret('SMTP_PASS');
-        
-        $smtpSecure = strcasecmp(apiSecret('SMTP_SECURE'), 'true') === 0 ? \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS : \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
-        $mail->SMTPSecure = (int)apiSecret('SMTP_PORT') === 465 ? \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS : $smtpSecure;
-        $mail->Port       = (int)apiSecret('SMTP_PORT');
-
-        $from = apiSecret('CONTACT_FROM_EMAIL');
-        if (empty($from)) $from = apiSecret('SMTP_USER');
-        if (empty($from)) $from = defined('OS_MAIL_FROM_DEFAULT') ? OS_MAIL_FROM_DEFAULT : 'contato@ecolevaeco.com';
-        
-        $fromName = apiSecret('CONTACT_FROM_NAME') ?: 'Ecoleva';
-
-        $mail->setFrom($from, $fromName);
-        $mail->addAddress($to);
-        if ($replyTo !== null && filter_var($replyTo, FILTER_VALIDATE_EMAIL)) {
-            $mail->addReplyTo($replyTo);
-        }
-
-        // Assunto vem codificado do osEmailSubject. PHPMailer já codifica sozinho
-        if (strpos($subject, '=?UTF-8?B?') === 0) {
-            $subject = base64_decode(substr($subject, 10, -2));
-        }
-        
-        $mail->isHTML(true);
-        $mail->Subject = $subject;
-        $mail->Body    = $html;
-        $mail->AltBody = $text;
-
+        $mail = osBuildSmtpMailer($to, $subject, $html, $text, $replyTo);
         $mail->send();
+
         return true;
     } catch (\Throwable $e) {
-        error_log("PHPMailer Error: {$mail->ErrorInfo}");
+        error_log('PHPMailer Error: ' . ($mail !== null && $mail->ErrorInfo !== '' ? $mail->ErrorInfo : $e->getMessage()));
+
         return false;
     }
 }

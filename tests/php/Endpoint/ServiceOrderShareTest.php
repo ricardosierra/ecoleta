@@ -599,6 +599,24 @@ final class ServiceOrderShareTest extends TestCase
         self::assertNotNull($linha['sent_at']);
     }
 
+    /**
+     * Em `MAIL_TRANSPORT=log` o e-mail NÃO sai: o destinatário só vai para o log.
+     * A resposta dizia só "ok", e a tela anunciava "Enviada para X".
+     */
+    public function testEnvioPorEmailEmModoDeTesteAvisaQueSoFoiParaOLog(): void
+    {
+        $id = $this->db->seedServiceOrder($this->clientId, str_repeat('e', 64));
+
+        $res = Endpoint::call('os/send.php', $this->opcoes([
+            'session' => $this->sessaoAdmin(),
+            'body' => ['id' => $id],
+        ]));
+
+        self::assertSame(200, $res->status, $res->body);
+        self::assertTrue($res->json()['logged_only'] ?? null);
+        self::assertStringContainsString('não foi enviado', $res->errorLog);
+    }
+
     public function testEnvioPorEmailPrefereODestinatarioInformado(): void
     {
         $id = $this->db->seedServiceOrder($this->clientId, str_repeat('e', 64));

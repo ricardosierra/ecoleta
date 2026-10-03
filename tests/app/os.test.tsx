@@ -206,6 +206,31 @@ describe("/dashboard/os — encaminhamento", () => {
     expect(JSON.parse(String(post![1]!.body))).toEqual({ id: 42, email: "contato@heineken.exemplo" });
   });
 
+  /**
+   * Com MAIL_TRANSPORT=log o servidor responde sucesso sem enviar nada, e a tela
+   * dizia "Enviada para X".
+   */
+  it("diz que o e-mail só foi registrado em log quando o servidor está em modo de teste", async () => {
+    montar({
+      [SEND]: {
+        body: { ok: true, sent_to: "contato@heineken.exemplo", sent_at: "2026-09-03 14:22:00", logged_only: true },
+      },
+    });
+    render(<OSPage />);
+
+    const user = userEvent.setup();
+    await abrirOS(user);
+    await user.click(screen.getByRole("button", { name: "E-mail" }));
+
+    const aviso = await screen.findByRole("status");
+    expect(aviso).toHaveTextContent("Registrada em log (modo teste)");
+    expect(aviso).toHaveTextContent("contato@heineken.exemplo");
+    expect(aviso).toHaveTextContent("não foi enviado");
+    expect(aviso).not.toHaveTextContent("Enviada para");
+    // Não é erro (nem sucesso): é um aviso, em cor própria.
+    expect(aviso.className).toContain("yellow");
+  });
+
   it("mostra o erro devolvido pelo servidor no envio por e-mail", async () => {
     montar({ [SEND]: { status: 400, body: { error: "E-mail de destino inválido." } } });
     render(<OSPage />);
