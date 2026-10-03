@@ -626,4 +626,212 @@ final class WhatsAppPanelTest extends TestCase
         self::assertCount(1, $res['conversations']);
         self::assertSame('Posto', $res['conversations'][0]['name']);
     }
+
+    // ── W8: áudio gravado no navegador ──────────────────────────────────────
+
+    /** @return array{0:int,1:array<string,mixed>} id da conversa e a sessão */
+    private function conversaComJanelaAberta(): array
+    {
+        $sessao = $this->sessaoPermitida();
+        $conversaId = $this->semearConversaCom('5521999887766', [
+            'service_window_expires_at' => gmdate('Y-m-d H:i:s', time() + 3600),
+        ]);
+
+        return [$conversaId, $sessao];
+    }
+
+    /** @param array<string,mixed> $body */
+    private function enviarMidia(array $sessao, array $body): EndpointResponse
+    {
+        return Endpoint::call('whatsapp/media.php', [
+            'method' => 'POST',
+            'dsn' => $this->db->dsn(),
+            'session' => $sessao,
+            'body' => $body,
+            // O robô desligado: quem passa da validação para no 503, sem tocar na Meta.
+            'env' => ['WHATSAPP_TRANSPORT' => 'off'],
+        ]);
+    }
+
+    /**
+     * O Chrome gera "data:audio/webm;codecs=opus;base64,...", que não casava com
+     * a regex do servidor: a pessoa recebia "Arquivo base64 corrompido" para um
+     * arquivo perfeito. O defeito real é outro, e a mensagem tem que dizê-lo: a
+     * Meta não aceita webm.
+     */
+    public function testAudioWebmDoChromeExplicaOsFormatosAceitos(): void
+    {
+        [$conversaId, $sessao] = $this->conversaComJanelaAberta();
+
+        $res = $this->enviarMidia($sessao, [
+            'conversation_id' => $conversaId,
+            'type' => 'audio',
+            'mime_type' => 'audio/webm;codecs=opus',
+            'filename' => 'audio_1.ogg',
+            'media_base64' => 'data:audio/webm;codecs=opus;base64,' . base64_encode(str_repeat('x', 2000)),
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(400, $res->status, $res->body);
+        $erro = $res->json()['error'];
+        self::assertStringNotContainsString('corrompido', $erro);
+        foreach (['ogg', 'opus', 'mp3', 'aac', 'amr', 'mp4'] as $formato) {
+            self::assertStringContainsString($formato, $erro);
+        }
+        self::assertSame('unsupported_audio_format', $res->json()['code']);
+    }
+
+    /** Sem o campo mime_type, o tipo vem do próprio data URI, com parâmetros e tudo. */
+    public function testAudioWebmSoNoDataUriTambemEhRecusadoComMensagemClara(): void
+    {
+        [$conversaId, $sessao] = $this->conversaComJanelaAberta();
+
+        $res = $this->enviarMidia($sessao, [
+            'conversation_id' => $conversaId,
+            'type' => 'audio',
+            'media_base64' => 'data:audio/webm;codecs=opus;base64,' . base64_encode(str_repeat('x', 2000)),
+        ]);
+
+        self::assertSame(400, $res->status, $res->body);
+        self::assertStringNotContainsString('corrompido', $res->json()['error']);
+        self::assertSame('unsupported_audio_format', $res->json()['code']);
+    }
+
+    /** Ogg com opus tem data URI com parâmetros e é aceito: passa da validação e para no robô desligado. */
+    public function testAudioOggOpusComParametrosNoDataUriPassaDaValidacao(): void
+    {
+        [$conversaId, $sessao] = $this->conversaComJanelaAberta();
+
+        $res = $this->enviarMidia($sessao, [
+            'conversation_id' => $conversaId,
+            'type' => 'audio',
+            'mime_type' => 'audio/ogg;codecs=opus',
+            'media_base64' => 'data:audio/ogg;codecs=opus;base64,' . base64_encode(str_repeat('x', 2000)),
+        ]);
+
+        self::assertSame(503, $res->status, $res->body);
+        self::assertSame('whatsapp_not_configured', $res->json()['code']);
+    }
+
+    public function testAudioMp3EmBase64PuroPassaDaValidacao(): void
+    {
+        [$conversaId, $sessao] = $this->conversaComJanelaAberta();
+
+        $res = $this->enviarMidia($sessao, [
+            'conversation_id' => $conversaId,
+            'type' => 'audio',
+            'mime_type' => 'audio/mpeg',
+            'media_base64' => base64_encode(str_repeat('x', 2000)),
+        ]);
+
+        self::assertSame(503, $res->status, $res->body);
+    }
+
+    /** Imagem com data URI simples continua passando como antes. */
+    public function testImagemComDataUriSimplesContinuaPassando(): void
+    {
+        [$conversaId, $sessao] = $this->conversaComJanelaAberta();
+
+        $res = $this->enviarMidia($sessao, [
+            'conversation_id' => $conversaId,
+            'type' => 'image',
+            'media_base64' => 'data:image/png;base64,' . base64_encode(str_repeat('x', 2000)),
+        ]);
+
+        self::assertSame(503, $res->status, $res->body);
+    }
+
+    /** Base64 que de fato está quebrado continua sendo "corrompido". */
+    public function testBase64QuebradoContinuaSendoCorrompido(): void
+    {
+        [$conversaId, $sessao] = $this->conversaComJanelaAberta();
+
+        $res = $this->enviarMidia($sessao, [
+            'conversation_id' => $conversaId,
+            'type' => 'image',
+            'mime_type' => 'image/png',
+            'media_base64' => 'data:image/png;base64,%%%isso nao e base64%%%',
+        ]);
+
+        self::assertSame(400, $res->status, $res->body);
+        self::assertStringContainsString('corrompido', $res->json()['error']);
+    }
+
+    /** O mesmo vale para quem anexa o arquivo (multipart) em vez de mandar base64. */
+    public function testAudioWebmAnexadoComoArquivoTambemExplicaOsFormatos(): void
+    {
+        [$conversaId, $sessao] = $this->conversaComJanelaAberta();
+
+        $tmp = tempnam(sys_get_temp_dir(), 'wa_test_');
+        file_put_contents($tmp, str_repeat('x', 2000));
+
+        try {
+            $res = Endpoint::call('whatsapp/media.php', [
+                'method' => 'POST',
+                'dsn' => $this->db->dsn(),
+                'session' => $sessao,
+                'env' => ['WHATSAPP_TRANSPORT' => 'off'],
+                'csrf' => true,
+                'server' => ['CONTENT_TYPE' => 'multipart/form-data; boundary=ecoleta-test'],
+                'post' => ['conversation_id' => (string) $conversaId, 'type' => 'audio'],
+                'files' => ['file' => [
+                    'name' => 'gravacao.webm',
+                    'type' => 'audio/webm',
+                    'tmp_name' => $tmp,
+                    'error' => 0,
+                    'size' => 2000,
+                ]],
+            ]);
+        } finally {
+            @unlink($tmp);
+        }
+
+        self::assertSame(400, $res->status, $res->body);
+        self::assertSame('unsupported_audio_format', $res->json()['code']);
+    }
+
+    // ── W9: templates sem inventar aprovação ────────────────────────────────
+
+    /** @param array<string,string> $env */
+    private function listarTemplates(array $env = []): EndpointResponse
+    {
+        return Endpoint::call('whatsapp/templates.php', [
+            'method' => 'GET',
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoPermitida(),
+            'env' => $env,
+        ]);
+    }
+
+    /**
+     * Sem credencial da Meta o painel mostrava dois templates "APPROVED" com texto
+     * inventado. Agora a lista vem vazia e a resposta traz o motivo, em português.
+     */
+    public function testSemCredenciaisDaMetaNaoHaTemplateAprovadoInventado(): void
+    {
+        $res = $this->listarTemplates();
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(200, $res->status, $res->body);
+        $json = $res->json();
+        self::assertSame([], $json['templates']);
+        self::assertStringContainsString('WHATSAPP_ACCESS_TOKEN', (string) $json['error']);
+        self::assertStringNotContainsString('APPROVED', $res->body);
+    }
+
+    public function testTemplatesConfiguradosSemMetaSaemComoNaoVerificados(): void
+    {
+        $res = $this->listarTemplates([
+            'WHATSAPP_OS_TEMPLATE' => 'meu_os',
+            'WHATSAPP_BILLING_TEMPLATE' => 'minha_cobranca',
+        ]);
+
+        $json = $res->json();
+        self::assertNotNull($json['error']);
+        self::assertSame(['meu_os', 'minha_cobranca'], array_column($json['templates'], 'name'));
+        self::assertSame(['UNVERIFIED', 'UNVERIFIED'], array_column($json['templates'], 'status'));
+        self::assertSame('', $json['templates'][0]['body_text']);
+        self::assertSame(['Nome do Cliente', 'Número da OS', 'Link da OS'], $json['templates'][0]['param_labels']);
+        self::assertStringNotContainsString('APPROVED', $res->body);
+    }
 }

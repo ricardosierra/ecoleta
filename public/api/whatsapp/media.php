@@ -50,10 +50,12 @@ if ($isJson) {
         apiJsonResponse(400, ['error' => 'Conteúdo de mídia não informado.']);
     }
 
-    // Se vier com data URI prefix (ex: data:audio/ogg;base64,...), remove
-    if (preg_match('/^data:([^;]+);base64,(.+)$/', $base64, $matches)) {
-        $mimeType = $mimeType !== '' ? $mimeType : $matches[1];
-        $base64 = $matches[2];
+    // Se vier com data URI prefix (ex: data:audio/webm;codecs=opus;base64,...),
+    // separa o tipo (com parâmetros) do conteúdo.
+    $dataUri = waParseDataUri($base64);
+    if ($dataUri !== null) {
+        $mimeType = $mimeType !== '' ? $mimeType : $dataUri['mime'];
+        $base64 = $dataUri['data'];
     }
 
     $binary = base64_decode($base64, true);
@@ -87,6 +89,28 @@ if (!in_array($mediaType, ['image', 'audio', 'document', 'video'], true)) {
     apiJsonResponse(400, ['error' => 'Tipo de mídia não suportado.']);
 }
 
+// Sem tipo informado, o conteúdo diz qual é. Precisa vir antes da validação do
+// áudio, que depende dele.
+if ($mimeType === '') {
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mimeType = (string) finfo_file($finfo, $tmpFilePath);
+    finfo_close($finfo);
+}
+
+// A Meta recusa áudio em webm, que é o que o Chrome grava, e a recusa dela chega
+// como erro genérico de upload. Dizemos aqui, antes de qualquer envio, o que ela
+// aceita de verdade.
+if ($mediaType === 'audio') {
+    $erroAudio = waAudioFormatError($mimeType);
+    if ($erroAudio !== null) {
+        if ($isJson && $tmpFilePath && file_exists($tmpFilePath)) @unlink($tmpFilePath);
+        apiJsonResponse(400, ['error' => $erroAudio, 'code' => 'unsupported_audio_format']);
+    }
+}
+
+// O que sobe para a Meta é o tipo limpo: sem parâmetros, e ogg sempre com opus.
+$mimeType = waMediaUploadMime($mimeType);
+
 $stmt = $db->prepare('SELECT * FROM whatsapp_conversations WHERE id = ? LIMIT 1');
 $stmt->execute([$conversationId]);
 $conversa = $stmt->fetch();
@@ -110,12 +134,6 @@ if (!waIsConfigured()) {
         'error' => 'O WhatsApp do robô não está configurado neste servidor.',
         'code' => 'whatsapp_not_configured',
     ]);
-}
-
-if ($mimeType === '') {
-    $finfo = finfo_open(FILEINFO_MIME_TYPE);
-    $mimeType = (string) finfo_file($finfo, $tmpFilePath);
-    finfo_close($finfo);
 }
 
 try {
