@@ -17,6 +17,35 @@ type Invoice = {
   invoice_url: string;
 };
 
+/** Texto do selo de cada status que o Asaas pode devolver. */
+const STATUS_LABEL: Record<string, string> = {
+  RECEIVED: "PAGO",
+  CONFIRMED: "CONFIRMADO",
+  OVERDUE: "VENCIDA",
+  PENDING: "PENDENTE",
+  DELETED: "CANCELADA",
+  REFUNDED: "ESTORNADA",
+  CHARGEBACK_REQUESTED: "CONTESTADA",
+};
+
+/**
+ * Cor do selo. O amarelo é só de PENDENTE, o estado em que ainda se espera o
+ * dinheiro: estorno e contestação no mesmo amarelo pareciam cobrança em aberto.
+ * CONFIRMADO é dinheiro garantido e fica verde, como PAGO.
+ */
+const STATUS_STYLE: Record<string, string> = {
+  RECEIVED: "bg-green-500/20 text-green-400",
+  CONFIRMED: "bg-green-500/20 text-green-400",
+  OVERDUE: "bg-red-500/20 text-red-400",
+  PENDING: "bg-yellow-500/20 text-yellow-400",
+  DELETED: "bg-zinc-500/20 text-zinc-400",
+  REFUNDED: "bg-sky-500/20 text-sky-300",
+  CHARGEBACK_REQUESTED: "bg-orange-500/20 text-orange-300",
+};
+
+/** Status que a tela não conhece: neutro, para não parecer pendente. */
+const STATUS_STYLE_DEFAULT = "bg-zinc-500/20 text-zinc-400";
+
 export default function FaturasPage() {
   return (
     <DashboardGate>
@@ -123,58 +152,57 @@ function FaturasMain() {
         <button disabled={busy} className="rounded-full bg-[var(--color-accent)] text-[var(--color-bg-dark)] px-5 py-2 font-semibold">{busy ? "Processando..." : "Gerar e enviar fatura"}</button>
       </form>
       {feedback && <p role="status" className="text-sm">{feedback}</p>}
-      <div className="bg-[rgba(255,255,255,0.04)] rounded-2xl border border-[var(--color-border-dark)] overflow-x-auto">
-        <table className="w-full text-left text-sm whitespace-nowrap">
-          <thead className="bg-black/40 text-[var(--color-text-on-dark)] border-b border-[var(--color-border-dark)]">
-            <tr>
-              <th className="px-6 py-3 font-medium">Cliente</th>
-              <th className="px-6 py-3 font-medium">Vencimento</th>
-              <th className="px-6 py-3 font-medium">Valor</th>
-              <th className="px-6 py-3 font-medium">Status</th>
-              <th className="px-6 py-3 font-medium"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--color-border-dark)]">
-            {loading ? (
-              <tr><td colSpan={5} className="px-6 py-4 text-center text-white/50">Carregando...</td></tr>
-            ) : invoices.length === 0 ? (
-              <tr><td colSpan={5} className="px-6 py-4 text-center text-white/50">Nenhuma fatura encontrada.</td></tr>
-            ) : invoices.map(inv => (
-              <tr key={inv.id} className="hover:bg-white/5">
-                <td className="px-6 py-4 font-medium">{inv.client_name}</td>
-                <td className="px-6 py-4">{formatOsDate(inv.due_date)}</td>
-                <td className="px-6 py-4">R$ {Number(inv.value).toFixed(2).replace('.', ',')}</td>
-                <td className="px-6 py-4">
-                  <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                    inv.status === 'RECEIVED' ? 'bg-green-500/20 text-green-400' :
-                    inv.status === 'OVERDUE' ? 'bg-red-500/20 text-red-400' :
-                    inv.status === 'DELETED' ? 'bg-zinc-500/20 text-zinc-400' :
-                    'bg-yellow-500/20 text-yellow-400'
-                  }`}>
-                    {{ RECEIVED: 'PAGO', CONFIRMED: 'CONFIRMADO', OVERDUE: 'VENCIDA', PENDING: 'PENDENTE', DELETED: 'CANCELADA', REFUNDED: 'ESTORNADA', CHARGEBACK_REQUESTED: 'CONTESTADA' }[inv.status] ?? inv.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-right">
-                  {['PENDING', 'OVERDUE'].includes(inv.status) && (
-                    <>
-                      <button disabled={busy} onClick={() => void submit({ action: "send", id: inv.id })} className="mr-4 text-xs text-[var(--color-accent)] hover:underline">
-                        Tentar envios pendentes
-                      </button>
-                      <button disabled={busy} onClick={() => void handleCancel(inv.id)} className="mr-4 text-xs text-red-400 hover:text-red-300 hover:underline">
-                        Cancelar
-                      </button>
-                    </>
-                  )}
-                  {inv.invoice_url && (
-                    <a href={inv.invoice_url} target="_blank" rel="noreferrer" className="text-[var(--color-accent)] hover:underline text-xs">
-                      Ver Fatura
-                    </a>
-                  )}
-                </td>
+      <div className="bg-[rgba(255,255,255,0.04)] rounded-2xl border border-[var(--color-border-dark)] overflow-hidden">
+        <div className="data-table-wrap">
+          <table className="data-table text-white/85">
+            <thead className="bg-black/40 text-[var(--color-text-on-dark)]">
+              <tr>
+                <th>Cliente</th>
+                <th>Vencimento</th>
+                <th>Valor</th>
+                <th>Status</th>
+                <th><span className="sr-only">Ações</span></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={5} className="data-table-empty py-8 text-center text-white/50">Carregando...</td></tr>
+              ) : invoices.length === 0 ? (
+                <tr><td colSpan={5} className="data-table-empty py-8 text-center text-white/50">Nenhuma fatura encontrada.</td></tr>
+              ) : invoices.map(inv => (
+                <tr key={inv.id} className="xl:hover:bg-white/5">
+                  <td data-label="Cliente" className="font-medium text-white">{inv.client_name}</td>
+                  <td data-label="Vencimento" className="whitespace-nowrap">{formatOsDate(inv.due_date)}</td>
+                  <td data-label="Valor" className="whitespace-nowrap">R$ {Number(inv.value).toFixed(2).replace('.', ',')}</td>
+                  <td data-label="Status">
+                    <span className={`h-fit whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-semibold ${STATUS_STYLE[inv.status] ?? STATUS_STYLE_DEFAULT}`}>
+                      {STATUS_LABEL[inv.status] ?? inv.status}
+                    </span>
+                  </td>
+                  <td className="data-table-actions">
+                    <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1">
+                      {['PENDING', 'OVERDUE'].includes(inv.status) && (
+                        <>
+                          <button disabled={busy} onClick={() => void submit({ action: "send", id: inv.id })} className="text-xs text-[var(--color-accent)] hover:underline">
+                            Tentar envios pendentes
+                          </button>
+                          <button disabled={busy} onClick={() => void handleCancel(inv.id)} className="text-xs text-red-400 hover:text-red-300 hover:underline">
+                            Cancelar
+                          </button>
+                        </>
+                      )}
+                      {inv.invoice_url && (
+                        <a href={inv.invoice_url} target="_blank" rel="noreferrer" className="text-[var(--color-accent)] hover:underline text-xs">
+                          Ver Fatura
+                        </a>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

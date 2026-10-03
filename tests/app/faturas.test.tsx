@@ -81,3 +81,70 @@ describe("Faturas", () => {
     });
   });
 });
+
+describe("Faturas: tabela e cores de status", () => {
+  const fatura = (id: number, status: string) => ({
+    id,
+    client_id: 1,
+    client_name: `Cliente ${status}`,
+    value: "10.00",
+    due_date: "2026-09-10",
+    status,
+    invoice_url: "https://example.com/invoice",
+  });
+
+  /** Devolve as faturas dadas, para a tela mostrar vários selos de uma vez. */
+  function mockComFaturas(invoices: object[]) {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.includes("/auth/me.php")) return Response.json(sessionOf("root"));
+      if (url.includes("/clients/")) return Response.json({ ok: true, clients: [] });
+      return Response.json({ ok: true, billing_cron: null, invoices });
+    }));
+  }
+
+  /**
+   * O amarelo é o de "pendente", o estado em que ainda se espera o dinheiro. Um
+   * estorno ou uma contestação no mesmo amarelo parecia uma cobrança em aberto.
+   */
+  it("só a fatura pendente usa o amarelo de pendente", async () => {
+    mockComFaturas(["RECEIVED", "CONFIRMED", "OVERDUE", "PENDING", "DELETED", "REFUNDED", "CHARGEBACK_REQUESTED"].map((s, i) => fatura(i + 1, s)));
+    render(<FaturasPage />);
+
+    const selos: Record<string, string> = {};
+    for (const rotulo of ["PAGO", "CONFIRMADO", "VENCIDA", "PENDENTE", "CANCELADA", "ESTORNADA", "CONTESTADA"]) {
+      selos[rotulo] = (await screen.findByText(rotulo)).className;
+    }
+
+    expect(selos.PENDENTE).toContain("yellow");
+    for (const rotulo of ["PAGO", "CONFIRMADO", "VENCIDA", "CANCELADA", "ESTORNADA", "CONTESTADA"]) {
+      expect(selos[rotulo], rotulo).not.toContain("yellow");
+    }
+    // Confirmado é dinheiro garantido, como pago.
+    expect(selos.CONFIRMADO).toBe(selos.PAGO);
+    // Estornada e contestada não se confundem com as outras.
+    const distintos = new Set([selos.PAGO, selos.VENCIDA, selos.PENDENTE, selos.CANCELADA, selos.ESTORNADA, selos.CONTESTADA]);
+    expect(distintos.size).toBe(6);
+  });
+
+  it("usa a tabela de dados do dashboard, com o cabeçalho de cada célula para a tela estreita", async () => {
+    mockComFaturas([fatura(1, "PENDING")]);
+    render(<FaturasPage />);
+
+    const tabela = await screen.findByRole("table");
+    expect(tabela).toHaveClass("data-table");
+    expect(tabela.parentElement).toHaveClass("data-table-wrap");
+
+    const linha = (await screen.findByText("Cliente PENDING")).closest("tr")!;
+    const rotulos = Array.from(linha.querySelectorAll("td[data-label]")).map(td => td.getAttribute("data-label"));
+    expect(rotulos).toEqual(["Cliente", "Vencimento", "Valor", "Status"]);
+    expect(linha.querySelector("td.data-table-actions")).not.toBeNull();
+  });
+
+  it("centraliza a mensagem de tabela vazia como as outras telas", async () => {
+    mockComFaturas([]);
+    render(<FaturasPage />);
+
+    const vazio = await screen.findByText("Nenhuma fatura encontrada.");
+    expect(vazio).toHaveClass("data-table-empty");
+  });
+});
