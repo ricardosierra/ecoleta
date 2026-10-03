@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../db.php';
+require_once __DIR__ . '/../authz.php';
 
 startSecureSession();
 apiSendJsonHeaders();
@@ -9,8 +10,18 @@ apiSendJsonHeaders();
 // para quem ainda não fez login — o próprio POST de login precisa dele.
 $csrfToken = apiCsrfToken();
 
-if (!isset($_SESSION['user_id'])) {
+$sessionUserId = apiSessionUserId();
+if ($sessionUserId === null) {
     apiJsonResponse(401, ['error' => 'Não autenticado.', 'csrf_token' => $csrfToken]);
+}
+
+// É aqui que a sessão se põe em dia com o banco quando a tela abre: papel e
+// login mudados são regravados na sessão, e conta excluída, ou com a senha
+// trocada depois do login, tem a sessão destruída. Sem o csrf_token na resposta
+// de propósito: o token era o da sessão que acabou de morrer, e a tela pede um
+// novo (a este mesmo endpoint) antes do próximo login.
+if (apiResolveSessionActor($sessionUserId) === null) {
+    apiJsonResponse(401, ['error' => 'Não autenticado.']);
 }
 
 $db = getDbConnection();
@@ -21,11 +32,11 @@ $stmt = $db->prepare("
     LEFT JOIN `groups` g ON u.group_id = g.id
     WHERE u.id = ?
 ");
-$stmt->execute([$_SESSION['user_id']]);
+$stmt->execute([$sessionUserId]);
 $user = $stmt->fetch();
 
 if (!$user) {
-    // Sessão apontando para um usuário que não existe mais: derruba tudo.
+    // A conta sumiu entre a conferência acima e esta leitura: derruba tudo.
     apiDestroySession();
     apiJsonResponse(401, ['error' => 'Usuário não encontrado.']);
 }

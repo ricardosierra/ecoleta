@@ -189,7 +189,7 @@ function UsuarioDetails() {
   const mayEditUser = user ? canEditUser(currentUser, user) : false;
   const mayGeneratePassword = user ? canGeneratePassword(currentUser, user) : false;
   const mayDeleteUser = user ? canDeleteUser(currentUser, user) : false;
-  const mayToggleLock = canTogglePasswordLock(currentUser);
+  const mayToggleLock = canTogglePasswordLock(currentUser, user ?? undefined);
   const editableRoles = user ? assignableRolesOnEdit(currentUser, user) : [];
 
   const openEditModal = () => {

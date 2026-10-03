@@ -80,4 +80,54 @@ describe("DashboardGate - Troca de senha e visibilidade", () => {
 
     expect(api.requested(CHANGE_PASSWORD)).toBe(true);
   });
+  it("recusa senha com menos de 8 caracteres sem chamar o backend", async () => {
+    const user = userEvent.setup();
+    const api = installApiMock({
+      [ME]: { body: sessionOf("root", { force_password_change: true }) },
+      [CHANGE_PASSWORD]: { body: { ok: true, csrf_token: "b".repeat(64) } },
+    });
+
+    render(<DashboardGate><div>Conteúdo Protegido</div></DashboardGate>);
+
+    await screen.findByRole("heading", { name: "Definir Nova Senha" });
+
+    // Sete caracteres: o servidor passou a exigir oito, e a tela avisa antes.
+    await user.type(screen.getByLabelText("Nova Senha"), "abcdefg");
+    await user.type(screen.getByLabelText("Confirmar Nova Senha"), "abcdefg");
+    await user.click(screen.getByRole("button", { name: "Salvar nova senha" }));
+
+    expect(await screen.findByText("A senha deve ter pelo menos 8 caracteres.")).toBeVisible();
+    expect(api.requested(CHANGE_PASSWORD)).toBe(false);
+  });
+
+  it("aceita senha de exatamente 8 caracteres", async () => {
+    const user = userEvent.setup();
+    const api = installApiMock({
+      [ME]: { body: sessionOf("root", { force_password_change: true }) },
+      [CHANGE_PASSWORD]: { body: { ok: true, csrf_token: "b".repeat(64) } },
+    });
+
+    render(<DashboardGate><div>Conteúdo Protegido</div></DashboardGate>);
+
+    await screen.findByRole("heading", { name: "Definir Nova Senha" });
+
+    await user.type(screen.getByLabelText("Nova Senha"), "abcdefgh");
+    await user.type(screen.getByLabelText("Confirmar Nova Senha"), "abcdefgh");
+    await user.click(screen.getByRole("button", { name: "Salvar nova senha" }));
+
+    expect(api.requested(CHANGE_PASSWORD)).toBe(true);
+  });
+
+  it("declara o mínimo de 8 caracteres nos dois campos de senha", async () => {
+    installApiMock({
+      [ME]: { body: sessionOf("root", { force_password_change: true }) },
+    });
+
+    render(<DashboardGate><div>Conteúdo Protegido</div></DashboardGate>);
+
+    await screen.findByRole("heading", { name: "Definir Nova Senha" });
+
+    expect(screen.getByLabelText("Nova Senha")).toHaveAttribute("minLength", "8");
+    expect(screen.getByLabelText("Confirmar Nova Senha")).toHaveAttribute("minLength", "8");
+  });
 });

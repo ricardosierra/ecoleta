@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../rate_limit.php';
+require_once __DIR__ . '/../authz.php';
 
 startSecureSession();
 apiRequireCsrfToken();
@@ -94,6 +95,9 @@ $_SESSION['user_id'] = (int) $user['id'];
 $_SESSION['login'] = $user['login'];
 $_SESSION['role'] = $user['role'];
 $_SESSION['last_activity'] = time();
+// Impressão digital do hash vigente: trocar ou resetar a senha derruba as
+// sessões que já estavam abertas (ver apiResolveSessionActor()).
+apiBindSessionToPassword((string) $user['password_hash']);
 
 // Registra acesso
 $logStmt = $db->prepare("INSERT INTO access_logs (user_id, ip_address, user_agent) VALUES (?, ?, ?)");

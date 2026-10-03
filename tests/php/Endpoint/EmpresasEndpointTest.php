@@ -17,6 +17,9 @@ final class EmpresasEndpointTest extends TestCase
     protected function setUp(): void
     {
         $this->db = new TestDatabase();
+        // A sessão de sessaoAdmin() aponta para o id 1. A API confere o usuário no
+        // banco a cada requisição, então a conta tem que existir (e ser root).
+        $this->db->seedUser('admin', 'senha-root-123', 'root');
         $this->uploadsDir = sys_get_temp_dir() . '/ecoleta_uploads_' . bin2hex(random_bytes(6));
         mkdir($this->uploadsDir, 0700, true);
     }

@@ -250,4 +250,170 @@ final class UsersEndpointTest extends TestCase
 
         self::assertSame(200, $res->status, $res->body);
     }
+    // --- senha temporária e trava de troca: nunca as duas juntas --------------
+
+    /** @return array<string,mixed> */
+    private function linhaDe(int $id): array
+    {
+        $stmt = $this->db->pdo()->prepare('SELECT * FROM users WHERE id = ?');
+        $stmt->execute([$id]);
+
+        return (array) $stmt->fetch();
+    }
+
+    /**
+     * Senha temporária + trava de troca na mesma conta é beco sem saída:
+     * force_password_change manda a pessoa trocar a senha, e password_locked faz
+     * change_password.php responder 403. Ela ficava presa na temporária, que
+     * nunca expirava. A edição só barrava quando a conta JÁ estava travada;
+     * travar e gerar na mesma chamada passava.
+     */
+    public function testNaoGeraSenhaTemporariaETravaNaMesmaChamada(): void
+    {
+        $id = $this->db->seedUser('joao', 'senha-user-123', 'user', 'joao@empresa.com', $this->grupoId);
+        $antes = $this->linhaDe($id);
+
+        $res = $this->editar([
+            'user_id' => $id,
+            'login' => 'joao',
+            'email' => 'joao@empresa.com',
+            'group_id' => $this->grupoId,
+            'generate_password' => true,
+            'password_locked' => true,
+        ]);
+
+        self::assertSame(400, $res->status, $res->body);
+        self::assertNull($res->json()['generated_password'] ?? null);
+
+        $depois = $this->linhaDe($id);
+        self::assertSame($antes['password_hash'], $depois['password_hash'], 'a senha foi trocada pela chamada recusada');
+        self::assertSame(0, (int) $depois['password_locked'], 'a conta foi travada pela chamada recusada');
+        self::assertSame(0, (int) $depois['force_password_change']);
+    }
+
+    public function testNaoDefineSenhaETravaNaMesmaChamada(): void
+    {
+        $id = $this->db->seedUser('joao', 'senha-user-123', 'user', 'joao@empresa.com', $this->grupoId);
+        $antes = $this->linhaDe($id);
+
+        $res = $this->editar([
+            'user_id' => $id,
+            'login' => 'joao',
+            'email' => 'joao@empresa.com',
+            'group_id' => $this->grupoId,
+            'new_password' => 'senha-definida-123',
+            'password_locked' => true,
+        ]);
+
+        self::assertSame(400, $res->status, $res->body);
+        self::assertSame($antes['password_hash'], $this->linhaDe($id)['password_hash']);
+        self::assertSame(0, (int) $this->linhaDe($id)['password_locked']);
+    }
+
+    /** Travar quem ainda não trocou a senha temporária prende a pessoa do mesmo jeito. */
+    public function testNaoTravaContaQueAindaTemSenhaTemporaria(): void
+    {
+        $id = $this->db->seedUser('joao', 'senha-user-123', 'user', 'joao@empresa.com', $this->grupoId);
+        $this->db->pdo()->prepare('UPDATE users SET force_password_change = 1 WHERE id = ?')->execute([$id]);
+
+        $res = $this->editar([
+            'user_id' => $id,
+            'login' => 'joao',
+            'email' => 'joao@empresa.com',
+            'group_id' => $this->grupoId,
+            'password_locked' => true,
+        ]);
+
+        self::assertSame(400, $res->status, $res->body);
+        self::assertSame(0, (int) $this->linhaDe($id)['password_locked']);
+    }
+
+    /** A guarda não pode estar apertada demais: travar uma conta saudável continua valendo. */
+    public function testTravaDeContaSemSenhaTemporariaContinuaFuncionando(): void
+    {
+        $id = $this->db->seedUser('joao', 'senha-user-123', 'user', 'joao@empresa.com', $this->grupoId);
+
+        $res = $this->editar([
+            'user_id' => $id,
+            'login' => 'joao',
+            'email' => 'joao@empresa.com',
+            'group_id' => $this->grupoId,
+            'password_locked' => true,
+        ]);
+
+        self::assertSame(200, $res->status, $res->body);
+        self::assertSame(1, (int) $this->linhaDe($id)['password_locked']);
+    }
+
+    /** Destravar e gerar a senha na mesma chamada é o caminho legítimo e segue aberto. */
+    public function testDestravarEGerarSenhaNaMesmaChamadaContinuaFuncionando(): void
+    {
+        $id = $this->db->seedUser('joao', 'senha-user-123', 'user', 'joao@empresa.com', $this->grupoId, 1);
+
+        $res = $this->editar([
+            'user_id' => $id,
+            'login' => 'joao',
+            'email' => 'joao@empresa.com',
+            'group_id' => $this->grupoId,
+            'generate_password' => true,
+            'password_locked' => false,
+        ]);
+
+        self::assertSame(200, $res->status, $res->body);
+        self::assertNotEmpty($res->json()['generated_password']);
+
+        $depois = $this->linhaDe($id);
+        self::assertSame(0, (int) $depois['password_locked']);
+        self::assertSame(1, (int) $depois['force_password_change']);
+    }
+
+    /** Conta já travada e ainda travada: gerar senha segue recusado (403, com alerta). */
+    public function testContaJaTravadaContinuaRecusandoGerarSenha(): void
+    {
+        $id = $this->db->seedUser('joao', 'senha-user-123', 'user', 'joao@empresa.com', $this->grupoId, 1);
+
+        $res = $this->editar([
+            'user_id' => $id,
+            'login' => 'joao',
+            'email' => 'joao@empresa.com',
+            'group_id' => $this->grupoId,
+            'generate_password' => true,
+        ]);
+
+        self::assertSame(403, $res->status, $res->body);
+    }
+
+    /**
+     * Quem já está na combinação (travado e com senha temporária, de antes desta
+     * regra) continua editável: a guarda barra só ATIVAR a trava, não toda
+     * edição de conta que já tem as duas coisas.
+     */
+    public function testEditarOutroCampoDeContaJaPresaNaoEBarrado(): void
+    {
+        $id = $this->db->seedUser('joao', 'senha-user-123', 'user', 'joao@empresa.com', $this->grupoId, 1);
+        $this->db->pdo()->prepare('UPDATE users SET force_password_change = 1 WHERE id = ?')->execute([$id]);
+
+        $res = $this->editar([
+            'user_id' => $id,
+            'login' => 'joao',
+            'email' => 'joao.novo@empresa.com',
+            'group_id' => $this->grupoId,
+            'password_locked' => true,
+        ]);
+
+        self::assertSame(200, $res->status, $res->body);
+    }
+
+    public function testSenhaDefinidaPeloAdministradorTambemTemOitoCaracteresNoMinimo(): void
+    {
+        $id = $this->db->seedUser('joao', 'senha-user-123', 'user', 'joao@empresa.com', $this->grupoId);
+        $base = ['user_id' => $id, 'login' => 'joao', 'email' => 'joao@empresa.com', 'group_id' => $this->grupoId];
+
+        $curta = $this->editar($base + ['new_password' => 'abcdefg']);
+        self::assertSame(400, $curta->status, $curta->body);
+        self::assertStringContainsString('8 caracteres', (string) $curta->error());
+
+        $ok = $this->editar($base + ['new_password' => 'abcdefgh']);
+        self::assertSame(200, $ok->status, $ok->body);
+    }
 }

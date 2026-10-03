@@ -183,6 +183,32 @@ describe("ações sobre uma conta", () => {
     expect(canTogglePasswordLock(comum)).toBe(false);
     expect(canTogglePasswordLock(null)).toBe(false);
   });
+
+  /**
+   * Travar a troca de quem ainda não trocou a senha temporária a deixaria presa
+   * nela: `force_password_change` manda trocar, a trava faz o servidor recusar.
+   * Espelha `apiPasswordLockAllowed()` em public/api/authz.php — a mesma tabela
+   * está em tests/php/Unit/AuthzTest.php.
+   */
+  it.each([
+    // [travada hoje, troca pendente, root pode alternar a trava?]
+    [false, false, true], // travar conta saudável
+    [true, false, true], // destravar
+    [true, true, true], // destravar conta que já estava presa: é a saída
+    [false, true, false], // travar quem tem senha temporária: prende a pessoa
+  ])("trava hoje=%s, troca pendente=%s: root pode alternar=%s", (locked, pending, esperado) => {
+    const alvo = { id: 7, role: "user", password_locked: locked, force_password_change: pending };
+
+    expect(canTogglePasswordLock(root, alvo)).toBe(esperado);
+  });
+
+  it("quem não é root nunca alterna a trava, qualquer que seja o alvo", () => {
+    const alvo = { id: 7, role: "user", password_locked: true, force_password_change: false };
+
+    expect(canTogglePasswordLock(master, alvo)).toBe(false);
+    expect(canTogglePasswordLock(comum, alvo)).toBe(false);
+    expect(canTogglePasswordLock(null, alvo)).toBe(false);
+  });
 });
 
 describe("canViewUserLogs", () => {

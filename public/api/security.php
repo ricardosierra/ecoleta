@@ -14,6 +14,11 @@ const API_CSRF_SESSION_KEY = 'csrf_token';
 const API_CSRF_HEADER = 'X-CSRF-Token';
 // Sessão parada por mais tempo que isto é esvaziada (8 horas).
 const API_SESSION_IDLE_TIMEOUT = 28800;
+// Tamanho mínimo de qualquer senha que uma pessoa ou um administrador escolhe.
+// A senha temporária que o sistema gera tem 10 caracteres e não passa por aqui.
+// lib/dashboard-api.ts não conhece este número: a tela de troca
+// (components/DashboardGate.tsx) repete o mesmo 8.
+const API_PASSWORD_MIN_LENGTH = 8;
 
 /**
  * Detecta HTTPS considerando proxies/balanceadores comuns em hospedagem

@@ -6,6 +6,13 @@ import { PowerBIViewer } from "@/components/PowerBIViewer";
 import { EyeIcon, EyeOffIcon } from "@/components/icons";
 import { apiFetch, apiPostJson, clearCsrfToken, setCsrfToken } from "@/lib/dashboard-api";
 
+/**
+ * Mínimo de caracteres da senha nova. Espelha `API_PASSWORD_MIN_LENGTH` em
+ * `public/api/security.php`: o servidor é quem recusa, e a tela só avisa antes
+ * para não gastar uma ida à API.
+ */
+const MIN_PASSWORD_LENGTH = 8;
+
 export type DashboardUser = {
   id: number;
   login: string;
@@ -117,8 +124,8 @@ export function DashboardGate({ children }: { children?: React.ReactNode }) {
   const handleChangePassword = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
-    if (newPassword.length < 6) {
-      setError("A senha deve ter pelo menos 6 caracteres.");
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      setError(`A senha deve ter pelo menos ${MIN_PASSWORD_LENGTH} caracteres.`);
       return;
     }
 
@@ -239,7 +246,7 @@ export function DashboardGate({ children }: { children?: React.ReactNode }) {
                 <input
                   id="new-password"
                   type={showNewPassword ? "text" : "password"}
-                  minLength={6}
+                  minLength={MIN_PASSWORD_LENGTH}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   className="w-full rounded-xl border border-[var(--color-border-dark)] bg-black/20 px-4 py-3 pr-11 text-white outline-none focus:border-[var(--color-accent)]"
@@ -262,7 +269,7 @@ export function DashboardGate({ children }: { children?: React.ReactNode }) {
                 <input
                   id="confirm-password"
                   type={showConfirmPassword ? "text" : "password"}
-                  minLength={6}
+                  minLength={MIN_PASSWORD_LENGTH}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   className="w-full rounded-xl border border-[var(--color-border-dark)] bg-black/20 px-4 py-3 pr-11 text-white outline-none focus:border-[var(--color-accent)]"
