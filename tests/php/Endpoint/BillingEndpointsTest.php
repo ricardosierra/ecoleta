@@ -252,6 +252,40 @@ final class BillingEndpointsTest extends TestCase
         self::assertSame('active', $this->db->rows('clients')[0]['status']);
     }
 
+    /**
+     * DDD 55 é o do Rio Grande do Sul. "(55) 99999-1234" era lido como DDI, virava
+     * 55999991234 (11 dígitos) e o servidor respondia "WhatsApp inválido" para um
+     * número perfeitamente válido.
+     */
+    public function testEdicaoAceitaWhatsappDoDdd55(): void
+    {
+        $clientId = $this->db->seedClient('Cliente Gaucho', 150.0, 10, 'active', '5511999999999', null);
+
+        $res = Endpoint::call('clients/edit.php', [
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'body' => ['client_id' => $clientId, 'whatsapp' => '(55) 99999-1234'],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(200, $res->status, $res->body);
+        self::assertSame('5555999991234', $this->db->rows('clients')[0]['whatsapp']);
+    }
+
+    public function testCadastroNaoRecusaWhatsappDoDdd55(): void
+    {
+        $res = Endpoint::call('clients/index.php', [
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'body' => ['name' => 'Cliente Gaucho', 'monthly_value' => 0, 'whatsapp' => '(55) 99999-1234'],
+        ]);
+
+        // Sem chave do Asaas a suíte para no cadastro remoto: o que importa é que a
+        // recusa NÃO foi a do WhatsApp.
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertStringNotContainsString('WhatsApp inválido', (string) $res->error());
+    }
+
     public function testEdicaoAtualizaWhatsappLocalmenteQuandoClienteNaoPossuiAsaasId(): void
     {
         $clientId = $this->db->seedClient('Cliente Local', 150.0, 10, 'active', '5511999999999', null);
