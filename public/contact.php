@@ -262,7 +262,8 @@ $hEmpresa      = esc($sEmpresa);
 $hTipoOperacao = esc($sTipoOperacao);
 $hMensagem     = esc($mensagem);
 
-// Corpo HTML (template igual ao route.ts Node.js)
+// Corpo HTML. O site é export estático: não há rota do Next para o contato, e
+// este arquivo é o único endpoint do formulário.
 $htmlBody = <<<HTML
 <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#242424;">
   <h1 style="font-size:18px;margin:0 0 16px;color:#0D1F0F;">Novo contato pelo site Ecoleva</h1>
