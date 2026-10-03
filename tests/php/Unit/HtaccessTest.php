@@ -5,7 +5,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
- * public/.htaccess — o que NENHUM servidor web roda aqui.
+ * public/.htaccess: o que NENHUM servidor web roda aqui.
  *
  * Não há Apache nem LiteSpeed na suíte, então isto não prova que o servidor
  * obedece: prova o que dá para provar de um arquivo de texto. As expressões

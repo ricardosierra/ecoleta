@@ -18,7 +18,7 @@ const API_LOGIN_MAX_LENGTH = 50;
  * sublinhado, de 3 a 50 caracteres (o limite da coluna `users.login`).
  *
  * ASCII de propósito: o MySQL compara acento e caixa como iguais, então `joão`
- * e `joao` seriam a mesma conta para o banco e duas para quem lê — um par de
+ * e `joao` seriam a mesma conta para o banco e duas para quem lê, um par de
  * nomes que se confundem. Sem '@' e sem espaço, o que também impede um login de
  * ter a cara de um e-mail. Quebra de linha e aspas ficam de fora porque o login
  * vai para assunto de e-mail, mensagem de log e HTML.
@@ -35,7 +35,7 @@ function apiLoginFormatIsValid(string $login): bool
  *
  * Compara em caixa baixa porque o MySQL da hospedagem compara assim, e olha os
  * quatro cruzamentos: login com login, e-mail com e-mail, e os dois que a busca
- * do login enxerga e as checagens antigas não — login igual ao e-mail de outra
+ * do login enxerga e as checagens antigas não: login igual ao e-mail de outra
  * conta, e e-mail igual ao login de outra.
  *
  * @param int|null $exceptUserId conta que está sendo editada (não colide consigo mesma)

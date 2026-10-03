@@ -37,7 +37,7 @@ export type TargetUser = {
   id?: number | null;
   role?: string | null;
   password_locked?: boolean | null;
-  /** A conta ainda não trocou a senha temporária — ver `canTogglePasswordLock`. */
+  /** A conta ainda não trocou a senha temporária (ver `canTogglePasswordLock`). */
   force_password_change?: boolean | null;
 };
 
@@ -164,7 +164,7 @@ export function canGeneratePassword(actor: Actor, target: TargetUser): boolean {
 /**
  * Só root alterna a trava de troca de senha. Com o alvo à mão, o botão também
  * some quando travar prenderia a pessoa: `force_password_change` manda trocar a
- * senha e a trava faz o servidor recusar a troca. Destravar sempre pode — é a
+ * senha e a trava faz o servidor recusar a troca. Destravar sempre pode: é a
  * saída de quem já está nessa situação.
  *
  * Espelha `apiPasswordLockAllowed()` em `public/api/authz.php`, que é quem

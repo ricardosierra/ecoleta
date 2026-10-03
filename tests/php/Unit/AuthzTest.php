@@ -127,7 +127,7 @@ final class AuthzTest extends TestCase
      * Travar a troca de quem ainda não trocou a senha temporária a deixa presa
      * nela: force_password_change manda trocar, a trava faz change_password.php
      * responder 403. Espelha `canTogglePasswordLock(root, alvo)` em
-     * lib/authz.ts — a mesma tabela está em tests/lib/authz.test.ts.
+     * lib/authz.ts; a mesma tabela está em tests/lib/authz.test.ts.
      *
      * @return array<string, array{0:bool, 1:bool, 2:bool}>
      */

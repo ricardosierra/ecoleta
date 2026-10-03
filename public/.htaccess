@@ -89,7 +89,7 @@ ErrorDocument 404 /404.html
 </FilesMatch>
 
 # api/vendor/ (Composer e PHPMailer): só o PHP precisa dele, por require no
-# sistema de arquivos — negar o acesso HTTP não afeta isso. Tem script solto
+# sistema de arquivos, e negar o acesso HTTP não afeta isso. Tem script solto
 # (phpmailer/get_oauth_token.php) que não deve ser alcançável de fora.
 # <DirectoryMatch> não vale em .htaccess (só em configuração de servidor), então
 # o diretório é negado por RewriteRule, que este arquivo já usa.

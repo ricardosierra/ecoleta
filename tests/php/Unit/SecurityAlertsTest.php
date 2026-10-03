@@ -6,7 +6,7 @@ use PHPUnit\Framework\TestCase;
 require_once ECOLETA_API_DIR . '/security_alerts.php';
 
 /**
- * E-mail de alerta de segurança — public/api/security_alerts.php.
+ * E-mail de alerta de segurança: public/api/security_alerts.php.
  *
  * O documento é montado por funções puras justamente para a suíte poder ler o
  * HTML: quem envia (osSendMail) em modo `log` só registra o destinatário, e foi

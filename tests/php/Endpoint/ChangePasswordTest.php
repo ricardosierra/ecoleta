@@ -141,7 +141,7 @@ final class ChangePasswordTest extends TestCase
 
     /**
      * Seis caracteres passavam. O corte agora é oito: sete é recusado, oito
-     * passa — a fronteira exata, nos dois lados.
+     * passa: a fronteira exata, nos dois lados.
      */
     public function testSenhaDeSeteCaracteresEhRecusadaEDeOitoPassa(): void
     {

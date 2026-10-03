@@ -154,7 +154,7 @@ final class UsersEndpointTest extends TestCase
      * O login aceita e-mail (`WHERE login = ? OR email = ?`). Um login igual ao
      * e-mail de OUTRA conta deixa a busca ambígua: quem digitar aquele texto cai
      * em uma das duas contas, sem regra. E-mail sem '@' existe de verdade em
-     * bases antigas — users/edit.php nunca validou o formato.
+     * bases antigas, já que users/edit.php nunca validou o formato.
      */
     public function testCriacaoRecusaLoginIgualAoEmailDeOutraConta(): void
     {
@@ -209,7 +209,7 @@ final class UsersEndpointTest extends TestCase
 
     /**
      * Conta antiga com login fora do formato continua editável enquanto o login
-     * não mudar: o formato vale para o que entra, não para o que já existe —
+     * não mudar: o formato vale para o que entra, não para o que já existe;
      * senão editar o e-mail de quem tem login com espaço passaria a falhar.
      */
     public function testEdicaoDeContaAntigaComLoginForaDoFormatoSegueFuncionando(): void

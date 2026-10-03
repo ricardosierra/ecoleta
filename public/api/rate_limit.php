@@ -12,7 +12,7 @@ declare(strict_types=1);
  *  - IP sozinho — teto mais alto, conta falhas de qualquer login. Pega o
  *    password spraying, que troca de login a cada tentativa e por isso nunca
  *    chegaria perto do limite do primeiro contador.
- *  - conta sozinha — teto que NÃO sabe de IP. Pega o inverso do spraying: muitos
+ *  - conta sozinha: teto que NÃO sabe de IP. Pega o inverso do spraying: muitos
  *    endereços contra o mesmo login, em que cada par fica longe do limite e o
  *    contador do par sozinho deixava testar "admin" sem teto nenhum.
  *
@@ -39,8 +39,8 @@ declare(strict_types=1);
  * 30 minutos (antes, 15) ainda carrega as falhas.
  *
  * O cálculo de TEMPO é feito pelo MySQL (NOW(), TIMESTAMPDIFF): assim o bloqueio
- * não depende de PHP e banco estarem no mesmo fuso. A DECISÃO — quantos
- * segundos bloquear dado o número de falhas — é função pura aqui em cima
+ * não depende de PHP e banco estarem no mesmo fuso. A DECISÃO (quantos
+ * segundos bloquear dado o número de falhas) é função pura aqui em cima
  * (loginThrottleBlockSeconds, loginThrottleDecide) e é a parte coberta pela
  * suíte, que roda em SQLite e não executa o SQL de MySQL abaixo.
  */
@@ -207,7 +207,7 @@ function loginThrottleDecide(array $failuresByScope): array
     return $blocks;
 }
 
-/** O maior bloqueio entre os contadores — o que a resposta ao cliente anuncia. */
+/** O maior bloqueio entre os contadores, que é o que a resposta ao cliente anuncia. */
 function loginThrottleLongestBlock(array $blocksByScope): int
 {
     return $blocksByScope === [] ? 0 : max(0, ...array_map('intval', array_values($blocksByScope)));

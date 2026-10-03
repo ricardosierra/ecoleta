@@ -81,7 +81,7 @@ if ($passwordLocked) {
 // e é essa a que o administrador lhe entregou.
 //
 // Errar a senha atual aqui é tentar adivinhar a senha da conta por outra porta
-// que não a do login, então entra nos MESMOS contadores do login — senão o
+// que não a do login, então entra nos MESMOS contadores do login; senão o
 // limite de tentativas dele seria contornado por este endpoint.
 if (empty($actor['force_password_change'])) {
     $throttleIp = apiThrottleIp();

@@ -10,7 +10,7 @@ require_once ECOLETA_API_DIR . '/authz.php';
  * A sessão não é a fonte de verdade sobre quem a pessoa é: o banco é.
  *
  * O papel era gravado na sessão no login e nunca mais conferido, e o timeout
- * de inatividade renova a sessão a cada requisição — então revogar acesso não
+ * de inatividade renova a sessão a cada requisição, então revogar acesso não
  * revogava. Um master rebaixado a `user` seguia com 200 em clientes; um master
  * excluído seguia lendo a carteira e criando usuário; reset de senha não
  * derrubava a sessão que já estava aberta.

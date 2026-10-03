@@ -187,7 +187,7 @@ describe("ações sobre uma conta", () => {
   /**
    * Travar a troca de quem ainda não trocou a senha temporária a deixaria presa
    * nela: `force_password_change` manda trocar, a trava faz o servidor recusar.
-   * Espelha `apiPasswordLockAllowed()` em public/api/authz.php — a mesma tabela
+   * Espelha `apiPasswordLockAllowed()` em public/api/authz.php; a mesma tabela
    * está em tests/php/Unit/AuthzTest.php.
    */
   it.each([

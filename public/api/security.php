@@ -141,7 +141,7 @@ function apiSecret(string $name): string
 /**
  * URL absoluta https, sem credencial embutida e sem espaço ou caractere de
  * controle. Serve a todo campo que o painel grava e depois entrega como `src`
- * ou `href` — hoje, a URL do relatório Power BI de cada grupo.
+ * ou `href` (hoje, a URL do relatório Power BI de cada grupo).
  *
  * Só esquema https de propósito: `javascript:` e `data:` num `src` de iframe
  * executam no navegador de quem abre o painel, e `http:` seria conteúdo misto

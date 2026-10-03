@@ -72,7 +72,7 @@ if (empty($logs)) {
 
 // Busca histórico de auditoria de troca de senha (capturado por trigger MySQL ou
 // ações do sistema). Só o RASTRO sai daqui: tipo, autor, origem e data. As
-// colunas old_hash e new_hash ficam de fora de propósito, nem no SELECT — um
+// colunas old_hash e new_hash ficam de fora de propósito, nem no SELECT. Um
 // bcrypt nas mãos de um master (que lê o histórico de qualquer conta, root
 // inclusive) é o que permite quebrar a senha offline. A tela nunca usou esses
 // campos, e quem precisa saber se uma senha já valeu é users/password_history_check.php,

@@ -10,7 +10,7 @@ require_once ECOLETA_API_DIR . '/rate_limit.php';
  * PDO de mentira para a ORQUESTRAÇÃO do rate limit: registra o que foi
  * executado e responde "quantas falhas o contador tem" a partir de um mapa.
  *
- * Não valida SQL — o SQL de rate_limit.php é MySQL (NOW, TIMESTAMPDIFF,
+ * Não valida SQL: o SQL de rate_limit.php é MySQL (NOW, TIMESTAMPDIFF,
  * ON DUPLICATE KEY) e a suíte roda em SQLite, que falha aberto nele. O que isto
  * prova é a lógica em PHP em volta do SQL: qual contador é alimentado por qual
  * tentativa e qual contador recebe qual bloqueio.
@@ -113,8 +113,8 @@ final class RateLimitTest extends TestCase
     /**
      * Toda tentativa alimenta três contadores: o do par (login, IP), que pega a
      * força bruta contra uma conta vinda de um endereço; o do IP sozinho, que
-     * pega o password spraying — trocar de login a cada tentativa nunca encheria
-     * o primeiro; e o da CONTA sozinha, que pega o contrário do spraying: muitos
+     * pega o password spraying (trocar de login a cada tentativa nunca encheria
+     * o primeiro); e o da CONTA sozinha, que pega o contrário do spraying: muitos
      * IPs contra o mesmo login, em que cada par fica longe do limite.
      */
     public function testTentativaAlimentaOsTresContadores(): void

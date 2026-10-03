@@ -112,8 +112,8 @@ function apiRoleCanTogglePasswordLock(?string $actorRole): bool
  * pessoa trocar a senha e `password_locked` faz auth/change_password.php
  * responder 403, então ela ficaria presa na temporária, que nunca expira.
  * Barra-se apenas ATIVAR a trava (a conta não estava travada e passa a ficar):
- * conta já travada segue editável — quem tenta redefinir a senha dela é
- * recusado em outro ponto, com alerta —, e destravar nunca é problema.
+ * conta já travada segue editável (quem tenta redefinir a senha dela é
+ * recusado em outro ponto, com alerta), e destravar nunca é problema.
  *
  * Espelho de `canTogglePasswordLock(actor, alvo)` em lib/authz.ts, que só decide
  * se o botão aparece.
@@ -374,7 +374,7 @@ function apiReconcileActor(?array $row, $sessionFingerprint): ?array
  *   diante é o do banco.
  *
  * É um SELECT por id por requisição. Falha fechada: se o banco não responde, a
- * requisição termina em 500 — nunca segue adiante apoiada no que a sessão diz.
+ * requisição termina em 500, e nunca segue adiante apoiada no que a sessão diz.
  *
  * @return array{id:int,role:string,login:string,force_password_change:bool}|null
  */
@@ -464,7 +464,7 @@ function apiRequireAuthenticated(bool $allowPasswordChangePending = false): arra
  *
  * Sessão cujo papel gravado já não é de administrador é recusada sem consultar
  * o banco: ela só pode estar defasada "para baixo" (a pessoa foi promovida
- * depois do login), e recusar é a escolha segura — me.php, que a tela chama ao
+ * depois do login), e recusar é a escolha segura: me.php, que a tela chama ao
  * abrir, traz a sessão para o papel do banco. Já sessão de administrador sempre
  * confere o banco, e é o papel de lá que vale.
  *

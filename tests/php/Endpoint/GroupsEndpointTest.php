@@ -5,7 +5,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
- * public/api/groups/index.php (criação) e groups/edit.php — a URL do Power BI.
+ * public/api/groups/index.php (criação) e groups/edit.php: a URL do Power BI.
  *
  * A URL vira o `src` de um <iframe> no dashboard. Aceitar qualquer texto
  * deixava um administrador (ou alguém com a sessão dele) gravar `javascript:` ou
