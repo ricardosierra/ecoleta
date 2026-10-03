@@ -89,7 +89,7 @@ export default function Footer() {
                 rel="noopener noreferrer"
                 className="text-(--color-accent) hover:underline"
               >
-                (21) 99152-9383
+                {siteConfig.contact.whatsappDisplay}
               </a>
             </p>
             <a

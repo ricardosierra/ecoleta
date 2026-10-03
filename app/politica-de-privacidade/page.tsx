@@ -12,6 +12,13 @@ export const metadata: Metadata = {
   }),
 };
 
+// AAAA-MM-DD vira DD/MM/AAAA por texto, sem passar por Date: assim a data não
+// anda um dia conforme o fuso da máquina que faz o build.
+function formatIsoDate(iso: string): string {
+  const [year, month, day] = iso.split("-");
+  return `${day}/${month}/${year}`;
+}
+
 export default function PrivacyPolicyPage() {
   return (
     <>
@@ -89,7 +96,7 @@ export default function PrivacyPolicyPage() {
           </p>
 
           <p className="text-sm mt-12 text-(--color-text-muted)/70">
-            Última atualização: {new Date().toLocaleDateString('pt-BR')}
+            Última atualização: {formatIsoDate(siteConfig.legal.privacyPolicyUpdatedAt)}
           </p>
         </div>
       </Section>
