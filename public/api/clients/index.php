@@ -16,6 +16,7 @@ require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../authz.php';
 require_once __DIR__ . '/../asaas_lib.php';
 require_once __DIR__ . '/../billing_lib.php';
+require_once __DIR__ . '/clients_lib.php';
 require_once __DIR__ . '/phone_lib.php';
 
 startSecureSession();
@@ -124,9 +125,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     try {
-        $stmt = $db->prepare("INSERT INTO clients (name, email, whatsapp, document, monthly_value, due_day, status, asaas_customer_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->execute([$name, $email, $whatsapp, $document !== '' ? $document : null, $monthlyValue, $dueDay, $status, $asaasCustomerId]);
-        $id = (int)$db->lastInsertId();
+        // O cliente já existe no Asaas neste ponto. Se a gravação local falhar, a
+        // função tenta remover o cadastro remoto (senão ele fica órfão) e relança o
+        // erro do banco, que é o que decide a mensagem abaixo.
+        $id = clientsInsertAfterAsaas($db, [
+            'name' => $name,
+            'email' => $email,
+            'whatsapp' => $whatsapp,
+            'document' => $document,
+            'monthly_value' => $monthlyValue,
+            'due_day' => $dueDay,
+            'status' => $status,
+        ], $asaasCustomerId);
 
         echo json_encode([
             'ok' => true,

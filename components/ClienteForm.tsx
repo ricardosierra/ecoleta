@@ -365,6 +365,10 @@ export function ClienteForm({ initialData, onSuccess }: ClienteFormProps) {
           <p className="text-xs text-white/40">
             Clientes inativos não recebem cobranças automáticas nem aparecem nas listagens ativas de OS.
           </p>
+          {/* Inativar não mexe no que já foi emitido: o boleto segue pagável no Asaas. */}
+          <p className="text-xs text-white/40">
+            As faturas já emitidas continuam valendo e o cliente ainda pode pagá-las. Para impedir, cancele-as em Faturas.
+          </p>
         </div>
       )}
 

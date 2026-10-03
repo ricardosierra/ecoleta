@@ -235,6 +235,39 @@ describe("/dashboard/clientes/editar — Edição e Toggle", () => {
     expect(screen.getByRole("switch", { name: /cobrança mensal/i })).toHaveAttribute("aria-checked", "true");
   });
 
+  /**
+   * Desativar o cliente o tira da cobrança automática, mas não toca nas faturas
+   * que já existem: o boleto emitido continua pagável. Quem desativa precisa ler
+   * isso antes de achar que a cobrança acabou.
+   */
+  it("avisa na edição que as faturas já emitidas continuam valendo depois de inativar", async () => {
+    installApiMock({
+      [ME]: { body: sessionOf("root") },
+      [CLIENTS]: {
+        status: 200,
+        body: {
+          ok: true,
+          client: {
+            id: 42,
+            name: "Bia Associação",
+            email: null,
+            whatsapp: "5521994077572",
+            document: "40207218000136",
+            monthly_value: 600,
+            due_day: 10,
+            status: "active",
+          },
+        },
+      },
+    });
+
+    render(<EditarClientePage />);
+
+    expect(await screen.findByRole("heading", { name: "Editar Cliente: Bia Associação" })).toBeVisible();
+    expect(screen.getByText(/faturas já emitidas continuam valendo/i)).toBeVisible();
+    expect(screen.getByText(/cancele-as em Faturas/i)).toBeVisible();
+  });
+
   it("permite desabilitar cobrança mensal na edição enviando monthly_value: 0", async () => {
     const rotaClienteIndividual = {
       status: 200,
