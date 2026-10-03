@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
- * O rate limit é o que separa "formulário de contato" de "relay de spam".
+ * Limitador em memória de lib/rate-limit.ts. Atenção: hoje ele NÃO protege o
+ * formulário de contato. O site é export estático, nenhum código do Next roda
+ * no servidor e nada importa este módulo. O limite que vale em produção é o de
+ * public/contact.php (5 por minuto e 30 por hora por IP, em arquivos na pasta
+ * temporária), coberto por tests/php/Endpoint/ContactEndpointTest.php.
+ *
  * Os buckets vivem em um Map de módulo, então cada teste usa uma chave própria
  * em vez de tentar limpar o estado global.
  */

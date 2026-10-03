@@ -2,9 +2,15 @@ import { describe, expect, it } from "vitest";
 import { contactSchema, tipoOperacaoOptions } from "@/lib/contact-schema";
 
 /**
- * O schema é a validação de servidor do formulário de contato — o cliente usa o
- * mesmo objeto, mas quem decide é o handler. Um campo que afrouxa aqui afrouxa
- * na entrada da caixa de e-mail.
+ * Contrato do schema Zod do formulário de contato. Atenção: em produção ele NÃO
+ * valida nada no servidor. O site é export estático e o formulário real envia
+ * para public/contact.php, que repete as regras à mão em PHP (cobertas por
+ * tests/php/Endpoint/ContactEndpointTest.php). O ContactForm também as repete no
+ * navegador e só importa daqui a lista `tipoOperacaoOptions`.
+ *
+ * Estes testes travam o que o schema declara, que é a referência das regras e
+ * dos tetos de tamanho, e não o que o servidor aceita. Mudou uma regra aqui:
+ * mude também o contact.php e o formulário.
  */
 
 const valido = {
@@ -78,7 +84,7 @@ describe("contactSchema", () => {
     expect(contactSchema.safeParse({ ...valido, [campo]: excedente }).success).toBe(false);
   });
 
-  it("deixa o honeypot passar — a rejeição é decisão do handler", () => {
+  it("deixa o honeypot passar, a rejeição é decisão do contact.php", () => {
     const result = contactSchema.safeParse({ ...valido, website: "http://spam.example" });
 
     expect(result.success).toBe(true);
