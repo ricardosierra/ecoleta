@@ -1,4 +1,4 @@
--- 019_activity_logs_target_login_wide.sql — activity_logs.target_login passa de VARCHAR(50) para VARCHAR(255).
+-- 019_activity_logs_target_login_wide.sql: activity_logs.target_login passa de VARCHAR(50) para VARCHAR(255).
 --
 -- A entrega de fatura grava nessa coluna o id da mensagem do WhatsApp (o "wamid"), que
 -- tem mais de 50 caracteres. Em MySQL estrito o UPDATE que marca a tentativa como
