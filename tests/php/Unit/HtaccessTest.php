@@ -34,15 +34,15 @@ final class HtaccessTest extends TestCase
         return (string) preg_replace('/^\s*#.*$/m', '', $this->conteudo);
     }
 
-    /** Padrão do <FilesMatch> que nega acesso, extraído do arquivo. */
+    /** Padrão da RewriteRule [F] que nega os arquivos internos de api/, extraído do arquivo. */
     private function padraoDeNegacaoDeArquivos(): string
     {
         $achou = preg_match(
-            '/<FilesMatch\s+"([^"]+)">\s*Require\s+all\s+denied\s*<\/FilesMatch>/i',
+            '/RewriteRule\s+(\^api\/\(\S+\)\$)\s+-\s+\[([^\]]*\bF\b[^\]]*)\]/i',
             $this->diretivas(),
             $m
         );
-        self::assertSame(1, $achou, 'falta o <FilesMatch> com "Require all denied"');
+        self::assertSame(1, $achou, 'falta a RewriteRule [F] para os arquivos internos de api/');
 
         return $m[1];
     }
@@ -81,7 +81,7 @@ final class HtaccessTest extends TestCase
     #[DataProvider('arquivosNegados')]
     public function testArquivoInternoEhNegado(string $arquivo): void
     {
-        self::assertTrue($this->casa($this->padraoDeNegacaoDeArquivos(), $arquivo), "{$arquivo} deveria ser negado");
+        self::assertTrue($this->casa($this->padraoDeNegacaoDeArquivos(), 'api/' . $arquivo, true), "api/{$arquivo} deveria ser negado");
     }
 
     /**
@@ -112,7 +112,7 @@ final class HtaccessTest extends TestCase
     #[DataProvider('arquivosQueTemUso')]
     public function testArquivoComUsoNaoEhNegado(string $arquivo): void
     {
-        self::assertFalse($this->casa($this->padraoDeNegacaoDeArquivos(), $arquivo), "{$arquivo} NÃO pode ser negado");
+        self::assertFalse($this->casa($this->padraoDeNegacaoDeArquivos(), 'api/' . $arquivo, true), "api/{$arquivo} NÃO pode ser negado");
     }
 
     public function testNegacaoDeArquivosEAncorada(): void
@@ -172,13 +172,25 @@ final class HtaccessTest extends TestCase
         }
     }
 
-    public function testNegacaoDeArquivosUsaASintaxeDoApache24(): void
+    /**
+     * A negação não pode depender de `Require` em .htaccess: sem override de
+     * autenticação liberado no servidor isso é 500 no site inteiro. Fica só o
+     * mecanismo que o arquivo já usa para o redirecionamento HTTPS.
+     */
+    public function testNegacaoNaoDependeDeRequireNemDaSintaxeAntigaDoApache(): void
     {
         $diretivas = $this->diretivas();
 
-        self::assertStringContainsString('Require all denied', $diretivas);
-        // A sintaxe 2.2 não existe no Apache 2.4 sem mod_access_compat.
+        self::assertDoesNotMatchRegularExpression('/^\s*Require\s/mi', $diretivas);
         self::assertDoesNotMatchRegularExpression('/^\s*(Order|Deny|Allow)\s/mi', $diretivas);
+        self::assertStringNotContainsStringIgnoringCase('<RequireAll', $diretivas);
+    }
+
+    public function testRegrasDeNegacaoFicamDentroDeIfModuleDoRewrite(): void
+    {
+        $achou = preg_match('/<IfModule\s+mod_rewrite\.c>(?:(?!<\/IfModule>).)*\^api\/\(env\\\.php(?:(?!<\/IfModule>).)*<\/IfModule>/si', $this->diretivas());
+
+        self::assertSame(1, $achou, 'a negação dos arquivos internos precisa estar num <IfModule mod_rewrite.c>');
     }
 
     // --- o que NÃO entra -------------------------------------------------------

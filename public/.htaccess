@@ -81,20 +81,20 @@ ErrorDocument 404 /404.html
 # desativa sozinho) e api/migrate.php (chamado pelo deploy, protegido por
 # segredo no cabeçalho). Bloquear os dois quebraria o deploy.
 #
-# `Require all denied` é a sintaxe do Apache 2.4 e a que o LiteSpeed entende
-# (o deploy já a grava em api/migrations/.htaccess). O padrão é ancorado nos
-# dois lados: sem isso, "meu_env.php" ou "env.php.bak" também casariam.
-<FilesMatch "^(env\.php|env\.example\.php|composer\.json|composer\.lock|temp_reset\.php|migrate_temp\.php|setup_db\.php|apply_mig_13\.php)$">
-  Require all denied
-</FilesMatch>
-
+# A negação é por RewriteRule [F], o mesmo mecanismo que este arquivo já usa (o
+# redirecionamento para HTTPS) e, portanto, o que a hospedagem comprovadamente
+# aceita. `Require all denied` em <FilesMatch> exige que o servidor permita
+# override de autenticação em .htaccess, e quando não permite a falha não é "a
+# regra não vale": é 500 no site inteiro. O padrão é ancorado nos dois lados: sem
+# isso, "meu_env.php" ou "env.php.bak" também casariam.
+#
 # api/vendor/ (Composer e PHPMailer): só o PHP precisa dele, por require no
 # sistema de arquivos, e negar o acesso HTTP não afeta isso. Tem script solto
 # (phpmailer/get_oauth_token.php) que não deve ser alcançável de fora.
-# <DirectoryMatch> não vale em .htaccess (só em configuração de servidor), então
-# o diretório é negado por RewriteRule, que este arquivo já usa.
+# <DirectoryMatch> não vale em .htaccess (só em configuração de servidor).
 <IfModule mod_rewrite.c>
   RewriteEngine On
+  RewriteRule ^api/(env\.php|env\.example\.php|composer\.json|composer\.lock|temp_reset\.php|migrate_temp\.php|setup_db\.php|apply_mig_13\.php)$ - [F,NC,L]
   RewriteRule ^api/vendor(/|$) - [F,NC,L]
 </IfModule>
 
