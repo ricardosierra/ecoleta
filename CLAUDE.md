@@ -272,9 +272,18 @@ diretório antes do primeiro upload.
   na API (403 `password_change_required`). Gerar senha e travar a conta na mesma chamada é
   recusado, porque deixaria o usuário preso na senha temporária.
 - Troca de senha: 8 caracteres, diferente da atual e, fora da troca forçada, exige a
-  senha atual. O limite de login tem teto por conta (15 falhas, qualquer IP), chave sem
-  acento e caixa e janela de 30 minutos. Para liberar à mão:
-  `DELETE FROM login_throttle WHERE scope = 'account'`.
+  senha atual.
+- **Limite de login** (`rate_limit.php`, três contadores: par login+IP, IP, conta). O da conta
+  (15 falhas, qualquer IP) usa o **id do usuário** como chave quando o login existe, então
+  login, e-mail e grafias que a colação do MySQL iguala caem no mesmo contador. O bloqueio de
+  conta escalona 60, 120, 240 e para em 300 s. Um **IP de confiança** (autenticou a conta com
+  sucesso nos últimos 30 dias, marcador `scope = 'trusted'` amarrado ao hash da senha vigente)
+  passa por cima do bloqueio de CONTA, mas continua sujeito ao do par e ao do IP: é o que
+  impede que quem conhece o login público do `admin` o tranque para o dono. Login bem-sucedido
+  zera o contador da conta (não o do IP). Atrás de proxy, `REMOTE_ADDR` é o do proxy e a
+  confiança vale para todos que saem por ele. Para liberar à mão:
+  `DELETE FROM login_throttle WHERE scope = 'account'` (contas), `scope IN ('login_ip','ip')`
+  (um IP) ou `scope = 'trusted'` (revogar toda a confiança).
 - `public/.htaccess` (a raiz do site) nega por `RewriteRule [F]` os arquivos internos de
   `api/` (env, composer, scripts temporários) e `api/vendor/`. Não acrescente `Require` nele:
   sem override de autenticação liberado no servidor, é 500 no site inteiro. (Os `.htaccess`
