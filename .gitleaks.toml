@@ -1,0 +1,24 @@
+# Configuracao do gitleaks usada por .github/workflows/secret-scan.yml.
+# Estende as regras padrao: so acrescenta a excecao abaixo.
+title = "ecoleta"
+
+[extend]
+useDefault = true
+
+# Valores FICTICIOS das suites de teste PHP. A regra generic-api-key dispara em
+# qualquer atribuicao a uma chave chamada "secret" ou "password" com entropia alta,
+# e estes dois literais sao exatamente isso: fixtures, nao credenciais.
+#
+# A excecao e estreita nos dois sentidos de proposito (condition = "AND"): so vale
+# para o texto EXATO destes valores e so dentro de tests/php/. Uma credencial de
+# verdade colada num teste, ou o mesmo texto fora dali, continua sendo apontada.
+# Nao troque por um path-allowlist de tests/ inteiro: isso esconderia vazamento real.
+[[allowlists]]
+description = "Fixtures ficticias de tests/php (nao sao credenciais)"
+condition = "AND"
+paths = ['''^tests/php/''']
+regexTarget = "secret"
+regexes = [
+  '''^segredo-forte-123456$''',
+  '''^senha-definida-123$''',
+]
