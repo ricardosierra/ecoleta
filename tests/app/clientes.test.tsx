@@ -150,7 +150,7 @@ describe("/dashboard/clientes/novo — Cadastro e Cobrança Mensal", () => {
   }, 15_000);
 });
 
-describe("/dashboard/clientes/novo — valor mínimo da cobrança mensal", () => {
+describe("/dashboard/clientes/novo: valor mínimo da cobrança mensal", () => {
   it("barra valor abaixo de R$ 5,00 no próprio campo, sem chamar a API", async () => {
     const api = installApiMock({ [ME]: { body: sessionOf("root") }, [CLIENTS]: rotaClientes });
     render(<NovoClientePage />);

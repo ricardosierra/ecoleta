@@ -122,7 +122,7 @@ function apiSecurityAlertDocument(
 </html>
 HTML;
 
-    $text = "ALERTA DE SEGURANÇA — ECOLEVA\n=================================\n\n";
+    $text = "ALERTA DE SEGURANÇA: ECOLEVA\n=================================\n\n";
     $text .= "{$eventTitle}\n\n";
     $text .= $detailsListText;
     $text .= "\nSe esta ação não foi autorizada por você, acesse imediatamente o sistema para averiguação.\n";
