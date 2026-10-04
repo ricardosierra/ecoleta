@@ -49,16 +49,41 @@ final class SitePublicReadTest extends TestCase
             ->execute([$name, $logoUrl, $ativo]);
     }
 
-    /** Cria no disco uma sessão como a que o login deixa, e devolve o id. */
-    private function plantaSessao(string $role): string
+    /**
+     * Cria no disco uma sessão como a que o login deixa, e devolve o id.
+     *
+     * A API reconsulta o usuário no banco a cada requisição, então a conta que a
+     * sessão cita (id 1, login "admin") é semeada com o MESMO papel, e a sessão
+     * leva a impressão digital da senha vigente, como a do login de verdade.
+     * Cada cenário de defasagem pede o seu:
+     *
+     * @param string $noBanco 'igual' (padrão): o banco tem o mesmo papel da sessão;
+     *        'ausente': a conta não existe mais; qualquer outro valor é o papel
+     *        que o banco tem agora (a sessão guarda o antigo)
+     * @param string $impressao 'atual' (padrão): hash da senha vigente; 'outra':
+     *        a de uma senha que já foi trocada; 'nenhuma': sessão anterior à regra
+     */
+    private function plantaSessao(string $role, string $noBanco = 'igual', string $impressao = 'atual'): string
     {
+        $fingerprint = '';
+        if ($noBanco !== 'ausente') {
+            $id = $this->db->seedUser('admin', 'senha-root-123', $noBanco === 'igual' ? $role : $noBanco);
+            self::assertSame(1, $id, 'a sessão plantada cita o usuário de id 1');
+            $hash = (string) $this->db->pdo()->query('SELECT password_hash FROM users WHERE id = 1')->fetchColumn();
+            $fingerprint = hash('sha256', $hash);
+        }
+        if ($impressao === 'outra') {
+            $fingerprint = hash('sha256', 'hash-de-uma-senha-que-ja-foi-trocada');
+        }
+
         $id = bin2hex(random_bytes(16));
         $dados = sprintf(
-            'user_id|i:1;role|s:%d:"%s";login|s:5:"admin";csrf_token|s:64:"%s";last_activity|i:%d;',
+            'user_id|i:1;role|s:%d:"%s";login|s:5:"admin";csrf_token|s:64:"%s";last_activity|i:%d;%s',
             strlen($role),
             $role,
             str_repeat('a', 64),
-            time()
+            time(),
+            $impressao === 'nenhuma' || $fingerprint === '' ? '' : sprintf('pwd_fp|s:64:"%s";', $fingerprint)
         );
         file_put_contents($this->sessions . '/sess_' . $id, $dados);
 
@@ -202,6 +227,106 @@ session_id("' . $cookie . '");
         $res = $this->get('empresas.php', bin2hex(random_bytes(16)));
 
         self::assertSame(['Ativa'], $this->nomes($res));
+    }
+
+    // ── Empresas: a sessão não decide sozinha ────────────────────────────────
+    //
+    // A leitura pública era o único endpoint que confiava só no papel guardado na
+    // sessão. O resto da API reconsulta o usuário no banco a cada requisição
+    // (apiResolveSessionActor), e aqui uma sessão de administrador excluído,
+    // rebaixado ou com a senha trocada seguia vendo as empresas desativadas.
+
+    private function seedAtivaEEscondida(): void
+    {
+        $this->seedEmpresa('Ativa', '/logos/ativa.png', 1);
+        $this->seedEmpresa('Escondida', '/uploads/logos/escondida-abc123.webp', 0);
+    }
+
+    public function testSessaoDeMasterExcluidoNaoVeEmpresasInativas(): void
+    {
+        $this->seedAtivaEEscondida();
+
+        $res = $this->get('empresas.php', $this->plantaSessao('master', 'ausente'));
+
+        self::assertSame(200, $res['status'], $res['body']);
+        self::assertSame(['Ativa'], $this->nomes($res));
+        self::assertStringNotContainsString('Escondida', $res['body']);
+        self::assertStringNotContainsString('escondida-abc123', $res['body']);
+    }
+
+    public function testSessaoDeRootRebaixadoNoBancoNaoVeEmpresasInativas(): void
+    {
+        $this->seedAtivaEEscondida();
+
+        // A sessão ainda diz root; o banco já diz user.
+        $res = $this->get('empresas.php', $this->plantaSessao('root', 'user'));
+
+        self::assertSame(['Ativa'], $this->nomes($res));
+    }
+
+    public function testSessaoAnteriorATrocaDeSenhaNaoVeEmpresasInativas(): void
+    {
+        $this->seedAtivaEEscondida();
+
+        $res = $this->get('empresas.php', $this->plantaSessao('root', 'igual', 'outra'));
+
+        self::assertSame(['Ativa'], $this->nomes($res));
+    }
+
+    public function testSessaoEmUsoDeAdminComSenhaVigenteVeTodas(): void
+    {
+        $this->seedAtivaEEscondida();
+
+        $res = $this->get('empresas.php', $this->plantaSessao('root', 'igual', 'atual'));
+
+        self::assertSame(['Ativa', 'Escondida'], $this->nomes($res));
+    }
+
+    public function testSessaoAnteriorARegraDaImpressaoDigitalContinuaValendo(): void
+    {
+        $this->seedAtivaEEscondida();
+
+        // Mesma adoção que o resto da API faz: não derruba quem já estava logado
+        // no deploy, só passa a conferir o papel no banco.
+        $res = $this->get('empresas.php', $this->plantaSessao('root', 'igual', 'nenhuma'));
+
+        self::assertSame(['Ativa', 'Escondida'], $this->nomes($res));
+    }
+
+    public function testAdminComSenhaTemporariaSoRecebeEmpresasAtivas(): void
+    {
+        $this->seedAtivaEEscondida();
+        $cookie = $this->plantaSessao('root');
+        // Senha temporária: a API inteira recusa quem não trocou. Esta leitura é
+        // pública, então em vez de recusar entrega só o que o visitante vê.
+        $this->db->pdo()->exec('UPDATE users SET force_password_change = 1 WHERE id = 1');
+
+        $res = $this->get('empresas.php', $cookie);
+
+        self::assertSame(200, $res['status'], $res['body']);
+        self::assertSame(['Ativa'], $this->nomes($res));
+    }
+
+    public function testSessaoDeContaExcluidaEDestruidaNaLeituraPublica(): void
+    {
+        $this->seedAtivaEEscondida();
+        $cookie = $this->plantaSessao('master', 'ausente');
+
+        $this->get('empresas.php', $cookie);
+
+        // Mesmo tratamento do resto da API: a sessão que o banco não reconhece cai.
+        self::assertNotContains('sess_' . $cookie, $this->arquivosDeSessao());
+    }
+
+    public function testVisitanteContinuaSemSessaoMesmoComUsuariosNoBanco(): void
+    {
+        $this->seedAtivaEEscondida();
+        $this->db->seedUser('admin', 'senha-root-123', 'root');
+
+        $res = $this->get('empresas.php');
+
+        self::assertSame(['Ativa'], $this->nomes($res));
+        self::assertSame([], $this->arquivosDeSessao(), 'visitante não abre sessão nem ganha cookie');
     }
 
     // ── Indicadores ──────────────────────────────────────────────────────────

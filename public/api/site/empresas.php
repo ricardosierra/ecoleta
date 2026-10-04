@@ -20,8 +20,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // "Tirar do site" tem de tirar da resposta, não só da tela: o visitante só
     // recebe empresa ativa. O painel (sessão de admin) segue vendo todas, porque
     // é lá que se reativa. Quem não é admin, logado ou não, recebe a lista pública.
-    $actor = session_status() === PHP_SESSION_ACTIVE ? apiSessionActor() : null;
-    $isAdmin = $actor !== null && apiRoleIsAdmin($actor['role']);
+    //
+    // O papel que vale é o do BANCO, como no resto da API: a sessão sozinha mantinha
+    // as empresas desativadas à vista de um admin excluído, rebaixado ou com a senha
+    // trocada. apiResolveSessionActor() reconsulta o usuário (e derruba a sessão que o
+    // banco não reconhece, caso em que a resposta é a pública). Só é chamado quando a
+    // sessão já tem um usuário: visitante e cookie sem login não custam consulta.
+    // Conta com senha temporária não é recusada (esta leitura é pública, não há o que
+    // recusar), mas também não é tratada como administradora: recebe o que o visitante vê.
+    $isAdmin = false;
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        $sessionActor = apiSessionActor();
+        $actor = $sessionActor !== null ? apiResolveSessionActor($sessionActor['id']) : null;
+        $isAdmin = $actor !== null
+            && apiRoleIsAdmin($actor['role'])
+            && empty($actor['force_password_change']);
+    }
 
     $stmt = $db->query(
         'SELECT id, name, logo_url, is_active FROM site_clients'
