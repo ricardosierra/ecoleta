@@ -1,0 +1,86 @@
+name: faturamento-automatico
+
+# Dispara o faturamento automatico do site em producao: um GET em
+# api/cron/billing.php por dia. Este arquivo existe porque o agendamento do cron
+# na hospedagem nunca foi confirmado, e sem alguem chamando o endpoint nenhum
+# cliente com valor mensal recebe fatura. O ciclo e idempotente (ver
+# billingRunCycle em public/api/billing_delivery.php), entao rodar aqui e tambem
+# no painel da hospedagem, ou disparar a mao no meio do dia, nao cobra em dobro.
+#
+# Para funcionar:
+#   1. O workflow precisa estar na branch padrao: o GitHub so executa agendamentos
+#      a partir dela.
+#   2. Settings > Secrets and variables > Actions > Secrets: criar CRON_SECRET com
+#      o mesmo valor do CRON_SECRET do api/env.php do servidor.
+#   3. Opcional, em Variables: CRON_URL, se o endereco nao for o padrao abaixo.
+#
+# Disparo manual (o "primeiro envio", que alcanca os clientes antigos): aba Actions,
+# workflow "faturamento-automatico", botao "Run workflow".
+
+on:
+  schedule:
+    # 11:00 UTC = 08:00 em Brasilia (o Brasil nao tem horario de verao desde 2019).
+    # O GitHub pode atrasar um agendamento em horario de pico; o ciclo nao depende
+    # da hora exata, so de rodar uma vez por dia.
+    - cron: '0 11 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: faturamento-automatico
+  cancel-in-progress: false
+
+jobs:
+  disparar:
+    name: Disparar o faturamento
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Chamar api/cron/billing.php
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          CRON_URL: ${{ vars.CRON_URL }}
+        run: |
+          set -uo pipefail
+
+          url="${CRON_URL:-https://www.ecolevaeco.com/api/cron/billing.php}"
+
+          if [ -z "${CRON_SECRET}" ]; then
+            echo "::error title=Segredo ausente::Crie o secret CRON_SECRET em Settings > Secrets and variables > Actions, com o mesmo valor do CRON_SECRET do servidor."
+            exit 1
+          fi
+
+          # O corpo da resposta NAO e impresso: o repositorio e publico e o log do
+          # Actions tambem. O detalhe das falhas fica no aviso "Faturamento
+          # automatico" da tela de Faturas.
+          status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 300 \
+            -H "X-Cron-Secret: ${CRON_SECRET}" "${url}") || status="000"
+          echo "HTTP ${status}"
+
+          case "${status}" in
+            200)
+              echo "Faturamento rodou sem falhas."
+              ;;
+            502)
+              echo "::error title=Rodou com falhas::O faturamento rodou, mas algum cliente falhou (cadastro incompleto, Asaas fora ou envio recusado). Veja o aviso na tela de Faturas. O que falhou e tentado de novo amanha."
+              exit 1
+              ;;
+            503)
+              echo "::error title=Servidor sem segredo::O servidor respondeu 503: CRON_SECRET esta vazio no api/env.php de producao."
+              exit 1
+              ;;
+            403)
+              echo "::error title=Segredo diferente::O servidor respondeu 403: o secret CRON_SECRET do GitHub e diferente do que esta no api/env.php (ou a hospedagem bloqueou o acesso)."
+              exit 1
+              ;;
+            000)
+              echo "::error title=Sem resposta::Nao foi possivel falar com ${url} (rede, DNS ou tempo esgotado)."
+              exit 1
+              ;;
+            *)
+              echo "::error title=Resposta inesperada::O servidor respondeu HTTP ${status}."
+              exit 1
+              ;;
+          esac
