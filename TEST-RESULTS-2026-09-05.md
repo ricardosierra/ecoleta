@@ -20,5 +20,5 @@ Testes end-to-end executados diretamente na API de produção (`https://www.ecol
 7. **Automação (Cron):** A rota de CRON diário (`/api/cron/billing.php`) foi testada, validou os vencimentos e funcionou sem erros de execução.
 
 ## Acessos atualizados na produção:
-- **Painel Administrativo (`/dashboard`):** Senha redefinida para `Admin123!` para possibilitar os testes, já que a sessão expirou.
+- **Painel Administrativo (`/dashboard`):** Senha redefinida para possibilitar os testes, já que a sessão expirou. O valor foi removido do repositório: a senha do `admin` precisa ser trocada, porque ela continua no histórico do Git.
 - As integrações e envios foram atualizados em produção e validados.
