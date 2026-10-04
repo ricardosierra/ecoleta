@@ -54,15 +54,22 @@ $throttleIp = apiThrottleIp();
 
 loginThrottleCleanup($db);
 
-// Bloqueio ativo para este par (login, IP): responde 429 antes de tocar no banco de usuários.
-$retryAfter = loginThrottleRetryAfter($db, $login, $throttleIp);
-if ($retryAfter > 0) {
-    loginRespondRateLimited($retryAfter);
-}
-
+// O usuário é consultado ANTES do bloqueio: o contador por conta é do ID dele
+// (login, e-mail e qualquer grafia que a colação do banco trate como igual caem
+// no mesmo contador), e o IP de confiança também é (conta, IP). A consulta custa
+// o mesmo para login que existe e que não existe, e o 429 sai antes de qualquer
+// verificação de senha nos dois casos: nada aqui revela se o login existe.
 $stmt = $db->prepare("SELECT id, login, password_hash, role FROM users WHERE login = ? OR email = ? LIMIT 1");
 $stmt->execute([$login, $login]);
 $user = $stmt->fetch();
+$throttleAccount = is_array($user) ? $user : null;
+
+// Bloqueio ativo para este par (login, IP), este IP ou esta conta: responde 429
+// antes de verificar a senha.
+$retryAfter = loginThrottleRetryAfter($db, $login, $throttleIp, $throttleAccount);
+if ($retryAfter > 0) {
+    loginRespondRateLimited($retryAfter);
+}
 
 if ($user) {
     $passwordOk = password_verify($password, (string) $user['password_hash']);
@@ -77,7 +84,7 @@ if ($user) {
 }
 
 if (!$user || !$passwordOk) {
-    $blockedFor = loginThrottleRegisterFailure($db, $login, $throttleIp);
+    $blockedFor = loginThrottleRegisterFailure($db, $login, $throttleIp, $throttleAccount);
 
     if ($blockedFor > 0) {
         loginRespondRateLimited($blockedFor);
@@ -86,8 +93,9 @@ if (!$user || !$passwordOk) {
     apiJsonResponse(401, ['error' => LOGIN_GENERIC_ERROR]);
 }
 
-// Autenticado: zera o contador e troca o ID de sessão (anti session fixation).
-loginThrottleClear($db, $login, $throttleIp);
+// Autenticado: zera os contadores da pessoa, marca este IP como de confiança e
+// troca o ID de sessão (anti session fixation).
+loginThrottleRegisterSuccess($db, $login, $throttleIp, $user);
 apiRegenerateSession();
 $csrfToken = apiRotateCsrfToken();
 

@@ -85,8 +85,11 @@ if ($passwordLocked) {
 // limite de tentativas dele seria contornado por este endpoint.
 if (empty($actor['force_password_change'])) {
     $throttleIp = apiThrottleIp();
+    // Mesma identidade do login: o contador da conta é do ID, não do texto. Sem
+    // isto as falhas desta tela cairiam num contador diferente do do login.
+    $throttleAccount = ['id' => (int) $actor['id'], 'password_hash' => $currentHash];
 
-    $retryAfter = loginThrottleRetryAfter($db, (string) $actor['login'], $throttleIp);
+    $retryAfter = loginThrottleRetryAfter($db, (string) $actor['login'], $throttleIp, $throttleAccount);
     if ($retryAfter > 0) {
         apiJsonResponse(
             429,
@@ -107,7 +110,7 @@ if (empty($actor['force_password_change'])) {
     }
 
     if (!password_verify($currentPassword, $currentHash)) {
-        loginThrottleRegisterFailure($db, (string) $actor['login'], $throttleIp);
+        loginThrottleRegisterFailure($db, (string) $actor['login'], $throttleIp, $throttleAccount);
 
         logActivity(
             $db,
