@@ -16,6 +16,9 @@ final class IndicadoresEndpointTest extends TestCase
     protected function setUp(): void
     {
         $this->db = new TestDatabase();
+        // A sessão aponta para o id 1: o servidor reconsulta o usuário a cada requisição,
+        // então ele precisa existir no banco, com o papel que a sessão diz.
+        $this->db->seedUser('admin', 'senha-root-123', 'root');
         $this->db->pdo()
             ->prepare('INSERT INTO site_indicators (indicator_key, value, label, symbol_type, symbol_value) VALUES (?, ?, ?, ?, ?)')
             ->execute(['pessoas', '300 Mil', 'Pessoas impactadas', 'icon', 'ImpactPeopleIcon']);
