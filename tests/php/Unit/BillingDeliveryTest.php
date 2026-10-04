@@ -348,4 +348,116 @@ final class BillingDeliveryTest extends TestCase
         self::assertSame($viva, (int) $found['id']);
         self::assertNull(billingFindMonthInvoice($this->db->pdo(), $clientId, '2026-11-05'));
     }
+
+    // ── Revisão final do ciclo ───────────────────────────────────────────────
+
+    public function testFalhaAoGravarOIdDaMensagemNaoDeixaATentativaIncerta(): void
+    {
+        $pdo = $this->db->pdo();
+        // Em MySQL estrito, gravar um id maior que a coluna (target_login era VARCHAR(50) e
+        // o id do WhatsApp tem mais que isso) derrubava este UPDATE DEPOIS de o envio sair, e
+        // a linha ficava em billing_attempt para sempre. O SQLite nao confere tamanho, entao o
+        // gatilho recusa o UPDATE que lista target_login, como o MySQL estrito recusaria.
+        $pdo->exec("CREATE TRIGGER recusa_target_login BEFORE UPDATE OF target_login ON activity_logs BEGIN SELECT RAISE(ABORT, 'Data too long for column target_login'); END");
+        $client = $this->client();
+        $invoice = ['id' => 77, 'status' => 'PENDING', 'value' => 25, 'due_date' => '2026-10-10', 'invoice_url' => 'https://example.com/invoice'];
+        $sent = 0;
+        $mail = function () use (&$sent) { $sent++; return true; };
+
+        $first = billingDeliverInvoice($pdo, $invoice, $client, 'new', $mail);
+        $second = billingDeliverInvoice($pdo, $invoice, $client, 'new', $mail);
+
+        self::assertSame('sent', $first['email']);
+        self::assertSame([], $first['errors']);
+        self::assertSame('already_sent', $second['email'], 'sem a marca de entregue, o dia seguinte dizia "resultado incerto"');
+        self::assertSame(1, $sent);
+        self::assertSame('billing_delivery', $this->db->rows('activity_logs')[0]['action']);
+    }
+
+    public function testLembreteNaoSegueAFaturaNovaQuandoOEnvioAtrasou(): void
+    {
+        $this->cycleClient('SMTP caiu', 170.0, 5);
+        $calls = []; $sent = [];
+        $fora = function (): bool { return false; };
+
+        // 02/10: a fatura e emitida, mas o e-mail e recusado (SMTP fora do ar).
+        $first = $this->runCycle('2026-10-02', $this->fakeAsaas($calls), $fora);
+        self::assertSame(1, $first['generated']);
+        self::assertCount(1, $first['errors']);
+        $this->stampInvoices('2026-09-28 10:00:00');
+
+        // 03/10 e dia de lembrete. A fatura e velha, mas o "Sua Fatura Mensal" so sai agora:
+        // o lembrete nao pode ir atras dele no mesmo ciclo.
+        $second = $this->runCycle('2026-10-03', $this->fakeAsaas($calls), $this->recordingMail($sent));
+
+        self::assertSame(['Sua Fatura Mensal - Ecoleva'], $sent);
+        self::assertSame(0, $second['reminders']);
+    }
+
+    public function testClientesSemFaturaNoMesSoEntramQuandoOVencimentoJaPassou(): void
+    {
+        $semFatura = $this->cycleClient('Sem fatura', 100.0, 5, 'a@example.com', '11111111111');
+        $comFatura = $this->cycleClient('Com fatura', 100.0, 5, 'b@example.com', '22222222222');
+        $this->db->seedInvoice($comFatura, 'pay_ok', 100.0, '2026-10-05');
+        $cancelada = $this->cycleClient('Cancelada', 100.0, 5, 'c@example.com', '33333333333');
+        $this->db->seedInvoice($cancelada, 'pay_del', 100.0, '2026-10-05', 'DELETED');
+        $avulsa = $this->cycleClient('Avulsa', 100.0, 5, 'd@example.com', '44444444444');
+        $this->db->seedInvoice($avulsa, 'pay_av', 100.0, '2026-10-20');
+        $venceDia10 = $this->cycleClient('Vence dia 10', 150.0, 10, 'e@example.com', '55555555555');
+        $this->cycleClient('Inativo', 100.0, 5, 'f@example.com', '66666666666', 'inactive');
+        $this->cycleClient('Sem mensalidade', 0.0, 5, 'g@example.com', '77777777777');
+        $this->cycleClient('Vence dia 31', 100.0, 31, 'h@example.com', '88888888888');
+        $pdo = $this->db->pdo();
+        $on = fn (string $day): array => billingClientsWithoutInvoice($pdo, new DateTimeImmutable($day, new DateTimeZone('America/Sao_Paulo')));
+
+        // Antes do vencimento: o ciclo ainda emite sozinho, nao ha o que avisar.
+        self::assertSame([], $on('2026-10-04'));
+        self::assertSame([], $on('2026-10-05'), 'vencimento de hoje ainda e emitido');
+
+        // Depois do dia 5: so quem nao tem NENHUMA fatura no mes (nem cancelada, nem avulsa).
+        $lista = $on('2026-10-06');
+        self::assertSame([$semFatura], array_column($lista, 'client_id'));
+        self::assertSame(['client_id' => $semFatura, 'name' => 'Sem fatura', 'due_day' => 5, 'value' => 100.0, 'due_date' => '2026-10-05'], $lista[0]);
+
+        // Depois do dia 10 entra tambem quem vence nele; o dia 31 nunca fica "passado" no mes.
+        self::assertSame([$semFatura, $venceDia10], array_column($on('2026-10-11'), 'client_id'));
+        self::assertSame([$semFatura, $venceDia10], array_column($on('2026-10-31'), 'client_id'));
+    }
+
+    public function testCicloEmitidoDepoisDoVencimentoNaoApareceComoPendenteEmSilencio(): void
+    {
+        // Disparo atrasado: o vencimento do dia 5 passou e o ciclo nao emite data passada. O
+        // cliente tem que aparecer na lista, e o ciclo nao pode ter criado nada para ele.
+        $clientId = $this->cycleClient('Atrasado', 170.0, 5);
+        $calls = []; $sent = [];
+
+        $result = $this->runCycle('2026-10-06', $this->fakeAsaas($calls), $this->recordingMail($sent));
+
+        self::assertSame(0, $result['generated']);
+        self::assertSame(0, $this->db->count('invoices'));
+        $lista = billingClientsWithoutInvoice($this->db->pdo(), new DateTimeImmutable('2026-10-06', new DateTimeZone('America/Sao_Paulo')));
+        self::assertSame([$clientId], array_column($lista, 'client_id'));
+    }
+
+    public function testCobrancaProrrogadaNoAsaasNaoBateNaChaveUnicaDoCron(): void
+    {
+        // A operadora prorrogou a fatura de 20/10 para 03/11 no painel do Asaas; o webhook
+        // atualizou due_date. O externalReference do cron ainda aponta para 20/10.
+        $client = $this->client();
+        $pdo = $this->db->pdo();
+        $this->db->seedInvoice($client['id'], 'pay_prorrogada', 25.0, '2026-11-03');
+        $request = function (string $path, string $method) {
+            if ($method === 'GET' && str_contains($path, 'externalReference')) {
+                return ['data' => [['id' => 'pay_prorrogada', 'invoiceUrl' => 'https://example.com/i', 'value' => 25, 'dueDate' => '2026-11-03', 'status' => 'PENDING']]];
+            }
+            self::fail('Nao deveria criar nem consultar mais nada: a fatura ja existe.');
+        };
+
+        $invoice = billingIssueInvoice($pdo, $client, 25, '2026-10-20', $request);
+
+        self::assertFalse($invoice['created']);
+        self::assertSame('pay_prorrogada', $invoice['asaas_payment_id']);
+        self::assertSame('2026-11-03', $invoice['due_date']);
+        self::assertSame(1, $this->db->count('invoices'));
+    }
 }

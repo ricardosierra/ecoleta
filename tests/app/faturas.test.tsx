@@ -4,13 +4,17 @@ import { describe, expect, it, vi } from "vitest";
 import FaturasPage from "@/app/dashboard/faturas/page";
 import { sessionOf } from "../support/api-mock";
 
-function mockApi(delivery: object = { email: "sent", whatsapp: "accepted", errors: {} }, billingCron: object | null = null) {
+function mockApi(
+  delivery: object = { email: "sent", whatsapp: "accepted", errors: {} },
+  billingCron: object | null = null,
+  listing: { billing_missing?: object[]; today?: string } = {},
+) {
   const posts: object[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     if (url.includes("/auth/me.php")) return Response.json(sessionOf("root"));
     if (url.includes("/clients/")) return Response.json({ ok: true, clients: [{ id: 1, name: "Cliente QA", monthly_value: 7.5, status: "active" }] });
     if (init?.method === "POST") { posts.push(JSON.parse(String(init.body))); return Response.json({ ok: true, invoice: { id: 1 }, delivery }); }
-    return Response.json({ ok: true, billing_cron: billingCron, invoices: [{ id: 1, client_id: 1, client_name: "Cliente QA", value: "7.50", due_date: "2026-09-10", status: "PENDING", invoice_url: "https://example.com/invoice" }] });
+    return Response.json({ ok: true, billing_cron: billingCron, ...listing, invoices: [{ id: 1, client_id: 1, client_name: "Cliente QA", value: "7.50", due_date: "2026-09-10", status: "PENDING", invoice_url: "https://example.com/invoice" }] });
   }));
   return posts;
 }
@@ -18,12 +22,57 @@ function mockApi(delivery: object = { email: "sent", whatsapp: "accepted", error
 describe("Faturas", () => {
   it("preserva o dia e envia os dados da cobrança escolhida", async () => {
     const posts = mockApi(); const user = userEvent.setup(); render(<FaturasPage />);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     expect(await screen.findByText("10/09/2026")).toBeVisible();
     await user.selectOptions(screen.getByLabelText("Cliente"), "1");
     expect(screen.getByLabelText("Valor (R$)")).toHaveValue(7.5);
     await user.type(screen.getByLabelText("Vencimento"), "2026-09-12");
     await user.click(screen.getByRole("button", { name: "Gerar e enviar fatura" }));
     await waitFor(() => expect(posts).toEqual([{ action: "create", client_id: 1, value: 7.5, due_date: "2026-09-12" }]));
+    confirmSpy.mockRestore();
+  });
+  it("gera sem perguntar quando o cliente ainda não tem fatura no mês", async () => {
+    const posts = mockApi(); const user = userEvent.setup(); render(<FaturasPage />);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    await screen.findByText("10/09/2026");
+    await user.selectOptions(screen.getByLabelText("Cliente"), "1");
+    await user.type(screen.getByLabelText("Vencimento"), "2026-10-05");
+    await user.click(screen.getByRole("button", { name: "Gerar e enviar fatura" }));
+    await waitFor(() => expect(posts).toEqual([{ action: "create", client_id: 1, value: 7.5, due_date: "2026-10-05" }]));
+    expect(confirmSpy).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+  it("pergunta antes de gerar uma segunda fatura no mesmo mês e não gera se a operadora recusa", async () => {
+    const posts = mockApi(); const user = userEvent.setup(); render(<FaturasPage />);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    await screen.findByText("10/09/2026");
+    await user.selectOptions(screen.getByLabelText("Cliente"), "1");
+    await user.type(screen.getByLabelText("Vencimento"), "2026-09-20");
+    await user.click(screen.getByRole("button", { name: "Gerar e enviar fatura" }));
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(confirmSpy.mock.calls[0][0]).toMatch(/Cliente QA já tem uma fatura neste mês, com vencimento em 10\/09\/2026 \(R\$ 7,50\)/);
+    expect(posts).toEqual([]);
+    confirmSpy.mockRestore();
+  });
+  it("lista quem ficou sem fatura no mês e preenche o formulário com vencimento hoje", async () => {
+    mockApi(undefined, null, {
+      today: "2026-10-06",
+      billing_missing: [{ client_id: 1, name: "Cliente QA", due_day: 5, value: 170, due_date: "2026-10-05" }],
+    });
+    const user = userEvent.setup(); render(<FaturasPage />);
+    const painel = await screen.findByRole("region", { name: "Clientes sem fatura neste mês" });
+    expect(painel).toHaveTextContent("Cliente QA, vencia dia 5, R$ 170,00");
+    expect(painel).toHaveTextContent("o faturamento automático não emite data passada");
+    await user.click(screen.getByRole("button", { name: "Preencher fatura de Cliente QA" }));
+    expect(screen.getByLabelText("Cliente")).toHaveValue("1");
+    expect(screen.getByLabelText("Valor (R$)")).toHaveValue(170);
+    expect(screen.getByLabelText("Vencimento")).toHaveValue("2026-10-06");
+  });
+  it("não mostra o painel quando todo cliente ativo tem fatura no mês", async () => {
+    mockApi(undefined, null, { today: "2026-10-06", billing_missing: [] });
+    render(<FaturasPage />);
+    await screen.findByText("10/09/2026");
+    expect(screen.queryByRole("region", { name: "Clientes sem fatura neste mês" })).not.toBeInTheDocument();
   });
   it("mostra falha de entrega mesmo quando a cobrança foi criada", async () => {
     mockApi({ email: "sent", whatsapp: "failed", errors: { whatsapp: "Template pendente." } });

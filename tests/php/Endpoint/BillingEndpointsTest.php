@@ -636,4 +636,26 @@ final class BillingEndpointsTest extends TestCase
         self::assertStringContainsString('paga', (string) $res->error());
         self::assertSame(1, $this->db->count('invoices'));
     }
+
+    public function testListagemDeFaturasTrazOsClientesSemFaturaENaDataDeHoje(): void
+    {
+        // Vencimento no dia 1 "passou" em qualquer dia do mes depois do 1; no dia 31 nunca passa.
+        $this->db->seedClient('Vence dia 1', 100.0, 1, 'active', null, 'cus_1', 'um@example.com', '11144477735');
+        $this->db->seedClient('Vence dia 31', 100.0, 31, 'active', null, 'cus_31', 'trinta@example.com', '52998224725');
+
+        $res = Endpoint::call('invoices/index.php', [
+            'method' => 'GET',
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(200, $res->status, $res->body);
+        $json = $res->json();
+        $hoje = new DateTimeImmutable('now', new DateTimeZone('America/Sao_Paulo'));
+        self::assertSame($hoje->format('Y-m-d'), $json['today']);
+        $nomes = array_column($json['billing_missing'], 'name');
+        self::assertNotContains('Vence dia 31', $nomes);
+        self::assertSame((int) $hoje->format('d') > 1 ? ['Vence dia 1'] : [], $nomes);
+    }
 }

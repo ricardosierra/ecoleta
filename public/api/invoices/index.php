@@ -47,7 +47,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     ");
     // `billing_cron` é a última execução do faturamento automático (ou null): a tela
     // avisa a operadora quando o agendamento do servidor nunca rodou ou parou.
-    echo json_encode(['ok' => true, 'invoices' => $stmt->fetchAll(), 'billing_cron' => billingLastRun($db)]);
+    // `billing_missing` lista os clientes ativos sem fatura no mes cujo vencimento ja passou
+    // (o ciclo nao emite data passada) e `today` e a data de Brasilia que a tela sugere
+    // como novo vencimento: nada disso e calculado no navegador, que pode estar em outro fuso.
+    $today = new DateTimeImmutable('now', new DateTimeZone('America/Sao_Paulo'));
+    echo json_encode([
+        'ok' => true,
+        'invoices' => $stmt->fetchAll(),
+        'billing_cron' => billingLastRun($db),
+        'billing_missing' => billingClientsWithoutInvoice($db, $today),
+        'today' => $today->format('Y-m-d'),
+    ]);
     exit;
 }
 

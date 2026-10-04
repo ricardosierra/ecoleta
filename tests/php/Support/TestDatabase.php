@@ -27,7 +27,7 @@ final class TestDatabase
      * Versão de schema que este espelho reproduz. Precisa acompanhar
      * ECOLETA_SCHEMA_VERSION — SchemaMirrorTest garante isso.
      */
-    public const MIRRORED_VERSION = 18;
+    public const MIRRORED_VERSION = 19;
 
     private string $path;
 
@@ -247,7 +247,7 @@ final class TestDatabase
         $pdo->exec('CREATE TABLE activity_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NULL,
-            target_login TEXT NULL,
+            target_login TEXT NULL, -- 019: VARCHAR(255) em MySQL
             action TEXT NOT NULL,
             description TEXT NULL,
             performed_by_id INTEGER NULL,
