@@ -17,6 +17,16 @@ final class MigrateEndpointTest extends TestCase
         $this->db->destroy();
     }
 
+    /**
+     * Número da próxima migration que o banco de teste ainda não conhece. Derivado do
+     * espelho do schema: um número fixo (019) passou a colidir com a migration real
+     * assim que ela existiu, e voltaria a colidir a cada migration nova.
+     */
+    private function proximaMigration(): string
+    {
+        return sprintf('%03d', TestDatabase::MIRRORED_VERSION + 1);
+    }
+
     public function testRecusaSemToken(): void
     {
         $res = Endpoint::call('migrate.php', [
@@ -74,7 +84,7 @@ final class MigrateEndpointTest extends TestCase
     {
         $dir = sys_get_temp_dir() . '/ecoleta_mig_query_' . uniqid();
         mkdir($dir);
-        file_put_contents($dir . '/019_via_query.sql', 'CREATE TABLE via_query (id INTEGER PRIMARY KEY);');
+        file_put_contents($dir . '/' . $this->proximaMigration() . '_via_query.sql', 'CREATE TABLE via_query (id INTEGER PRIMARY KEY);');
 
         try {
             $res = Endpoint::call('migrate.php', [
@@ -87,7 +97,7 @@ final class MigrateEndpointTest extends TestCase
             $tabelas = $this->db->pdo()->query("SELECT name FROM sqlite_master WHERE type='table' AND name='via_query'")->fetchAll();
             self::assertCount(0, $tabelas, 'a migration rodou com o segredo na query string');
         } finally {
-            @unlink($dir . '/019_via_query.sql');
+            @unlink($dir . '/' . $this->proximaMigration() . '_via_query.sql');
             @rmdir($dir);
         }
     }
@@ -109,7 +119,7 @@ final class MigrateEndpointTest extends TestCase
     {
         $dir = sys_get_temp_dir() . '/ecoleta_mig_' . uniqid();
         mkdir($dir);
-        file_put_contents($dir . '/019_teste_ping.sql', 'CREATE TABLE teste_ping (id INTEGER PRIMARY KEY, msg TEXT);');
+        file_put_contents($dir . '/' . $this->proximaMigration() . '_teste_ping.sql', 'CREATE TABLE teste_ping (id INTEGER PRIMARY KEY, msg TEXT);');
 
         try {
             $res = Endpoint::call('migrate.php', [
@@ -130,7 +140,7 @@ final class MigrateEndpointTest extends TestCase
             $tables = $this->db->pdo()->query("SELECT name FROM sqlite_master WHERE type='table' AND name='teste_ping'")->fetchAll();
             self::assertCount(1, $tables);
         } finally {
-            @unlink($dir . '/019_teste_ping.sql');
+            @unlink($dir . '/' . $this->proximaMigration() . '_teste_ping.sql');
             @rmdir($dir);
         }
     }
@@ -142,7 +152,7 @@ final class MigrateEndpointTest extends TestCase
 
         $dir = sys_get_temp_dir() . '/ecoleta_mig_unsafe_' . uniqid();
         mkdir($dir);
-        file_put_contents($dir . '/019_reset_unsafe.sql', "UPDATE users SET password_hash = 'hackeado' WHERE id = {$userId};");
+        file_put_contents($dir . '/' . $this->proximaMigration() . '_reset_unsafe.sql', "UPDATE users SET password_hash = 'hackeado' WHERE id = {$userId};");
 
         try {
             $res = Endpoint::call('migrate.php', [
@@ -163,7 +173,7 @@ final class MigrateEndpointTest extends TestCase
             $hashAtual = $this->db->pdo()->query("SELECT password_hash FROM users WHERE id = {$userId}")->fetchColumn();
             self::assertSame($hashOriginal, $hashAtual);
         } finally {
-            @unlink($dir . '/019_reset_unsafe.sql');
+            @unlink($dir . '/' . $this->proximaMigration() . '_reset_unsafe.sql');
             @rmdir($dir);
         }
     }

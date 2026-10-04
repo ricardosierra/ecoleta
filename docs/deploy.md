@@ -298,6 +298,38 @@ Confira a lista de clientes (valor, dia e contatos) antes de disparar e não use
 cliente de teste com e-mail ou telefone de gente real. Depois de agendar, abra
 `/dashboard/faturas`: o aviso passa a mostrar a última execução.
 
+### Pré-requisitos do primeiro disparo
+
+- **Migration 019 aplicada antes do deploy dos arquivos** (a regra de sempre: migrations
+  primeiro). Ela alarga `activity_logs.target_login`, que guarda o id da mensagem do WhatsApp.
+- **`WHATSAPP_BILLING_TEMPLATE` configurado e aprovado na Meta.** Fora da janela de 24 horas o
+  WhatsApp só entrega template; sem ele o canal do WhatsApp falha e o e-mail segue. A falha se
+  repete a cada execução até o vencimento do cliente, então o cron responde 502 e o workflow do
+  GitHub fica vermelho todo dia, o que esconde erro de verdade. Parâmetros do corpo, nesta ordem:
+  cliente, valor, vencimento e link.
+- **Vencimento já passado.** O ciclo nunca emite data passada (o Asaas recusa). Se o primeiro
+  disparo acontecer depois do dia de vencimento de um cliente, ele não recebe fatura do mês, e a
+  tela de Faturas lista esses clientes no painel "Clientes sem fatura neste mês", com o botão
+  "Preencher fatura" que já leva o cliente, o valor e o vencimento de hoje para o formulário.
+
+### Entrega que ficou em "resultado incerto"
+
+Antes da migration 019, em MySQL estrito, o id da mensagem do WhatsApp não cabia em
+`target_login`: a mensagem saía, mas a linha ficava em `billing_attempt`, e todo ciclo seguinte
+devolvia "Envio anterior com resultado incerto" para aquele canal. Confira se há alguma:
+
+```sql
+SELECT id, description, created_at FROM activity_logs WHERE action = 'billing_attempt' ORDER BY id;
+```
+
+`description` é `invoice:<id da fatura>:new:whatsapp` (ou `:email`). Depois de **conferir no painel
+da Meta se a mensagem saiu**, marque cada uma:
+
+```sql
+UPDATE activity_logs SET action = 'billing_delivery' WHERE id IN (...);  -- saiu
+UPDATE activity_logs SET action = 'billing_failed'   WHERE id IN (...);  -- não saiu: o ciclo tenta de novo
+```
+
 ### Arquivos temporários no servidor
 
 O deploy por FTP só envia arquivos: **nunca apaga** o que saiu do repositório. Um

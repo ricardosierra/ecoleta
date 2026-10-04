@@ -67,7 +67,7 @@ final class WhatsAppBotTest extends TestCase
         return $this->db->seedClient($nome, 120.5, 10, 'active', $whatsapp);
     }
 
-    private function fatura(int $clientId, string $status = 'PENDING', string $vencimento = '2026-10-10', string $id = 'pay_1'): int
+    private function fatura(int $clientId, string $status = 'PENDING', string $vencimento = '2099-10-10', string $id = 'pay_1'): int
     {
         return $this->db->seedInvoice($clientId, $id, 120.5, $vencimento, $status);
     }
@@ -304,9 +304,9 @@ final class WhatsAppBotTest extends TestCase
     public function testRespostaDeOutraConversaNaoImpedeORobo(): void
     {
         $a = $this->cliente('A', '5521999887766');
-        $this->fatura($a, 'PENDING', '2026-10-10', 'pay_a');
+        $this->fatura($a, 'PENDING', '2099-10-10', 'pay_a');
         $b = $this->cliente('B', '5521988887777');
-        $this->fatura($b, 'PENDING', '2026-10-10', 'pay_b');
+        $this->fatura($b, 'PENDING', '2099-10-10', 'pay_b');
 
         $this->responder('boleto', '5521999887766');
         $this->enviados = [];
@@ -342,7 +342,7 @@ final class WhatsAppBotTest extends TestCase
     public function testComVariasFaturasAbertasVaiAMaisAntiga(): void
     {
         $clienteId = $this->cliente();
-        $this->fatura($clienteId, 'PENDING', '2026-10-10', 'pay_nova');
+        $this->fatura($clienteId, 'PENDING', '2099-10-10', 'pay_nova');
         $this->fatura($clienteId, 'OVERDUE', '2026-08-10', 'pay_velha');
         $pedidas = [];
 
@@ -367,7 +367,7 @@ final class WhatsAppBotTest extends TestCase
         $texto = $this->textosEnviados()[0];
         self::assertStringStartsWith('Olá, Heineken Brasil.', $texto);
         self::assertStringContainsString('R$ 120,50', $texto);
-        self::assertStringContainsString('vence em *10/10/2026*', $texto);
+        self::assertStringContainsString('vence em *10/10/2099*', $texto);
     }
 
     /** O cadastro pode ter máscara ou DDI solto: o que vale é o número normalizado. */

@@ -13,8 +13,8 @@ Referência visual oficial da cliente: <https://impactacomvoce.com.br/>.
 - **Next.js 16** (App Router, Turbopack)
 - **React 19** + **TypeScript** (strict)
 - **Tailwind CSS v4** (config inline via `@theme {}` no `globals.css`)
-- **Resend** para envio de e-mail (fallback SMTP via Nodemailer opcional)
-- **Zod** para validação do formulário de contato
+- **PHP** (`public/contact.php`, `mail()`) para o formulário de contato; SMTP via PHPMailer nos e-mails de OS e de fatura
+- **Zod** só para as opções do formulário (`lib/contact-schema.ts`)
 - Sem state manager, sem UI lib externa — componentes próprios
 
 ## Comandos
@@ -57,7 +57,7 @@ app/                       Rotas (App Router)
   esg/page.tsx             Página ESG e Impacto
   cases/page.tsx           Página Cases & Provas
   contato/page.tsx         Sobre + Contato (com formulário)
-  api/contact/route.ts     Endpoint do formulário
+  (endpoint do formulário: public/contact.php)
   sitemap.ts · robots.ts   SEO
   layout.tsx · globals.css
 
@@ -71,12 +71,12 @@ components/                Componentes reutilizáveis (16)
 
 lib/                       Utilitários e configuração
   site.config.ts           URLs, contatos, navegação (com placeholders)
-  contact-schema.ts        Schema Zod do formulário
+  contact-schema.ts        Opções do formulário (Zod)
   os-share.ts              Mensagem de WhatsApp e datas da OS
   logo-crop.ts             Geometria do recorte de logo (sem DOM)
   whatsapp.ts              Janela de 24h e formatação do painel
   phone.ts                 Normalização de telefone (espelho de phone_lib.php)
-  rate-limit.ts            Rate limit em memória (5 req/min/IP)
+  rate-limit.ts            Sem uso (o limite do formulário mora em public/contact.php)
   cn.ts                    Helper para classes condicionais
 
 db/                        Schema do banco (nunca publicado pelo deploy)
@@ -221,6 +221,20 @@ diretório antes do primeiro upload.
   `due_day`, e de recriar o que a operadora cancelou de propósito. A tela de
   Faturas, ao contrário, deixa gerar de novo para o mesmo vencimento depois de
   cancelar.
+- **A trava do ciclo é por cliente e MÊS** (`month:<id>:AAAA-MM`), e a busca da fatura do mês
+  fica dentro dela. A trava por vencimento deixava dois ciclos simultâneos, ou uma troca de
+  `due_day` no meio do ciclo, emitirem duas faturas do mesmo mês (reproduzido em MariaDB). A
+  tela de Faturas, por outro lado, continua permitindo uma segunda fatura no mês (cobrança extra
+  é legítima) e pergunta antes. Cobrança que o Asaas devolve e que já está gravada aqui com
+  outro vencimento (prorrogada no painel do Asaas) é reaproveitada, não inserida de novo.
+- **Quem ficou sem fatura aparece, não some.** `billingClientsWithoutInvoice()` lista os
+  clientes ativos com valor mensal sem fatura no mês cujo vencimento já passou (o ciclo não emite
+  data passada). A tela de Faturas mostra a lista com "Preencher fatura". Cancelada conta como
+  "tem fatura".
+- **Marcar a entrega nunca deixa a tentativa "incerta".** Depois que o provedor aceitou, gravar o
+  id da mensagem e o histórico do painel é bookkeeping: se falhar, marca só `billing_delivery`.
+  (`activity_logs.target_login` é VARCHAR(255) desde a migration 019; era 50 e o id do WhatsApp
+  não cabia.) Fora da janela de 24h o WhatsApp exige `WHATSAPP_BILLING_TEMPLATE` aprovado.
 - **Cada execução deixa rastro.** `billingRecordRun()` grava `billing_cron_run`
   em `activity_logs` (horário em UTC dentro do JSON, pelo PHP). A tela de Faturas
   lê isso e avisa quando o cron nunca rodou ou parou há mais de 36 horas
@@ -261,16 +275,12 @@ diretório antes do primeiro upload.
   senha atual. O limite de login tem teto por conta (15 falhas, qualquer IP), chave sem
   acento e caixa e janela de 30 minutos. Para liberar à mão:
   `DELETE FROM login_throttle WHERE scope = 'account'`.
-- `public/.htaccess` nega por `RewriteRule [F]` os arquivos internos de `api/` (env,
-  composer, scripts temporários) e `api/vendor/`. Não use `Require` em `.htaccess`: sem
-  override de autenticação liberado no servidor, é 500 no site inteiro. O deploy por FTP
-  nunca apaga arquivo removido do repositório, então apague à mão do servidor.
-
-### Formulário de contato
-
-O formulário real é `public/contact.php` (PHP, `mail()`), não uma rota do Next. Destino e
-remetente vêm de `CONTACT_TO_EMAIL` e `CONTACT_FROM_EMAIL` no `api/env.php`, o corpo do
-HTML do e-mail é escapado e há limite de 5 por minuto e 30 por hora por IP.
+- `public/.htaccess` (a raiz do site) nega por `RewriteRule [F]` os arquivos internos de
+  `api/` (env, composer, scripts temporários) e `api/vendor/`. Não acrescente `Require` nele:
+  sem override de autenticação liberado no servidor, é 500 no site inteiro. (Os `.htaccess`
+  de `public/uploads/logos/` e o `api/migrations/` gerado pelo deploy usam `Require`, mas
+  cada um só cobre a própria pasta.) O deploy por FTP nunca apaga arquivo removido do
+  repositório, então apague à mão do servidor.
 
 ### Banco de dados
 
@@ -286,10 +296,10 @@ HTML do e-mail é escapado e há limite de 5 por minuto e 30 por hora por IP.
 
 ### Formulário e e-mail
 
-- Validação **dupla** (Zod no client + server). Backend é a fonte de verdade.
+- Validação **dupla**: o componente `ContactForm` e `public/contact.php`. O PHP é a fonte de verdade.
 - Honeypot (`website`) — bot recebe `200 OK` silencioso, sem feedback.
-- Rate limit em memória, 5 req/min/IP. Para escalar, trocar `lib/rate-limit.ts` por Redis/Upstash.
-- Endpoint tenta Resend → SMTP → modo dev (apenas log). Configurar via env (ver `.env.example`).
+- Limite de 5 envios por minuto e 30 por hora por `REMOTE_ADDR`, em arquivos na pasta temporária (falha aberto). Atrás de CDN ou proxy, `REMOTE_ADDR` pode ser o do proxy.
+- O envio é `mail()`; destino e remetente vêm de `CONTACT_TO_EMAIL` e `CONTACT_FROM_EMAIL` no `api/env.php`.
 - **Nunca** logar PII em produção. **Nunca** expor variáveis sem prefixo `NEXT_PUBLIC_` no client.
 
 ### Acessibilidade
@@ -313,7 +323,7 @@ Tudo via `.env.local` (copiar de `.env.example`):
 - `NEXT_PUBLIC_WHATSAPP_NUMBER` — formato internacional sem `+` (ex: `5511999999999`)
 - `NEXT_PUBLIC_INSTAGRAM_URL`, `NEXT_PUBLIC_LINKEDIN_URL`
 - `NEXT_PUBLIC_CNPJ`, `NEXT_PUBLIC_ADDRESS`
-- `CONTACT_TO_EMAIL`, `RESEND_API_KEY` (ou bloco `SMTP_*`)
+- `CONTACT_TO_EMAIL`, `CONTACT_FROM_EMAIL` (em branco valem os padrões de `public/contact.php`) e, se quiser SMTP nos e-mails de OS e fatura, o bloco `SMTP_*`
 - `SITE_BASE_URL` — **fixar em produção**: em branco, o link com token da OS é
   montado a partir do cabeçalho `Host`, que quem chama controla
 - `ASAAS_WEBHOOK_TOKEN` — o mesmo valor do campo "Token de autenticação" no

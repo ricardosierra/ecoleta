@@ -381,7 +381,7 @@ final class WhatsAppWebhookTest extends TestCase
     private function semearFaturaDoCliente(): void
     {
         $clientId = $this->db->seedClient('Heineken', 500.0, 10, 'active', '5521999887766');
-        $this->db->seedInvoice($clientId, 'pay_webhook', 120.5, '2026-10-10', 'PENDING');
+        $this->db->seedInvoice($clientId, 'pay_webhook', 120.5, '2099-10-10', 'PENDING');
     }
 
     public function testTextoPedindoAFaturaAcionaORobo(): void

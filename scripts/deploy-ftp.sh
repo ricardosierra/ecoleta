@@ -102,7 +102,20 @@ FTP_UPLOAD_PATH="${FTP_UPLOAD_PATH:-.}"
 # começa com "$". Sem aspas simples no .env, o `source` lá em cima expande esse
 # "$aact_..." como se fosse nome de variável e a chave chega aqui mutilada — sem
 # erro nenhum, e a API do Asaas só responde 401 depois de publicado.
-for secret in DB_PASS DASHBOARD_INSTALL_TOKEN ASAAS_API_KEY CRON_SECRET ASAAS_WEBHOOK_TOKEN WHATSAPP_ACCESS_TOKEN WHATSAPP_APP_SECRET WHATSAPP_WEBHOOK_VERIFY_TOKEN CONTACT_TO_EMAIL CONTACT_FROM_EMAIL SECURITY_ALERT_EMAIL; do
+# Toda variavel que o heredoc abaixo grava em api/env.php entra na checagem: uma aspa
+# simples em qualquer uma (a senha do SMTP, por exemplo) gera um env.php com erro de
+# sintaxe, e um env.php quebrado derruba a API inteira, nao so aquele recurso.
+ENV_PHP_VARS=(
+  DB_HOST DB_NAME DB_USER DB_PASS DASHBOARD_ROOT_LOGIN DASHBOARD_INSTALL_TOKEN
+  NEXT_PUBLIC_POWERBI_URL ASAAS_API_KEY CRON_SECRET ASAAS_WEBHOOK_TOKEN
+  WHATSAPP_PHONE_ID WHATSAPP_BUSINESS_ACCOUNT_ID WHATSAPP_ACCESS_TOKEN
+  SMTP_HOST SMTP_PORT SMTP_SECURE SMTP_USER SMTP_PASS
+  CONTACT_TO_EMAIL CONTACT_FROM_EMAIL CONTACT_FROM_NAME SECURITY_ALERT_EMAIL
+  WHATSAPP_OS_TEMPLATE WHATSAPP_OS_TEMPLATE_LANG WHATSAPP_BILLING_TEMPLATE
+  WHATSAPP_BILLING_TEMPLATE_LANG WHATSAPP_TRANSPORT WHATSAPP_WEBHOOK_VERIFY_TOKEN
+  WHATSAPP_APP_SECRET SITE_BASE_URL OS_MAIL_FROM MAIL_TRANSPORT
+)
+for secret in "${ENV_PHP_VARS[@]}"; do
   if [[ "${!secret:-}" == *"'"* ]]; then
     echo "$secret contém aspa simples — quebraria api/env.php." >&2
     exit 1
