@@ -251,6 +251,34 @@ php /caminho/da/conta/public_html/api/cron/billing.php
 Frequência diária. Exemplo: `0 11 * * *` se o relógio do servidor for UTC (08:00 em
 Brasília) ou `0 8 * * *` se for o de Brasília. Confirme o fuso do painel antes.
 
+### Agendador do GitHub Actions (já no repositório)
+
+`.github/workflows/billing-cron.yml` chama `api/cron/billing.php` todo dia às 11:00 UTC
+(08:00 em Brasília) e pode ser disparado à mão. É o agendador que o repositório controla,
+e não depende de alguém ter criado o cron no painel da hospedagem. Como o ciclo é
+idempotente, usar este e o da hospedagem ao mesmo tempo não cobra em dobro.
+
+Para funcionar:
+
+1. O arquivo precisa estar na **branch padrão**: o GitHub só executa agendamentos a
+   partir dela.
+2. Em Settings > Secrets and variables > Actions > Secrets, crie `CRON_SECRET` com o
+   **mesmo valor** do `CRON_SECRET` do `api/env.php` do servidor.
+3. Opcional, em Variables: `CRON_URL`, se o endereço não for
+   `https://www.ecolevaeco.com/api/cron/billing.php`.
+
+Disparo manual (o "primeiro envio", que alcança os clientes antigos que ficaram sem a
+fatura do mês): aba Actions, workflow `faturamento-automatico`, botão Run workflow.
+
+O job fica vermelho (e o GitHub avisa por e-mail) quando o servidor responde 502, 503 ou
+403, ou não responde. O corpo da resposta não vai para o log, porque o repositório é
+público e o log também; o detalhe das falhas está no aviso "Faturamento automático" da tela
+de Faturas. O GitHub pode atrasar um agendamento em horário de pico e desativa
+agendamentos de repositório público sem nenhuma atividade por 60 dias: o aviso da tela de
+Faturas, que acusa o cron parado depois de 36 horas, é a rede de proteção contra isso. Não
+foi possível testar daqui a chamada de um runner do GitHub ao servidor de produção: se a
+hospedagem bloquear esse tráfego, o job acusa 403 ou "sem resposta".
+
 ### Respostas
 
 | Resposta | Significa |

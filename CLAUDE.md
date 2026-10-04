@@ -211,7 +211,10 @@ diretório antes do primeiro upload.
   passou, hoje inclusive) e o do mês seguinte (a partir do dia 30, ou do último
   dia do mês). Era só o dia 30: cliente cadastrado no dia 3 com vencimento no dia 5
   ficava um mês sem boleto, e um dia 30 perdido (cron fora do ar, Asaas caído)
-  perdia o mês inteiro sem ninguém saber. Nunca se emite data passada.
+  perdia o mês inteiro sem ninguém saber. Nunca se emite data passada. Quem chama o
+  endpoint todo dia é `.github/workflows/billing-cron.yml` (GitHub Actions, precisa do
+  secret `CRON_SECRET` e do arquivo na branch padrão) e/ou o cron da hospedagem; os
+  dois juntos não cobram em dobro.
 - **Uma fatura por cliente por mês.** `billingFindMonthInvoice()` considera
   qualquer fatura do cliente no mês, de qualquer data e **inclusive cancelada**:
   é o que impede cobrança dupla depois de uma fatura avulsa ou de uma troca de
@@ -243,6 +246,31 @@ diretório antes do primeiro upload.
 - Clientes, faturas e OS são módulos de **administrador nos dois lados**: a tela
   desenha "Acesso negado." e a API responde 403. São dados de carteira e de
   cobrança.
+
+### Autenticação e sessão
+
+- **O papel vem do banco a cada requisição.** `apiRequireAuthenticated()` e
+  `apiRequireAdmin()` reconsultam o usuário por id: rebaixar ou excluir vale na hora, e
+  trocar ou resetar a senha derruba as sessões abertas (a sessão guarda `pwd_fp`, um
+  sha256 do hash da senha). Teste que injeta sessão (`'session' => [...]`) precisa
+  semear no banco o usuário que a sessão cita, com o mesmo papel.
+- **Senha temporária só acessa `me.php`, `change_password.php` e `logout.php`**, também
+  na API (403 `password_change_required`). Gerar senha e travar a conta na mesma chamada é
+  recusado, porque deixaria o usuário preso na senha temporária.
+- Troca de senha: 8 caracteres, diferente da atual e, fora da troca forçada, exige a
+  senha atual. O limite de login tem teto por conta (15 falhas, qualquer IP), chave sem
+  acento e caixa e janela de 30 minutos. Para liberar à mão:
+  `DELETE FROM login_throttle WHERE scope = 'account'`.
+- `public/.htaccess` nega por `RewriteRule [F]` os arquivos internos de `api/` (env,
+  composer, scripts temporários) e `api/vendor/`. Não use `Require` em `.htaccess`: sem
+  override de autenticação liberado no servidor, é 500 no site inteiro. O deploy por FTP
+  nunca apaga arquivo removido do repositório, então apague à mão do servidor.
+
+### Formulário de contato
+
+O formulário real é `public/contact.php` (PHP, `mail()`), não uma rota do Next. Destino e
+remetente vêm de `CONTACT_TO_EMAIL` e `CONTACT_FROM_EMAIL` no `api/env.php`, o corpo do
+HTML do e-mail é escapado e há limite de 5 por minuto e 30 por hora por IP.
 
 ### Banco de dados
 
