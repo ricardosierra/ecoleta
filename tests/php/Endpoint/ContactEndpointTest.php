@@ -73,7 +73,7 @@ final class ContactEndpointTest extends TestCase
         $script = $this->work . '/sendmail-grava.sh';
         file_put_contents(
             $script,
-            "#!/bin/sh\ncat > \"\$(mktemp '" . $this->maildir . "/msg-XXXXXX.eml')\"\n"
+            "#!/bin/sh\nfile=\"\$(mktemp '" . $this->maildir . "/msg-XXXXXX')\"\nmv \"\$file\" \"\$file.eml\"\ncat > \"\$file.eml\"\n"
         );
         chmod($script, 0755);
 
@@ -84,7 +84,7 @@ final class ContactEndpointTest extends TestCase
     private function sendmailQueFalha(): string
     {
         $script = $this->work . '/sendmail-falha.sh';
-        file_put_contents($script, "#!/bin/sh\ncat > /dev/null\nexit 75\n");
+        file_put_contents($script, "#!/bin/sh\ncat > /dev/null\nexit 1\n");
         chmod($script, 0755);
 
         return $script;

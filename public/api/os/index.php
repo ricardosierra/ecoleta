@@ -26,7 +26,7 @@ $db = getDbConnection();
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $stmt = $db->query('
-        SELECT o.id, o.client_id, o.collection_address, o.weight, o.collection_date,
+        SELECT o.id, o.client_id, o.collection_address, o.weight, o.collection_date, o.collection_period,
                o.approximate_time, o.material_collected, o.bags_count, o.containers_count,
                o.responsible, o.signature_text, o.share_token, o.sent_at, o.sent_to,
                o.whatsapp_sent_at, o.whatsapp_sent_to, o.created_at,
@@ -80,18 +80,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         apiJsonResponse(400, ['error' => $erro]);
     }
 
+    $collectionPeriod = trim((string) ($body['collection_period'] ?? ''));
+    if (mb_strlen($collectionPeriod, 'UTF-8') > 255) {
+        apiJsonResponse(400, ['error' => 'Período de Coleta deve ter no máximo 255 caracteres.']);
+    }
+
     try {
         $stmt = $db->prepare('
             INSERT INTO service_orders
-                (client_id, collection_address, weight, collection_date, approximate_time,
+                (client_id, collection_address, weight, collection_date, collection_period, approximate_time,
                  material_collected, bags_count, containers_count, responsible, share_token)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ');
         $stmt->execute([
             $clientId,
             $campos['collection_address'],
             $campos['weight'],
             $campos['collection_date'],
+            $collectionPeriod !== '' ? $collectionPeriod : null,
             $campos['approximate_time'],
             $campos['material_collected'],
             $campos['bags_count'],

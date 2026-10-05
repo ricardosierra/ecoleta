@@ -184,6 +184,7 @@ function osPresent(array $row, ?string $baseUrl = null, ?array $whatsappWindow =
         'collection_address' => $row['collection_address'] ?? null,
         'weight' => $row['weight'] ?? null,
         'collection_date' => $row['collection_date'] ?? null,
+        'collection_period' => $row['collection_period'] ?? null,
         'approximate_time' => $row['approximate_time'] ?? null,
         'material_collected' => $row['material_collected'] ?? null,
         'bags_count' => $row['bags_count'] ?? null,
@@ -528,6 +529,13 @@ function osDocumentFields(array $os): array
         $campos[$rotulo] = $coluna === 'collection_date'
             ? osFormatDate(isset($os['collection_date']) ? (string) $os['collection_date'] : null)
             : osPlainField($os[$coluna] ?? null);
+
+        if ($coluna === 'collection_date') {
+            $periodo = trim((string) ($os['collection_period'] ?? ''));
+            if ($periodo !== '' && $periodo !== '-') {
+                $campos['Período de Coleta'] = $periodo;
+            }
+        }
     }
 
     return $campos;

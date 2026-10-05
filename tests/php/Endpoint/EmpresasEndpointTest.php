@@ -55,7 +55,9 @@ final class EmpresasEndpointTest extends TestCase
         imagefill($img, 0, 0, (int) imagecolorallocate($img, 10, 90, 40));
         $path = $this->uploadsDir . '/envio-' . bin2hex(random_bytes(4)) . '.png';
         imagepng($img, $path);
-        imagedestroy($img);
+        if (PHP_VERSION_ID < 80500) {
+            imagedestroy($img);
+        }
 
         return $path;
     }

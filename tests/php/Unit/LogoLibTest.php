@@ -38,7 +38,7 @@ final class LogoLibTest extends TestCase
         imagefill($img, 0, 0, (int) imagecolorallocate($img, 20, 120, 60));
         $path = $this->workDir . '/entrada.png';
         imagepng($img, $path);
-        imagedestroy($img);
+        ecoletaLogoDestroy($img);
 
         return $path;
     }
@@ -49,7 +49,7 @@ final class LogoLibTest extends TestCase
         imagefill($img, 0, 0, (int) imagecolorallocate($img, 200, 40, 40));
         $path = $this->workDir . '/entrada.jpg';
         imagejpeg($img, $path);
-        imagedestroy($img);
+        ecoletaLogoDestroy($img);
 
         return $path;
     }
@@ -160,7 +160,7 @@ final class LogoLibTest extends TestCase
         imagefilledrectangle($img, $x, $y, $x + $w - 1, $y + $h - 1, (int) imagecolorallocate($img, 200, 30, 30));
         $path = $this->workDir . '/retangulo.png';
         imagepng($img, $path);
-        imagedestroy($img);
+        ecoletaLogoDestroy($img);
 
         return $path;
     }
@@ -231,7 +231,7 @@ final class LogoLibTest extends TestCase
         imagefill($img, 0, 0, (int) imagecolorallocatealpha($img, 0, 0, 0, 127));
         $path = $this->workDir . '/vazia.png';
         imagepng($img, $path);
-        imagedestroy($img);
+        ecoletaLogoDestroy($img);
 
         $res = ecoletaLogoProcess($path, $this->workDir, 'Vazia');
 
@@ -248,7 +248,7 @@ final class LogoLibTest extends TestCase
         imagefilledrectangle($img, 75, 40, 124, 59, (int) imagecolorallocate($img, 20, 20, 20));
         $path = $this->workDir . '/paleta.png';
         imagepng($img, $path);
-        imagedestroy($img);
+        ecoletaLogoDestroy($img);
 
         $res = ecoletaLogoProcess($path, $this->workDir, 'Paleta');
 
@@ -272,7 +272,7 @@ final class LogoLibTest extends TestCase
         imagefilledrectangle($img, 75, 40, 124, 59, (int) imagecolorallocate($img, 200, 30, 30));
         $path = $this->workDir . '/trns.png';
         imagepng($img, $path);
-        imagedestroy($img);
+        ecoletaLogoDestroy($img);
 
         $recarregada = imagecreatefrompng($path);
         if (imagecolortransparent($recarregada) < 0) {

@@ -21,6 +21,7 @@ export type ServiceOrder = {
   collection_address?: string | null;
   weight?: string | null;
   collection_date?: string | null;
+  collection_period?: string | null;
   approximate_time?: string | null;
   material_collected?: string | null;
   bags_count?: string | number | null;
@@ -160,17 +161,26 @@ export function osWhatsAppStatusTone(status?: string | null): "ok" | "pendente" 
  * `OS_FIELD_LABELS` em `public/api/os/os_lib.php`. Mexeu aqui, mexa lá.
  */
 export function osDocumentFields(os: ServiceOrder): { label: string; value: string }[] {
-  return [
+  const fields = [
     { label: "Cliente", value: osFieldValue(os.client_name) },
     { label: "Endereço da coleta", value: osFieldValue(os.collection_address) },
     { label: "Data da coleta", value: formatOsDate(os.collection_date) },
+  ];
+
+  if (os.collection_period && os.collection_period.trim() !== "") {
+    fields.push({ label: "Período de Coleta", value: os.collection_period.trim() });
+  }
+
+  fields.push(
     { label: "Horário aproximado", value: osFieldValue(os.approximate_time) },
     { label: "Material coletado", value: osFieldValue(os.material_collected) },
     { label: "Pesagem", value: osFieldValue(os.weight) },
     { label: "Responsável pela coleta", value: osFieldValue(os.responsible) },
     { label: "Qtd. sacos", value: osFieldValue(os.bags_count) },
     { label: "Qtd. contêineres", value: osFieldValue(os.containers_count) },
-  ];
+  );
+
+  return fields;
 }
 
 /**

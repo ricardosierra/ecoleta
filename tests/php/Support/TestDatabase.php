@@ -27,7 +27,7 @@ final class TestDatabase
      * Versão de schema que este espelho reproduz. Precisa acompanhar
      * ECOLETA_SCHEMA_VERSION — SchemaMirrorTest garante isso.
      */
-    public const MIRRORED_VERSION = 19;
+    public const MIRRORED_VERSION = 20;
 
     private string $path;
 
@@ -308,13 +308,14 @@ final class TestDatabase
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )');
 
-        // 008_create_service_orders.sql + 014_service_order_share.sql + 016_add_os_collection_fields.sql
+        // 008_create_service_orders.sql + 014_service_order_share.sql + 016_add_os_collection_fields.sql + 019_add_os_collection_period.sql
         $pdo->exec('CREATE TABLE service_orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             client_id INTEGER NOT NULL,
             collection_address TEXT NULL,
             weight TEXT NULL,
             collection_date TEXT NULL,
+            collection_period TEXT NULL,
             approximate_time TEXT NULL,
             material_collected TEXT NULL,
             bags_count INTEGER NULL,

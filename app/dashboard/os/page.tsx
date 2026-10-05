@@ -140,6 +140,7 @@ function OSMain() {
   const [collectionAddress, setCollectionAddress] = useState("");
   const [weight, setWeight] = useState("");
   const [collectionDate, setCollectionDate] = useState("");
+  const [collectionPeriod, setCollectionPeriod] = useState("");
   const [approximateTime, setApproximateTime] = useState("");
   const [materialCollected, setMaterialCollected] = useState("");
   const [bagsCount, setBagsCount] = useState("");
@@ -216,6 +217,7 @@ function OSMain() {
       collection_address: collectionAddress,
       weight,
       collection_date: collectionDate,
+      collection_period: collectionPeriod,
       approximate_time: approximateTime,
       material_collected: materialCollected,
       bags_count: bagsCount,
@@ -239,6 +241,7 @@ function OSMain() {
         setCollectionAddress("");
         setWeight("");
         setCollectionDate("");
+        setCollectionPeriod("");
         setApproximateTime("");
         setMaterialCollected("");
         setBagsCount("");
@@ -400,8 +403,13 @@ function OSMain() {
               <input id="os-endereco" maxLength={OS_LIMITS.address} value={collectionAddress} onChange={e => setCollectionAddress(e.target.value)} placeholder="Ex: Av. das Américas, 500 - Barra da Tijuca" className={inputClass} />
             </label>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <label className={labelClass} htmlFor="os-data">Data da Coleta
+              <label className={labelClass} htmlFor="os-data">Data da Coleta (opcional)
                 <input id="os-data" type="date" value={collectionDate} onChange={e => setCollectionDate(e.target.value)} className={inputClass} />
+                <span className="mt-1 block text-[11px] font-normal normal-case tracking-normal text-white/55">Use para coleta avulsa.</span>
+              </label>
+              <label className={labelClass} htmlFor="os-periodo">Período de Coleta
+                <input id="os-periodo" maxLength={OS_LIMITS.address} value={collectionPeriod} onChange={e => setCollectionPeriod(e.target.value)} placeholder="Ex.: do dia 17 de cada mês ao dia 1º do seguinte" className={inputClass} />
+                <span className="mt-1 block text-[11px] font-normal normal-case tracking-normal text-white/55">Use para coletas mensais.</span>
               </label>
               <label className={labelClass} htmlFor="os-horario">Horário Aproximado
                 <input id="os-horario" maxLength={OS_LIMITS.time} value={approximateTime} onChange={e => setApproximateTime(e.target.value)} placeholder="Ex: 10:00 ou Manhã" className={inputClass} />
@@ -602,7 +610,7 @@ function OSMain() {
             <tr>
               <th>Nº</th>
               <th>Cliente</th>
-              <th>Data</th>
+              <th>Data / Período</th>
               <th>Contêineres</th>
               <th>Envio</th>
               <th className="text-right">Ações</th>
@@ -621,7 +629,7 @@ function OSMain() {
                 <tr key={os.id} className={`transition-colors xl:hover:bg-white/5 ${ativa ? "bg-[var(--color-accent-soft)]" : ""}`}>
                   <td data-label="Nº" className="font-mono text-[var(--color-accent)]">#{osNumber(os.id)}</td>
                   <td data-label="Cliente" className="font-medium text-white">{os.client_name}</td>
-                  <td data-label="Data" className="whitespace-nowrap">{formatOsDate(os.collection_date)}</td>
+                  <td data-label="Data / Período" className="max-w-xs">{formatOsDate(os.collection_date) !== "—" && formatOsDate(os.collection_date) !== "-" ? formatOsDate(os.collection_date) : osFieldValue(os.collection_period)}</td>
                   <td data-label="Contêineres">{osFieldValue(os.containers_count)}</td>
                   <td data-label="Envio">
                     <span className="inline-flex items-center gap-2">

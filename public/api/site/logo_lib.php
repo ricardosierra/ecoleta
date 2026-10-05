@@ -208,6 +208,14 @@ function ecoletaLogoCanvas(int $width, int $height): GdImage
     return $img;
 }
 
+/** Libera o recurso de imagem (no-op seguro em PHP >= 8.5 onde imagedestroy está depreciado). */
+function ecoletaLogoDestroy(GdImage $img): void
+{
+    if (PHP_VERSION_ID < 80500) {
+        imagedestroy($img);
+    }
+}
+
 /**
  * Garante truecolor com canal alfa de verdade.
  *
@@ -234,7 +242,7 @@ function ecoletaLogoToTruecolorAlpha(GdImage $img): GdImage
 
     if ($transparent < 0) {
         imagecopy($out, $img, 0, 0, 0, 0, $width, $height);
-        imagedestroy($img);
+        ecoletaLogoDestroy($img);
 
         return $out;
     }
@@ -249,7 +257,7 @@ function ecoletaLogoToTruecolorAlpha(GdImage $img): GdImage
             imagesetpixel($out, $x, $y, (int) imagecolorallocatealpha($out, $c['red'], $c['green'], $c['blue'], $c['alpha']));
         }
     }
-    imagedestroy($img);
+    ecoletaLogoDestroy($img);
 
     return $out;
 }
@@ -259,7 +267,7 @@ function ecoletaLogoResample(GdImage $src, int $width, int $height): GdImage
 {
     $dst = ecoletaLogoCanvas($width, $height);
     imagecopyresampled($dst, $src, 0, 0, 0, 0, $width, $height, imagesx($src), imagesy($src));
-    imagedestroy($src);
+    ecoletaLogoDestroy($src);
 
     return $dst;
 }
@@ -387,7 +395,7 @@ function ecoletaLogoCrop(GdImage $src, array $box): GdImage
 {
     $dst = ecoletaLogoCanvas($box['width'], $box['height']);
     imagecopy($dst, $src, 0, 0, $box['x'], $box['y'], $box['width'], $box['height']);
-    imagedestroy($src);
+    ecoletaLogoDestroy($src);
 
     return $dst;
 }
@@ -438,14 +446,14 @@ function ecoletaLogoProcess(string $tmpPath, string $destDir, string $companyNam
     $dst = ecoletaLogoFit($src, ECOLETA_LOGO_MAX_WIDTH, ECOLETA_LOGO_MAX_HEIGHT);
 
     if (!is_dir($destDir) && !@mkdir($destDir, 0755, true) && !is_dir($destDir)) {
-        imagedestroy($dst);
+        ecoletaLogoDestroy($dst);
         error_log("logo_lib: não consegui criar {$destDir}.");
 
         return ['ok' => false, 'error' => 'Não consegui preparar o diretório de uploads no servidor.'];
     }
 
     if (!is_writable($destDir)) {
-        imagedestroy($dst);
+        ecoletaLogoDestroy($dst);
         error_log("logo_lib: sem permissão de escrita em {$destDir}.");
 
         return ['ok' => false, 'error' => 'O servidor não tem permissão de escrita em uploads/logos.'];
@@ -457,7 +465,7 @@ function ecoletaLogoProcess(string $tmpPath, string $destDir, string $companyNam
     $saved = $extension === 'webp'
         ? @imagewebp($dst, $path, ECOLETA_LOGO_WEBP_QUALITY)
         : @imagepng($dst, $path, 9);
-    imagedestroy($dst);
+    ecoletaLogoDestroy($dst);
 
     if (!$saved) {
         error_log("logo_lib: não consegui gravar {$path} como {$extension}.");
