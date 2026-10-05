@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../authz.php';
+require_once __DIR__ . '/../rate_limit.php';
 require_once __DIR__ . '/../security_alerts.php';
 require_once __DIR__ . '/password_audit_lib.php';
 
@@ -14,7 +15,10 @@ apiSendJsonHeaders();
 // sessão de papel desconhecido como não autenticada; aqui ela passava. Não dava
 // escalada — a troca sempre mira o id da própria sessão, nunca o do corpo — mas
 // deixava uma porta com regra própria.
-$actor = apiRequireAuthenticated();
+// `true`: quem está com senha temporária (force_password_change) é barrado em
+// todo o resto da API e passa por aqui, que é por onde a senha temporária deixa
+// de existir.
+$actor = apiRequireAuthenticated(true);
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -25,21 +29,23 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $raw = file_get_contents('php://input');
 $body = json_decode($raw ?: '', true) ?? [];
 $newPassword = (string) ($body['new_password'] ?? '');
+$currentPassword = (string) ($body['current_password'] ?? '');
 $emailInput = trim((string) ($body['email'] ?? ''));
 
-if (strlen($newPassword) < 6) {
+if (strlen($newPassword) < API_PASSWORD_MIN_LENGTH) {
     http_response_code(400);
-    echo json_encode(['error' => 'A nova senha deve ter pelo menos 6 caracteres.']);
+    echo json_encode(['error' => 'A nova senha deve ter pelo menos ' . API_PASSWORD_MIN_LENGTH . ' caracteres.']);
     exit;
 }
 
 $db = getDbConnection();
 
-// Busca e-mail e status de bloqueio da conta
-$stmtCurrent = $db->prepare("SELECT email, password_locked FROM users WHERE id = ? LIMIT 1");
+// Busca e-mail, hash vigente e status de bloqueio da conta
+$stmtCurrent = $db->prepare("SELECT email, password_hash, password_locked FROM users WHERE id = ? LIMIT 1");
 $stmtCurrent->execute([$actor['id']]);
 $userRow = $stmtCurrent->fetch();
 $currentEmail = $userRow['email'] ?? null;
+$currentHash = (string) ($userRow['password_hash'] ?? '');
 $passwordLocked = (bool) ($userRow['password_locked'] ?? false);
 
 if ($passwordLocked) {
@@ -68,6 +74,68 @@ if ($passwordLocked) {
     echo json_encode(['error' => 'A troca de senha desta conta está bloqueada pelo administrador.']);
     exit;
 }
+
+// Troca VOLUNTÁRIA (a conta não está com senha temporária) exige a senha atual:
+// sem isso, quem pegasse uma sessão aberta trocava a senha e ficava com a conta.
+// Na troca FORÇADA não se exige: a pessoa acabou de entrar com a senha temporária
+// e é essa a que o administrador lhe entregou.
+//
+// Errar a senha atual aqui é tentar adivinhar a senha da conta por outra porta
+// que não a do login, então entra nos MESMOS contadores do login; senão o
+// limite de tentativas dele seria contornado por este endpoint.
+if (empty($actor['force_password_change'])) {
+    $throttleIp = apiThrottleIp();
+    // Mesma identidade do login: o contador da conta é do ID, não do texto. Sem
+    // isto as falhas desta tela cairiam num contador diferente do do login.
+    $throttleAccount = ['id' => (int) $actor['id'], 'password_hash' => $currentHash];
+
+    $retryAfter = loginThrottleRetryAfter($db, (string) $actor['login'], $throttleIp, $throttleAccount);
+    if ($retryAfter > 0) {
+        apiJsonResponse(
+            429,
+            [
+                'error' => 'Muitas tentativas. Tente novamente em instantes.',
+                'code' => 'rate_limited',
+                'retry_after' => $retryAfter,
+            ],
+            ['Retry-After: ' . $retryAfter]
+        );
+    }
+
+    if ($currentPassword === '') {
+        apiJsonResponse(400, [
+            'error' => 'Informe a senha atual para trocar a senha.',
+            'code' => 'current_password_required',
+        ]);
+    }
+
+    if (!password_verify($currentPassword, $currentHash)) {
+        loginThrottleRegisterFailure($db, (string) $actor['login'], $throttleIp, $throttleAccount);
+
+        logActivity(
+            $db,
+            $actor['id'],
+            'change_password_wrong_current',
+            'Troca de senha recusada: senha atual incorreta',
+            $actor['id'],
+            $actor['login'],
+            $actor['login']
+        );
+
+        apiJsonResponse(403, [
+            'error' => 'A senha atual não confere.',
+            'code' => 'current_password_invalid',
+        ]);
+    }
+}
+
+// Trocar a senha pela mesma não troca nada, e deixaria a senha temporária valendo.
+if ($currentHash !== '' && password_verify($newPassword, $currentHash)) {
+    http_response_code(400);
+    echo json_encode(['error' => 'A nova senha deve ser diferente da atual.']);
+    exit;
+}
+
 $missingEmail = $currentEmail === null || $currentEmail === '';
 
 $emailToStore = null;
@@ -114,6 +182,9 @@ attributePasswordHashChange($db, (int) $actor['id'], $hash, 'change_password', (
 // Troca de senha é mudança de privilégio: novo ID de sessão e novo token CSRF.
 apiRegenerateSession();
 $csrfToken = apiRotateCsrfToken();
+// O hash mudou: as OUTRAS sessões desta conta caem (a impressão digital delas não
+// bate mais), e esta, que acabou de trocar, é religada ao hash novo.
+apiBindSessionToPassword($hash);
 
 // Grava no histórico de atividades
 logActivity(

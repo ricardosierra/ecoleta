@@ -7,8 +7,8 @@ Site institucional da **Ecoleta** — empresa de gestão de resíduos com foco e
 - **Next.js 16** (App Router)
 - **React 19** + **TypeScript**
 - **Tailwind CSS v4**
-- **Resend** (envio de e-mail) com fallback para SMTP via Nodemailer
-- **Zod** (validação do formulário)
+- **PHP** (`public/contact.php`) envia o formulário de contato por `mail()`; os e-mails de OS e de fatura usam SMTP via PHPMailer quando `SMTP_*` está preenchido
+- **Zod** só nas opções do formulário (`lib/contact-schema.ts`): a validação roda em `public/contact.php` e no componente
 
 ## Estrutura
 
@@ -19,7 +19,7 @@ app/
   ├ esg/page.tsx          ← ESG e Impacto
   ├ cases/page.tsx        ← Cases & Provas
   ├ contato/page.tsx      ← Sobre + Contato (com formulário)
-  ├ api/contact/route.ts  ← Endpoint de envio do formulário
+  (o endpoint do formulário é `public/contact.php`, fora de `app/`)
   ├ sitemap.ts · robots.ts · layout.tsx · globals.css
 components/
   ├ Header · Footer · WhatsAppFloatingButton
@@ -29,8 +29,8 @@ components/
   ├ Logo · icons.tsx
 lib/
   ├ site.config.ts        ← URLs, contatos, navegação (placeholders)
-  ├ contact-schema.ts     ← Schema Zod do formulário
-  ├ rate-limit.ts         ← Rate limit em memória
+  ├ contact-schema.ts     ← Opções do formulário (Zod)
+  ├ rate-limit.ts         ← Sem uso: o limite do formulário mora em `public/contact.php`
   └ cn.ts
 ```
 
@@ -47,7 +47,7 @@ npm run dev                   # http://localhost:3000
 Ver [`.env.example`](./.env.example) — separadas em duas categorias:
 
 - **`NEXT_PUBLIC_*`** — exibidas no site (WhatsApp, Instagram, CNPJ, endereço, e-mail).
-- **Server-only** — credenciais de e-mail (Resend ou SMTP) e banco de dados, nunca expostas no client.
+- **Server-only**: credenciais de e-mail (SMTP) e banco de dados, nunca expostas no client.
 
 ### Banco de Dados (Hostinger / Expansões Futuras)
 
@@ -109,19 +109,17 @@ não devem conter segredos.
 
 ### Envio de e-mail
 
-O endpoint `/api/contact` tenta nesta ordem:
-
-1. **Resend** (se `RESEND_API_KEY` estiver definida) — recomendado.
-2. **SMTP** (se `SMTP_HOST` + `SMTP_USER` + `SMTP_PASS` estiverem definidos) — requer `npm install nodemailer @types/nodemailer`.
-3. **Modo dev** — sem nada configurado, apenas loga no terminal e retorna `200`.
-
-Em produção sem provider configurado, retorna `500`.
+O formulário envia para `public/contact.php`, que usa `mail()` do PHP. Destino e remetente vêm de
+`CONTACT_TO_EMAIL` e `CONTACT_FROM_EMAIL` no `api/env.php` (o deploy os grava a partir do `.env`);
+em branco valem os padrões do código. Se `mail()` falhar, o visitante recebe erro e o motivo vai
+para o log do servidor, sem dados pessoais. Com `MAIL_TRANSPORT=log` nada é enviado.
 
 ### Proteções do formulário
 
-- Validação no frontend e backend (Zod, fonte de verdade no servidor).
-- Honeypot (`website` — campo invisível).
-- Rate limit em memória (5 req/min por IP).
+- Validação no frontend e no `public/contact.php` (o servidor é a fonte de verdade).
+- Honeypot (`website`, campo invisível).
+- Limite de 5 envios por minuto e 30 por hora por IP, em arquivos na pasta temporária.
+- O que o visitante digita é escapado no HTML do e-mail.
 - Sanitização de header injection (CR/LF).
 - Reply-To do remetente preenchido com o e-mail informado pelo usuário.
 
@@ -161,7 +159,7 @@ Detalhes em [`docs/identidade-visual.md`](./docs/identidade-visual.md).
 ## Antes do go-live
 
 - [ ] Preencher `.env.local` com dados reais (e-mail destino, WhatsApp, redes, CNPJ, endereço)
-- [ ] Configurar domínio em <https://resend.com/domains> e gerar `RESEND_API_KEY`
+- [ ] Confirmar a caixa de destino e o SPF/DKIM do remetente do formulário (`CONTACT_TO_EMAIL`, `CONTACT_FROM_EMAIL`)
 - [ ] Substituir placeholders em `lib/site.config.ts` se quiser hardcodar
 - [ ] Trocar logos placeholder em `app/cases/page.tsx` pelos reais (do `PORTFOLIO ECOLETA.pdf`)
 - [ ] Substituir Gallery placeholders por fotos reais da operação (OneDrive da cliente)

@@ -125,6 +125,11 @@ final class PasswordHistoryTriggerTest extends TestCase
         self::assertSame(403, $negado->status);
     }
 
+    /**
+     * O endpoint mostra QUE houve troca, quem fez, de onde e quando. Quem prova
+     * que a trigger gravou o hash certo é o banco (o teste da trigger acima e
+     * este, que confere direto na tabela): o hash em si não sai pela API.
+     */
     public function testEndpointUsersLogsRetornaHistoricoDeAuditoria(): void
     {
         $pdo = $this->db->pdo();
@@ -148,7 +153,62 @@ final class PasswordHistoryTriggerTest extends TestCase
         self::assertArrayHasKey('password_history', $body);
         self::assertNotEmpty($body['password_history']);
         self::assertSame('db_trigger', $body['password_history'][0]['change_type']);
-        self::assertSame($newHash, $body['password_history'][0]['new_hash']);
+
+        // A trigger gravou o hash novo: a prova é no banco, não na resposta.
+        $gravado = $pdo->prepare('SELECT new_hash FROM password_hash_history WHERE user_id = ? ORDER BY id DESC LIMIT 1');
+        $gravado->execute([$this->userId]);
+        self::assertSame($newHash, $gravado->fetchColumn());
+    }
+
+    /**
+     * bcrypt de qualquer conta, inclusive root, na mão de um master era o
+     * caminho para quebrar a senha offline. A UI nunca usou esses campos, e
+     * users/password_history_check.php já promete "sem expor hash".
+     */
+    public function testEndpointUsersLogsNaoDevolveHashDeSenha(): void
+    {
+        $this->db->pdo()
+            ->prepare('UPDATE users SET password_hash = ? WHERE id = ?')
+            ->execute([password_hash('outra-senha-789', PASSWORD_DEFAULT), $this->adminId]);
+        $masterId = $this->db->seedUser('chefe', 'senha-master-123', 'master');
+
+        foreach ([['master', $masterId, 'chefe'], ['root', $this->adminId, 'admin']] as [$papel, $id, $login]) {
+            $resposta = Endpoint::call('users/logs.php', [
+                'dsn' => $this->db->dsn(),
+                'session' => ['user_id' => $id, 'role' => $papel, 'login' => $login],
+                'query' => ['user_id' => (string) $this->adminId],
+            ]);
+
+            self::assertSame(200, $resposta->status, $papel);
+            self::assertNotEmpty($resposta->json()['password_history'], "sem histórico para {$papel}");
+
+            foreach ($resposta->json()['password_history'] as $linha) {
+                self::assertArrayNotHasKey('old_hash', $linha);
+                self::assertArrayNotHasKey('new_hash', $linha);
+            }
+
+            self::assertStringNotContainsString('$2y$', $resposta->body, "o corpo para {$papel} carrega um bcrypt");
+            self::assertStringNotContainsString('password_hash', $resposta->body);
+        }
+    }
+
+    /** O que a tela de auditoria precisa continua vindo: tipo, autor, origem e data. */
+    public function testEndpointUsersLogsMantemOsCamposDeAuditoria(): void
+    {
+        $this->db->pdo()
+            ->prepare('UPDATE users SET password_hash = ? WHERE id = ?')
+            ->execute([password_hash('outra-senha-789', PASSWORD_DEFAULT), $this->userId]);
+
+        $resposta = Endpoint::call('users/logs.php', [
+            'dsn' => $this->db->dsn(),
+            'session' => ['user_id' => $this->adminId, 'role' => 'root', 'login' => 'admin'],
+            'query' => ['user_id' => (string) $this->userId],
+        ]);
+
+        $linha = $resposta->json()['password_history'][0];
+        foreach (['id', 'user_id', 'change_type', 'changed_by_login', 'ip_address', 'user_agent', 'created_at'] as $campo) {
+            self::assertArrayHasKey($campo, $linha, "faltou {$campo}");
+        }
     }
 }
 

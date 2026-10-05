@@ -8,6 +8,8 @@ const fallbackClientes = [
   { name: "LIESA", src: "/logos/liesa.png" }
 ];
 
+type Company = { is_active: number; name: string; logo_url: string };
+
 export function DynamicClients() {
   const [clientes, setClientes] = useState<{name: string, src: string}[]>([]);
   const [loading, setLoading] = useState(true);
@@ -16,12 +18,18 @@ export function DynamicClients() {
     fetch("/api/site/empresas.php")
       .then(res => res.json())
       .then(data => {
-        if (data.ok && data.companies && data.companies.length > 0) {
-          const active = data.companies.filter((c: {is_active: number, name: string, logo_url: string}) => c.is_active);
-          setClientes(active.map((c: {is_active: number, name: string, logo_url: string}) => ({ name: c.name, src: c.logo_url })));
-        } else {
+        if (!data.ok || !Array.isArray(data.companies)) {
+          // Resposta de erro do servidor: a lista de reserva evita uma home sem clientes.
           setClientes(fallbackClientes);
+          return;
         }
+        // A API só entrega empresa ativa ao visitante, mas o admin logado recebe
+        // a lista do painel (o cookie de sessão vai em toda chamada a /api/), e a
+        // tela pública não pode mostrar o que ele mesmo tirou do site.
+        // Lista vazia é decisão do operador (tirou todas do site), não falha:
+        // por isso não cai na lista de reserva e o carrossel simplesmente some.
+        const active = (data.companies as Company[]).filter((c) => c.is_active);
+        setClientes(active.map((c) => ({ name: c.name, src: c.logo_url })));
       })
       .catch(() => setClientes(fallbackClientes))
       .finally(() => setLoading(false));

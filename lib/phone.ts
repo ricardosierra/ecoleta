@@ -18,6 +18,12 @@ export const DEFAULT_AREA_CODE = "21";
  * - "+55 21 99988-7766"   -> "5521999887766"
  * - "021999887766"        -> "5521999887766"
  * - "99988-7766"          -> "5521999887766"  (DDD padrão)
+ * - "(55) 99999-1234"     -> "5555999991234"  (DDD 55 é o do RS, não o DDI)
+ *
+ * Quem decide se há DDI é o TAMANHO, e não o prefixo "55": depois de tirar os
+ * não dígitos, 10 ou 11 dígitos é número local (leva o 55 na frente, mesmo que
+ * já comece com 55) e 12 ou 13 dígitos começando com 55 já traz o DDI. Olhar só
+ * o prefixo tomava o DDD 55 por DDI, e o servidor recusava o número válido.
  */
 export function normalizePhone(phone?: string | null): string {
   if (!phone) {
@@ -37,7 +43,10 @@ export function normalizePhone(phone?: string | null): string {
   } else if (digits.startsWith("55") && digits.length === 13 && digits[2] === "0") {
     // Trata número fixo com DDI e 0 no DDD: 550XX8XXXXXXX -> 55XX8XXXXXXX (12 dígitos)
     digits = "55" + digits.slice(3);
-  } else if (!digits.startsWith("55")) {
+  } else if (digits.startsWith("55") && (digits.length === 12 || digits.length === 13)) {
+    // DDI + DDD + número (fixo de 8 ou celular de 9 dígitos): já está completo.
+  } else {
+    // Número local, ou formato que não reconhecemos (esse segue como veio).
     // Se começar com 0 sem DDI (ex: 021999887766 -> 21999887766)
     if (digits.startsWith("0")) {
       digits = digits.slice(1);
@@ -46,7 +55,8 @@ export function normalizePhone(phone?: string | null): string {
     if (digits.length === 8 || digits.length === 9) {
       digits = DEFAULT_AREA_CODE + digits;
     }
-    // Se tiver 10 ou 11 dígitos (DDD + número), adiciona DDI 55
+    // Se tiver 10 ou 11 dígitos (DDD + número), adiciona DDI 55. Vale também
+    // quando o número começa com 55: é o DDD do RS, não o DDI.
     if (digits.length === 10 || digits.length === 11) {
       digits = "55" + digits;
     }

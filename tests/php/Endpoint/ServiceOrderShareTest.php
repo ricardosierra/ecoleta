@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -97,6 +98,120 @@ final class ServiceOrderShareTest extends TestCase
         self::assertSame('contato@heineken.exemplo', $os['client_email'] ?? null);
     }
 
+    // ── Status da mensagem de WhatsApp na listagem ──────────────────────────
+    //
+    // `whatsapp_sent_at` só diz que a Meta ACEITOU o pedido. Número fixo ou sem
+    // WhatsApp falha depois, pelo webhook, que só atualiza `whatsapp_messages`: a
+    // OS nunca era marcada como falha e a tela seguia dizendo "Enviada".
+
+    /** Grava uma mensagem de saída ligada à OS, como o robô e o webhook deixam. */
+    private function gravarMensagem(int $osId, string $status, ?string $erro = null, string $direcao = 'outgoing'): int
+    {
+        $pdo = $this->db->pdo();
+
+        $conversa = $pdo->query("SELECT id FROM whatsapp_conversations WHERE phone = '5521999887766'")->fetchColumn();
+        if ($conversa === false) {
+            $pdo->prepare('INSERT INTO whatsapp_conversations (phone, created_at, updated_at) VALUES (?, ?, ?)')
+                ->execute(['5521999887766', '2026-09-03 14:00:00', '2026-09-03 14:00:00']);
+            $conversa = $pdo->lastInsertId();
+        }
+
+        $pdo->prepare(
+            'INSERT INTO whatsapp_messages
+                (conversation_id, direction, type, status, error_message, message_at, service_order_id, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        )->execute([$conversa, $direcao, 'text', $status, $erro, '2026-09-03 14:22:00', $osId, '2026-09-03 14:22:00']);
+
+        return (int) $pdo->lastInsertId();
+    }
+
+    /** @return array<int,array<string,mixed>> as OS da listagem, por id */
+    private function listar(): array
+    {
+        $res = Endpoint::call('os/index.php', $this->opcoes([
+            'method' => 'GET',
+            'session' => $this->sessaoAdmin(),
+        ]));
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(200, $res->status, $res->body);
+
+        $porId = [];
+        foreach ($res->json()['service_orders'] as $os) {
+            $porId[(int) $os['id']] = $os;
+        }
+
+        return $porId;
+    }
+
+    public function testListagemTrazOStatusDaUltimaMensagemDeWhatsApp(): void
+    {
+        $id = $this->db->seedServiceOrder($this->clientId, str_repeat('b', 64), '2026-09-03', '2026-09-03 14:22:00', '5521999887766');
+        $this->gravarMensagem($id, 'accepted');
+        $this->gravarMensagem($id, 'delivered');
+
+        self::assertSame('delivered', $this->listar()[$id]['whatsapp_status']);
+    }
+
+    public function testListagemMostraFalhaAssincronaDaMeta(): void
+    {
+        $id = $this->db->seedServiceOrder($this->clientId, str_repeat('b', 64), '2026-09-03', '2026-09-03 14:22:00', '5521999887766');
+        $this->gravarMensagem($id, 'failed', 'Message undeliverable');
+
+        $os = $this->listar()[$id];
+
+        self::assertSame('failed', $os['whatsapp_status']);
+        self::assertSame('Message undeliverable', $os['whatsapp_error']);
+    }
+
+    public function testListagemUsaAMensagemMaisRecenteQuandoHouveNovoEnvio(): void
+    {
+        // Falhou, o operador reenviou e a Meta aceitou: vale o último envio.
+        $id = $this->db->seedServiceOrder($this->clientId, str_repeat('b', 64), '2026-09-03', '2026-09-03 14:22:00', '5521999887766');
+        $this->gravarMensagem($id, 'failed', 'Message undeliverable');
+        $this->gravarMensagem($id, 'accepted');
+
+        $os = $this->listar()[$id];
+
+        self::assertSame('accepted', $os['whatsapp_status']);
+        self::assertNull($os['whatsapp_error'], 'o erro do envio antigo não acompanha o novo');
+    }
+
+    public function testListagemNaoMisturaMensagensDeOrdensDiferentes(): void
+    {
+        $a = $this->db->seedServiceOrder($this->clientId, str_repeat('a', 64), '2026-09-03', '2026-09-03 14:22:00', '5521999887766');
+        $b = $this->db->seedServiceOrder($this->clientId, str_repeat('b', 64), '2026-09-03', '2026-09-03 14:22:00', '5521999887766');
+        $semEnvio = $this->db->seedServiceOrder($this->clientId, str_repeat('c', 64));
+        $this->gravarMensagem($a, 'read');
+        $this->gravarMensagem($b, 'failed', 'Sem WhatsApp');
+
+        $lista = $this->listar();
+
+        self::assertSame('read', $lista[$a]['whatsapp_status']);
+        self::assertSame('failed', $lista[$b]['whatsapp_status']);
+        self::assertNull($lista[$semEnvio]['whatsapp_status']);
+        self::assertNull($lista[$semEnvio]['whatsapp_error']);
+    }
+
+    public function testListagemIgnoraMensagemRecebidaLigadaAOs(): void
+    {
+        // Só o que o robô enviou diz algo sobre a entrega da OS.
+        $id = $this->db->seedServiceOrder($this->clientId, str_repeat('b', 64), '2026-09-03', '2026-09-03 14:22:00', '5521999887766');
+        $this->gravarMensagem($id, 'delivered');
+        $this->gravarMensagem($id, 'received', null, 'incoming');
+
+        self::assertSame('delivered', $this->listar()[$id]['whatsapp_status']);
+    }
+
+    public function testOrdemRecemCriadaNaoTemStatusDeWhatsApp(): void
+    {
+        $res = $this->criar([]);
+
+        self::assertSame(200, $res->status, $res->body);
+        self::assertArrayHasKey('whatsapp_status', $res->json()['service_order']);
+        self::assertNull($res->json()['service_order']['whatsapp_status']);
+    }
+
     // ── Criação ─────────────────────────────────────────────────────────────
 
     public function testCriacaoGeraTokenEDevolveOLinkPronto(): void
@@ -132,6 +247,259 @@ final class ServiceOrderShareTest extends TestCase
         self::assertSame('Av. das Américas, 500', $criada['collection_address']);
         self::assertSame('14:30', $criada['approximate_time']);
         self::assertSame('Óleo vegetal usado', $criada['material_collected']);
+    }
+
+    // ── Validação do corpo da criação ───────────────────────────────────────
+    //
+    // O documento vai ao cliente, e as colunas têm tamanho: VARCHAR(50) para
+    // pesagem e horário, VARCHAR(255) para endereço, material e responsável, INT
+    // para as quantidades. Sem barrar antes, o MySQL em modo estrito responde 500
+    // genérico e, sem modo estrito, trunca em silêncio um texto que sai assinado.
+
+    /** @param array<string,mixed> $campos */
+    private function criar(array $campos): EndpointResponse
+    {
+        return Endpoint::call('os/index.php', $this->opcoes([
+            'session' => $this->sessaoAdmin(),
+            'body' => ['client_id' => $this->clientId] + $campos,
+        ]));
+    }
+
+    private function anoAtual(): int
+    {
+        return (int) (new DateTimeImmutable('now', new DateTimeZone('America/Sao_Paulo')))->format('Y');
+    }
+
+    public function testCriacaoSoComClienteContinuaValendo(): void
+    {
+        // A tela só marca o cliente como obrigatório (`Cliente *`); o servidor cobra
+        // o mesmo, nem mais nem menos.
+        $res = $this->criar([]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(200, $res->status, $res->body);
+        self::assertNull($this->db->rows('service_orders')[0]['collection_date']);
+    }
+
+    public function testCriacaoSemClienteResponde400(): void
+    {
+        $res = Endpoint::call('os/index.php', $this->opcoes([
+            'session' => $this->sessaoAdmin(),
+            'body' => ['weight' => '150 kg'],
+        ]));
+
+        self::assertSame(400, $res->status, $res->body);
+        self::assertSame('Cliente é obrigatório.', $res->error());
+        self::assertSame(0, $this->db->count('service_orders'));
+    }
+
+    public function testCriacaoComClienteInexistenteResponde404(): void
+    {
+        $res = Endpoint::call('os/index.php', $this->opcoes([
+            'session' => $this->sessaoAdmin(),
+            'body' => ['client_id' => 9999],
+        ]));
+
+        self::assertSame(404, $res->status, $res->body);
+        self::assertSame(0, $this->db->count('service_orders'));
+    }
+
+    /** @return array<string, array{0:string,1:mixed,2:string}> campo, valor, rótulo esperado na mensagem */
+    public static function quantidadesInvalidas(): array
+    {
+        return [
+            'sacos gigante' => ['bags_count', '99999999999', 'Qtd. sacos'],
+            'sacos acima do teto' => ['bags_count', '100000', 'Qtd. sacos'],
+            'sacos negativo' => ['bags_count', '-1', 'Qtd. sacos'],
+            'sacos decimal' => ['bags_count', '1.5', 'Qtd. sacos'],
+            'sacos texto' => ['bags_count', 'abc', 'Qtd. sacos'],
+            'sacos notacao cientifica' => ['bags_count', '1e3', 'Qtd. sacos'],
+            'sacos booleano' => ['bags_count', true, 'Qtd. sacos'],
+            'sacos lista' => ['bags_count', [1], 'Qtd. sacos'],
+            'sacos numero decimal json' => ['bags_count', 12.5, 'Qtd. sacos'],
+            'sacos inteiro gigante json' => ['bags_count', 99999999999, 'Qtd. sacos'],
+            'conteineres gigante' => ['containers_count', '99999999999', 'Qtd. contêineres'],
+            'conteineres negativo' => ['containers_count', -3, 'Qtd. contêineres'],
+            'conteineres texto' => ['containers_count', 'dois', 'Qtd. contêineres'],
+        ];
+    }
+
+    #[DataProvider('quantidadesInvalidas')]
+    public function testCriacaoRecusaQuantidadeInvalidaNomeandoOCampo(string $campo, mixed $valor, string $rotulo): void
+    {
+        $res = $this->criar([$campo => $valor]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(400, $res->status, $res->body);
+        self::assertStringContainsString($rotulo, (string) $res->error());
+        self::assertSame(0, $this->db->count('service_orders'));
+    }
+
+    /** @return array<string, array{0:mixed,1:?int}> */
+    public static function quantidadesValidas(): array
+    {
+        return [
+            'zero a esquerda' => ['05', 5],
+            'varios zeros a esquerda' => ['007', 7],
+            'so zeros' => ['000', 0],
+            'zero' => ['0', 0],
+            'inteiro json' => [12, 12],
+            'inteiro json decimal exato' => [12.0, 12],
+            'no teto' => ['99999', 99999],
+            'com espacos' => [' 8 ', 8],
+            'vazio' => ['', null],
+            'so espacos' => ['   ', null],
+            'nulo' => [null, null],
+        ];
+    }
+
+    #[DataProvider('quantidadesValidas')]
+    public function testCriacaoAceitaQuantidadeValida(mixed $valor, ?int $esperado): void
+    {
+        $res = $this->criar(['bags_count' => $valor, 'containers_count' => $valor]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(200, $res->status, $res->body);
+
+        $linha = $this->db->rows('service_orders')[0];
+        self::assertSame($esperado, $linha['bags_count'] === null ? null : (int) $linha['bags_count']);
+        self::assertSame($esperado, $linha['containers_count'] === null ? null : (int) $linha['containers_count']);
+    }
+
+    /** @return array<string, array{0:string}> */
+    public static function datasInvalidas(): array
+    {
+        return [
+            'ano 26' => ['0026-09-03'],
+            'ano 2099' => ['2099-09-03'],
+            'antes de 2000' => ['1999-12-31'],
+            'dia impossivel' => ['2026-02-31'],
+            'formato brasileiro' => ['03/09/2026'],
+            'texto' => ['amanha'],
+            'sem zero' => ['2026-9-3'],
+        ];
+    }
+
+    #[DataProvider('datasInvalidas')]
+    public function testCriacaoRecusaDataInvalidaOuImplausivel(string $data): void
+    {
+        $res = $this->criar(['collection_date' => $data]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(400, $res->status, $res->body);
+        self::assertStringContainsString('Data da coleta', (string) $res->error());
+        self::assertSame(0, $this->db->count('service_orders'));
+    }
+
+    public function testCriacaoRecusaDataDoAnoSeguinteAoSeguinte(): void
+    {
+        $res = $this->criar(['collection_date' => ($this->anoAtual() + 2) . '-01-01']);
+
+        self::assertSame(400, $res->status, $res->body);
+        self::assertStringContainsString('Data da coleta', (string) $res->error());
+    }
+
+    public function testCriacaoAceitaDatasNosLimitesDoIntervalo(): void
+    {
+        foreach (['2000-01-01', ($this->anoAtual() + 1) . '-12-31'] as $data) {
+            $res = $this->criar(['collection_date' => $data]);
+
+            self::assertSame(200, $res->status, $data . ' ' . $res->body);
+        }
+
+        self::assertSame(2, $this->db->count('service_orders'));
+    }
+
+    public function testCriacaoRecusaDataQueNaoETexto(): void
+    {
+        $res = $this->criar(['collection_date' => ['2026-09-03']]);
+
+        self::assertSame(400, $res->status, $res->body);
+        self::assertStringContainsString('Data da coleta', (string) $res->error());
+    }
+
+    /** @return array<string, array{0:string,1:int,2:string}> campo, tamanho da coluna, rótulo */
+    public static function camposDeTexto(): array
+    {
+        return [
+            'pesagem' => ['weight', 50, 'Pesagem'],
+            'horario' => ['approximate_time', 50, 'Horário aproximado'],
+            'endereco' => ['collection_address', 255, 'Endereço da coleta'],
+            'material' => ['material_collected', 255, 'Material coletado'],
+            'responsavel' => ['responsible', 255, 'Responsável pela coleta'],
+        ];
+    }
+
+    #[DataProvider('camposDeTexto')]
+    public function testCriacaoRecusaTextoMaiorQueAColunaNomeandoOCampo(string $campo, int $limite, string $rotulo): void
+    {
+        $res = $this->criar([$campo => str_repeat('a', $limite + 1)]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(400, $res->status, $res->body);
+        self::assertStringContainsString($rotulo, (string) $res->error());
+        self::assertStringContainsString((string) $limite, (string) $res->error());
+        self::assertSame(0, $this->db->count('service_orders'));
+    }
+
+    #[DataProvider('camposDeTexto')]
+    public function testCriacaoAceitaTextoExatamenteNoTamanhoDaColuna(string $campo, int $limite, string $rotulo): void
+    {
+        // A coluna VARCHAR(n) do MySQL conta caracteres, não bytes: "ç" ocupa dois
+        // bytes e um campo cheio deles não pode ser recusado por isso.
+        $texto = str_repeat('ç', $limite);
+
+        $res = $this->criar([$campo => $texto]);
+
+        self::assertSame(200, $res->status, $rotulo . ' ' . $res->body);
+        self::assertSame($texto, $this->db->rows('service_orders')[0][$campo]);
+    }
+
+    #[DataProvider('camposDeTexto')]
+    public function testCriacaoContaCaracteresEMultibyteNaoBytes(string $campo, int $limite, string $rotulo): void
+    {
+        $res = $this->criar([$campo => str_repeat('ç', $limite + 1)]);
+
+        self::assertSame(400, $res->status, $rotulo . ' ' . $res->body);
+    }
+
+    #[DataProvider('camposDeTexto')]
+    public function testCriacaoRecusaTextoQueNaoETextoNomeandoOCampo(string $campo, int $limite, string $rotulo): void
+    {
+        $res = $this->criar([$campo => ['a', 'b']]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(400, $res->status, $res->body);
+        self::assertStringContainsString($rotulo, (string) $res->error());
+        self::assertSame(0, $this->db->count('service_orders'));
+    }
+
+    public function testCriacaoAceitaPesagemEnviadaComoNumeroJson(): void
+    {
+        $res = $this->criar(['weight' => 150]);
+
+        self::assertSame(200, $res->status, $res->body);
+        self::assertSame('150', (string) $this->db->rows('service_orders')[0]['weight']);
+    }
+
+    public function testCriacaoTrataTextoSoComEspacosComoAusente(): void
+    {
+        $res = $this->criar(['weight' => '   ', 'responsible' => "\t", 'collection_address' => '  ']);
+
+        self::assertSame(200, $res->status, $res->body);
+
+        $linha = $this->db->rows('service_orders')[0];
+        self::assertNull($linha['weight']);
+        self::assertNull($linha['responsible']);
+        self::assertNull($linha['collection_address']);
+    }
+
+    public function testCriacaoGuardaOTextoSemOsEspacosDasPontas(): void
+    {
+        $res = $this->criar(['weight' => '  150 kg  ']);
+
+        self::assertSame(200, $res->status, $res->body);
+        self::assertSame('150 kg', $this->db->rows('service_orders')[0]['weight']);
     }
 
     public function testDuasOrdensNaoCompartilhamOMesmoToken(): void
@@ -229,6 +597,24 @@ final class ServiceOrderShareTest extends TestCase
         $linha = $this->db->rows('service_orders')[0];
         self::assertSame('contato@heineken.exemplo', $linha['sent_to']);
         self::assertNotNull($linha['sent_at']);
+    }
+
+    /**
+     * Em `MAIL_TRANSPORT=log` o e-mail NÃO sai: o destinatário só vai para o log.
+     * A resposta dizia só "ok", e a tela anunciava "Enviada para X".
+     */
+    public function testEnvioPorEmailEmModoDeTesteAvisaQueSoFoiParaOLog(): void
+    {
+        $id = $this->db->seedServiceOrder($this->clientId, str_repeat('e', 64));
+
+        $res = Endpoint::call('os/send.php', $this->opcoes([
+            'session' => $this->sessaoAdmin(),
+            'body' => ['id' => $id],
+        ]));
+
+        self::assertSame(200, $res->status, $res->body);
+        self::assertTrue($res->json()['logged_only'] ?? null);
+        self::assertStringContainsString('não foi enviado', $res->errorLog);
     }
 
     public function testEnvioPorEmailPrefereODestinatarioInformado(): void
@@ -343,6 +729,136 @@ final class ServiceOrderShareTest extends TestCase
         self::assertSame('whatsapp_already_sent', $json['code'] ?? null);
         self::assertSame('2026-09-03 14:22:00', $json['whatsapp_sent_at'] ?? null);
         self::assertSame('5521999887766', $json['whatsapp_sent_to'] ?? null);
+    }
+
+    /**
+     * Opções para chamar o robô COM credenciais (de mentira) e o transporte
+     * ligado, que é o único jeito de passar da checagem de configuração.
+     *
+     * Nenhum caminho aqui pode chegar à Meta. Se algum chegar, o proxy abaixo
+     * recusa a conexão na própria máquina, em vez de a chamada sair para a
+     * internet com um token inventado.
+     *
+     * @param array<string,string> $env
+     * @param array<string,mixed> $extra
+     * @return array<string,mixed>
+     */
+    private function opcoesRobo(array $env = [], array $extra = []): array
+    {
+        return $this->opcoes($extra + [
+            'session' => $this->sessaoAdmin(),
+            'env' => $env + [
+                'MAIL_TRANSPORT' => 'log',
+                'WHATSAPP_PHONE_ID' => '1234567890',
+                'WHATSAPP_ACCESS_TOKEN' => 'token-de-teste-que-nao-vale-nada',
+                'https_proxy' => 'http://127.0.0.1:9',
+                'HTTPS_PROXY' => 'http://127.0.0.1:9',
+            ],
+        ]);
+    }
+
+    /**
+     * Fora da janela de 24h, com template configurado, o envio sai como template
+     * e a Meta COBRA. O botão gastava dinheiro no primeiro clique, e o campo
+     * `billable` da resposta, que só chegava depois de enviar, era ignorado.
+     */
+    public function testWhatsAppForaDaJanelaComTemplatePedeConfirmacaoAntesDeGastar(): void
+    {
+        $id = $this->db->seedServiceOrder($this->clientId, str_repeat('f', 64));
+
+        $res = Endpoint::call('os/whatsapp.php', $this->opcoesRobo(
+            ['WHATSAPP_OS_TEMPLATE' => 'os_enviada'],
+            ['body' => ['id' => $id]]
+        ));
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(409, $res->status, $res->body);
+        self::assertSame('whatsapp_billable_confirmation_required', $res->json()['code'] ?? null);
+        self::assertTrue($res->json()['billable'] ?? false);
+
+        // Nada saiu e nada ficou marcado ou gravado como envio.
+        self::assertNull($this->db->rows('service_orders')[0]['whatsapp_sent_at']);
+        self::assertSame(0, $this->db->count('whatsapp_messages'));
+    }
+
+    public function testConfirmarOReenvioNaoDispensaAConfirmacaoDoEnvioCobrado(): void
+    {
+        $id = $this->db->seedServiceOrder(
+            $this->clientId,
+            str_repeat('f', 64),
+            '2026-09-03',
+            '2026-09-03 14:22:00',
+            '5521999887766'
+        );
+
+        $res = Endpoint::call('os/whatsapp.php', $this->opcoesRobo(
+            ['WHATSAPP_OS_TEMPLATE' => 'os_enviada'],
+            ['body' => ['id' => $id, 'confirm' => true]]
+        ));
+
+        self::assertSame(409, $res->status, $res->body);
+        self::assertSame('whatsapp_billable_confirmation_required', $res->json()['code'] ?? null);
+        self::assertSame('2026-09-03 14:22:00', $this->db->rows('service_orders')[0]['whatsapp_sent_at']);
+    }
+
+    public function testJanelaAbertaNaoPedeConfirmacaoDeCusto(): void
+    {
+        // Dentro da janela o texto é livre e gratuito: nada a confirmar. A chamada
+        // segue até a Meta, onde o proxy da suíte a recusa (502), e a OS volta ao
+        // que era.
+        $id = $this->db->seedServiceOrder($this->clientId, str_repeat('f', 64));
+        $this->db->pdo()->prepare('INSERT INTO whatsapp_conversations (phone, service_window_expires_at, created_at, updated_at) VALUES (?, ?, ?, ?)')
+            ->execute(['5521999887766', gmdate('Y-m-d H:i:s', time() + 3600), '2026-09-03 14:00:00', '2026-09-03 14:00:00']);
+
+        $res = Endpoint::call('os/whatsapp.php', $this->opcoesRobo(
+            ['WHATSAPP_OS_TEMPLATE' => 'os_enviada'],
+            ['body' => ['id' => $id]]
+        ));
+
+        self::assertNotSame('whatsapp_billable_confirmation_required', $res->json()['code'] ?? null);
+        self::assertSame(502, $res->status, $res->body);
+        self::assertSame('whatsapp_send_failed', $res->json()['code'] ?? null);
+        self::assertNull($this->db->rows('service_orders')[0]['whatsapp_sent_at'], 'a falha desfez a reserva');
+    }
+
+    public function testForaDaJanelaSemTemplateResponde422EDeixaAOsComoEstava(): void
+    {
+        $id = $this->db->seedServiceOrder($this->clientId, str_repeat('f', 64));
+
+        $res = Endpoint::call('os/whatsapp.php', $this->opcoesRobo([], ['body' => ['id' => $id]]));
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(422, $res->status, $res->body);
+        self::assertSame('whatsapp_outside_window', $res->json()['code'] ?? null);
+
+        $linha = $this->db->rows('service_orders')[0];
+        self::assertNull($linha['whatsapp_sent_at'], 'a reserva é desfeita quando o envio falha');
+        self::assertNull($linha['whatsapp_sent_to']);
+
+        $mensagem = $this->db->rows('whatsapp_messages')[0];
+        self::assertSame('failed', $mensagem['status'], 'a tentativa fica no histórico de conversas');
+        self::assertSame($id, (int) $mensagem['service_order_id']);
+    }
+
+    public function testFalhaNoReenvioRestauraOEnvioAnterior(): void
+    {
+        $id = $this->db->seedServiceOrder(
+            $this->clientId,
+            str_repeat('f', 64),
+            '2026-09-03',
+            '2026-09-03 14:22:00',
+            '5521999887766'
+        );
+
+        $res = Endpoint::call('os/whatsapp.php', $this->opcoesRobo([], [
+            'body' => ['id' => $id, 'confirm' => true, 'whatsapp' => '(21) 98888-7766'],
+        ]));
+
+        self::assertSame(422, $res->status, $res->body);
+
+        $linha = $this->db->rows('service_orders')[0];
+        self::assertSame('2026-09-03 14:22:00', $linha['whatsapp_sent_at']);
+        self::assertSame('5521999887766', $linha['whatsapp_sent_to'], 'o destino do envio anterior volta');
     }
 
     public function testWhatsAppRecusaClienteSemNumero(): void

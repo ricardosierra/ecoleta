@@ -4,14 +4,44 @@ require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../authz.php';
 require_once __DIR__ . '/logo_lib.php';
 
-startSecureSession();
+// A leitura (GET) é pública: quem visita o site não tem sessão, e abrir uma para
+// cada visitante gravava um arquivo no servidor e devolvia Set-Cookie sem
+// necessidade. A sessão só é consultada quando o navegador já mandou o cookie
+// dela (o admin logado no painel). As escritas sempre abrem, por causa do CSRF.
+if ($_SERVER['REQUEST_METHOD'] !== 'GET' || (string) ($_COOKIE[API_SESSION_NAME] ?? '') !== '') {
+    startSecureSession();
+}
 apiRequireCsrfToken();
 apiSendJsonHeaders();
 
 $db = getDbConnection();
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    $stmt = $db->query("SELECT id, name, logo_url, is_active FROM site_clients ORDER BY name ASC");
+    // "Tirar do site" tem de tirar da resposta, não só da tela: o visitante só
+    // recebe empresa ativa. O painel (sessão de admin) segue vendo todas, porque
+    // é lá que se reativa. Quem não é admin, logado ou não, recebe a lista pública.
+    //
+    // O papel que vale é o do BANCO, como no resto da API: a sessão sozinha mantinha
+    // as empresas desativadas à vista de um admin excluído, rebaixado ou com a senha
+    // trocada. apiResolveSessionActor() reconsulta o usuário (e derruba a sessão que o
+    // banco não reconhece, caso em que a resposta é a pública). Só é chamado quando a
+    // sessão já tem um usuário: visitante e cookie sem login não custam consulta.
+    // Conta com senha temporária não é recusada (esta leitura é pública, não há o que
+    // recusar), mas também não é tratada como administradora: recebe o que o visitante vê.
+    $isAdmin = false;
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        $sessionActor = apiSessionActor();
+        $actor = $sessionActor !== null ? apiResolveSessionActor($sessionActor['id']) : null;
+        $isAdmin = $actor !== null
+            && apiRoleIsAdmin($actor['role'])
+            && empty($actor['force_password_change']);
+    }
+
+    $stmt = $db->query(
+        'SELECT id, name, logo_url, is_active FROM site_clients'
+        . ($isAdmin ? '' : ' WHERE is_active = 1')
+        . ' ORDER BY name ASC'
+    );
     $companies = $stmt->fetchAll();
     echo json_encode(['ok' => true, 'companies' => $companies]);
     exit;
@@ -125,18 +155,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
-        // Trocar a imagem deixava a anterior para sempre em uploads/logos/, e
-        // nome com hash nunca é reaproveitado: sem isto o diretório só cresce.
-        // A conferência antes de apagar existe porque logo_url também aceita
-        // caminho digitado à mão, que duas empresas podem compartilhar.
-        if ($existing && $hasFile) {
+        // Trocar a imagem, por upload OU por caminho informado à mão, deixava a
+        // anterior para sempre em uploads/logos/: nome com hash nunca é
+        // reaproveitado, então sem isto o diretório só cresce. A função só apaga
+        // quando nenhuma outra empresa ainda usa o arquivo (caminho à mão pode
+        // ser compartilhado).
+        if ($existing) {
             $anterior = (string) ($existing['logo_url'] ?? '');
-            if ($anterior !== $logoUrl && str_starts_with($anterior, ECOLETA_LOGO_PUBLIC_PREFIX)) {
-                $emUso = $db->prepare('SELECT 1 FROM site_clients WHERE logo_url = ? LIMIT 1');
-                $emUso->execute([$anterior]);
-                if (!$emUso->fetch()) {
-                    ecoletaLogoDeleteByUrl($anterior);
-                }
+            if ($anterior !== $logoUrl) {
+                ecoletaLogoDeleteIfUnused($db, $anterior);
             }
         }
 
@@ -202,7 +229,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $db->prepare("DELETE FROM site_clients WHERE id = ?");
         $stmt->execute([$id]);
 
-        ecoletaLogoDeleteByUrl((string) $company['logo_url']);
+        // Duas empresas podem apontar para o mesmo arquivo de uploads (caminho
+        // informado à mão): só some do disco quando a última sai.
+        ecoletaLogoDeleteIfUnused($db, (string) $company['logo_url']);
 
         logActivity(
             $db,

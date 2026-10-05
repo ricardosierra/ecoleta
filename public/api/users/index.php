@@ -3,6 +3,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../authz.php';
 require_once __DIR__ . '/../auth/password_audit_lib.php';
+require_once __DIR__ . '/../auth/identity_lib.php';
 
 startSecureSession();
 apiRequireCsrfToken();
@@ -41,6 +42,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$login) {
         http_response_code(400);
         echo json_encode(['error' => 'Login é obrigatório.']);
+        exit;
+    }
+
+    // Login novo só com letras sem acento, números, ponto, hífen e sublinhado
+    // (3 a 50). Ver apiLoginFormatIsValid().
+    if (!apiLoginFormatIsValid($login)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Login inválido. Use de 3 a 50 caracteres: letras sem acento, números, ponto, hífen e sublinhado.']);
         exit;
     }
 
@@ -90,6 +99,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $groupName = $grp['name'];
     }
     
+    // A busca do login olha login OU e-mail: nenhum texto pode apontar para duas
+    // contas. O banco só tem índice único no login, então o resto se confere aqui.
+    $clash = apiIdentityClash($db, $login, $email);
+    if ($clash !== null) {
+        http_response_code(400);
+        echo json_encode(['error' => apiIdentityClashMessage($clash['kind'])]);
+        exit;
+    }
+
     // Gerar senha aleatória legível (10 caracteres)
     $chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$';
     $generatedPassword = '';

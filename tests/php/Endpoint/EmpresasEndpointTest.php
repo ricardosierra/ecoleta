@@ -17,6 +17,9 @@ final class EmpresasEndpointTest extends TestCase
     protected function setUp(): void
     {
         $this->db = new TestDatabase();
+        // A sessão de sessaoAdmin() aponta para o id 1. A API confere o usuário no
+        // banco a cada requisição, então a conta tem que existir (e ser root).
+        $this->db->seedUser('admin', 'senha-root-123', 'root');
         $this->uploadsDir = sys_get_temp_dir() . '/ecoleta_uploads_' . bin2hex(random_bytes(6));
         mkdir($this->uploadsDir, 0700, true);
     }
@@ -57,9 +60,11 @@ final class EmpresasEndpointTest extends TestCase
         return $path;
     }
 
-    public function testListagemEPublicaEDevolveAsEmpresas(): void
+    public function testListagemEPublicaEDevolveSoAsEmpresasAtivas(): void
     {
         $this->seedEmpresa('Heineken');
+        // Desativada pelo painel: não pode aparecer para o visitante.
+        $this->seedEmpresa('Escondida', '/logos/escondida.png', 0);
 
         $res = Endpoint::call('site/empresas.php', [
             'method' => 'GET',
@@ -68,7 +73,23 @@ final class EmpresasEndpointTest extends TestCase
 
         self::assertNull($res->fatal, (string) $res->fatal);
         self::assertSame(200, $res->status, $res->body);
+        self::assertCount(1, $res->json()['companies']);
         self::assertSame('Heineken', $res->json()['companies'][0]['name'] ?? null);
+    }
+
+    public function testListagemDoAdminIncluiAsEmpresasDesativadas(): void
+    {
+        $this->seedEmpresa('Heineken');
+        $this->seedEmpresa('Escondida', '/logos/escondida.png', 0);
+
+        $res = Endpoint::call('site/empresas.php', [
+            'method' => 'GET',
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+        ]);
+
+        self::assertSame(200, $res->status, $res->body);
+        self::assertSame(['Escondida', 'Heineken'], array_column($res->json()['companies'], 'name'));
     }
 
     public function testEscritaExigePapelAdmin(): void
@@ -366,6 +387,130 @@ final class EmpresasEndpointTest extends TestCase
 
         self::assertSame(200, $res->status, $res->body);
         self::assertFileExists($compartilhada);
+    }
+
+    public function testDeleteNaoApagaArquivoQueOutraEmpresaAindaUsa(): void
+    {
+        // Duas empresas apontando, por caminho informado à mão, para o mesmo
+        // arquivo de uploads: excluir uma não pode quebrar a logo da outra.
+        $compartilhada = $this->uploadsDir . '/compartilhada-abc123.png';
+        copy($this->criaPngTemporario(300, 120), $compartilhada);
+        $primeira = $this->seedEmpresa('Primeira', '/uploads/logos/compartilhada-abc123.png');
+        $segunda = $this->seedEmpresa('Segunda', '/uploads/logos/compartilhada-abc123.png');
+
+        $res = Endpoint::call('site/empresas.php', [
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'body' => ['action' => 'delete', 'id' => $primeira],
+            'env' => ['ECOLETA_UPLOADS_DIR' => $this->uploadsDir],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(200, $res->status, $res->body);
+        self::assertSame(1, $this->db->count('site_clients'));
+        self::assertFileExists($compartilhada);
+
+        // Quando a última sai, o arquivo vai junto: ninguém mais o usa.
+        $res = Endpoint::call('site/empresas.php', [
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'body' => ['action' => 'delete', 'id' => $segunda],
+            'env' => ['ECOLETA_UPLOADS_DIR' => $this->uploadsDir],
+        ]);
+
+        self::assertSame(200, $res->status, $res->body);
+        self::assertSame(0, $this->db->count('site_clients'));
+        self::assertFileDoesNotExist($compartilhada);
+    }
+
+    public function testUpdateTrocandoPorCaminhoManualApagaAImagemEnviadaAnterior(): void
+    {
+        // Antes só o upload de uma imagem nova limpava a anterior; trocar por um
+        // caminho informado à mão deixava o arquivo órfão em uploads/logos/.
+        $antiga = $this->uploadsDir . '/antiga-abc123.png';
+        copy($this->criaPngTemporario(300, 120), $antiga);
+        $id = $this->seedEmpresa('Troca Manual', '/uploads/logos/antiga-abc123.png');
+
+        $res = Endpoint::call('site/empresas.php', [
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'body' => ['action' => 'update', 'id' => $id, 'name' => 'Troca Manual', 'logo_url' => '/logos/nova.png'],
+            'env' => ['ECOLETA_UPLOADS_DIR' => $this->uploadsDir],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(200, $res->status, $res->body);
+        self::assertSame('/logos/nova.png', $this->db->rows('site_clients')[0]['logo_url']);
+        self::assertFileDoesNotExist($antiga);
+    }
+
+    public function testUpdateTrocandoPorCaminhoManualNaoApagaImagemQueOutraEmpresaUsa(): void
+    {
+        $compartilhada = $this->uploadsDir . '/compartilhada-abc123.png';
+        copy($this->criaPngTemporario(300, 120), $compartilhada);
+        $id = $this->seedEmpresa('Primeira', '/uploads/logos/compartilhada-abc123.png');
+        $this->seedEmpresa('Segunda', '/uploads/logos/compartilhada-abc123.png');
+
+        $res = Endpoint::call('site/empresas.php', [
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'body' => ['action' => 'update', 'id' => $id, 'name' => 'Primeira', 'logo_url' => '/logos/nova.png'],
+            'env' => ['ECOLETA_UPLOADS_DIR' => $this->uploadsDir],
+        ]);
+
+        self::assertSame(200, $res->status, $res->body);
+        self::assertFileExists($compartilhada);
+    }
+
+    public function testUpdateQueSoMudaONomeNaoApagaALogoEnviada(): void
+    {
+        $arquivo = $this->uploadsDir . '/mesma-abc123.png';
+        copy($this->criaPngTemporario(300, 120), $arquivo);
+        $id = $this->seedEmpresa('Nome Antigo', '/uploads/logos/mesma-abc123.png');
+
+        $res = Endpoint::call('site/empresas.php', [
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'body' => ['action' => 'update', 'id' => $id, 'name' => 'Nome Novo', 'logo_url' => '/uploads/logos/mesma-abc123.png'],
+            'env' => ['ECOLETA_UPLOADS_DIR' => $this->uploadsDir],
+        ]);
+
+        self::assertSame(200, $res->status, $res->body);
+        self::assertFileExists($arquivo);
+    }
+
+    public function testCreateMultipartRecusaImagemComDimensoesGigantes(): void
+    {
+        // PNG de 1 bit declarando 20000×20000: pequeno no disco, mas o GD
+        // alocaria cerca de 1,6 GB (fora do memory_limit) para decodificá-lo.
+        $chunk = static fn (string $type, string $data): string => pack('N', strlen($data)) . $type . $data . pack('N', crc32($type . $data));
+        $gigante = $this->uploadsDir . '/gigante.png';
+        file_put_contents(
+            $gigante,
+            "\x89PNG\r\n\x1a\n" . $chunk('IHDR', pack('NNCCCCC', 20000, 20000, 1, 0, 0, 0, 0)) . $chunk('IEND', '')
+        );
+
+        $res = Endpoint::call('site/empresas.php', [
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'post' => ['action' => 'create', 'name' => 'Gigante'],
+            'files' => [
+                'logo' => [
+                    'name' => 'gigante.png',
+                    'type' => 'image/png',
+                    'tmp_name' => $gigante,
+                    'error' => UPLOAD_ERR_OK,
+                    'size' => filesize($gigante),
+                ],
+            ],
+            'env' => ['ECOLETA_UPLOADS_DIR' => $this->uploadsDir],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(400, $res->status, $res->body);
+        self::assertStringContainsString('20000×20000', (string) $res->error());
+        self::assertSame(0, $this->db->count('site_clients'));
+        self::assertSame([], glob($this->uploadsDir . '/gigante-*') ?: []);
     }
 
     public function testUpdateRejectsDuplicateName(): void

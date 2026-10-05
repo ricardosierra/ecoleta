@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import OSPage from "@/app/dashboard/os/page";
@@ -57,9 +57,108 @@ describe("/dashboard/os — encaminhamento", () => {
     await abrirOS(userEvent.setup());
 
     const documento = document.querySelector("#os-print-area");
-    expect(documento?.textContent).toContain("Endereço da Coleta: Av. das Américas, 500");
-    expect(documento?.textContent).toContain("Horário Aproximado: 14:30");
-    expect(documento?.textContent).toContain("Material Coletado: Óleo vegetal usado");
+    expect(documento?.textContent).toContain("Endereço da coleta: Av. das Américas, 500");
+    expect(documento?.textContent).toContain("Horário aproximado: 14:30");
+    expect(documento?.textContent).toContain("Material coletado: Óleo vegetal usado");
+  });
+
+  /**
+   * A pré-visualização tem de mostrar o que o cliente recebe: os rótulos, a
+   * ordem e o marcador de vazio do documento do PHP (os_lib.php), e não uma
+   * redação própria. Estas são as mesmas linhas de tests/php/Unit/OsLibTest.php.
+   */
+  it("mostra os campos na ordem e com os rótulos do documento que o cliente recebe", async () => {
+    montar();
+    render(<OSPage />);
+    await abrirOS(userEvent.setup());
+
+    const documento = document.querySelector("#os-print-area");
+    expect(documento?.textContent).toContain(
+      [
+        "Cliente: Heineken",
+        "Endereço da coleta: Av. das Américas, 500",
+        "Data da coleta: 03/09/2026",
+        "Horário aproximado: 14:30",
+        "Material coletado: Óleo vegetal usado",
+        "Pesagem: 150 kg",
+        "Responsável pela coleta: Equipe A",
+        "Qtd. sacos: 12",
+        "Qtd. contêineres: 2",
+      ].join("")
+    );
+  });
+
+  it("marca os campos vazios com hífen, como o documento do cliente", async () => {
+    montar({
+      [OS]: {
+        body: {
+          ok: true,
+          service_orders: [
+            { ...ordem, collection_address: null, weight: "", collection_date: null, bags_count: null, responsible: "  " },
+          ],
+        },
+      },
+    });
+    render(<OSPage />);
+    await abrirOS(userEvent.setup());
+
+    const texto = document.querySelector("#os-print-area")?.textContent ?? "";
+    expect(texto).toContain("Endereço da coleta: -");
+    expect(texto).toContain("Data da coleta: -");
+    expect(texto).toContain("Pesagem: -");
+    expect(texto).toContain("Responsável pela coleta: -");
+    expect(texto).toContain("Qtd. sacos: -");
+    expect(texto).not.toContain(String.fromCharCode(0x2014));
+  });
+
+  it("oferece o mesmo WhatsApp de suporte que o documento do PHP, com a mesma frase", async () => {
+    montar();
+    render(<OSPage />);
+    await abrirOS(userEvent.setup());
+
+    const documento = document.querySelector("#os-print-area");
+    expect(documento?.textContent).toContain(
+      "Caso precise de suporte ou esclarecimentos, envie mensagem para nosso WhatsApp: (21) 99152-9383"
+    );
+  });
+
+  /**
+   * Quem decide é o servidor (osValidateInput() em os_lib.php), mas o formulário
+   * já avisa antes: o campo não deixa passar do tamanho da coluna nem do teto.
+   */
+  it("limita o tamanho dos campos do formulário como o servidor", async () => {
+    montar();
+    render(<OSPage />);
+    await screen.findByLabelText(/Pesagem/);
+
+    expect(screen.getByLabelText(/Pesagem/)).toHaveAttribute("maxlength", "50");
+    expect(screen.getByLabelText(/Horário Aproximado/)).toHaveAttribute("maxlength", "50");
+    expect(screen.getByLabelText(/Endereço da Coleta/)).toHaveAttribute("maxlength", "255");
+    expect(screen.getByLabelText(/Material Coletado/)).toHaveAttribute("maxlength", "255");
+    expect(screen.getByLabelText(/Responsável pela Coleta/)).toHaveAttribute("maxlength", "255");
+    expect(screen.getByLabelText(/Qtd\. Sacos/)).toHaveAttribute("max", "99999");
+    expect(screen.getByLabelText(/Qtd\. Contêineres/)).toHaveAttribute("max", "99999");
+  });
+
+  it("mostra o erro do servidor, que nomeia o campo, ao gerar a OS", async () => {
+    // A listagem (GET) carrega normalmente; só a criação (POST) é recusada.
+    const api = montar();
+    const original = api.fetch.getMockImplementation()!;
+    api.fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).startsWith(OS) && init?.method === "POST") {
+        return Response.json({ error: "Qtd. sacos deve ser um número inteiro de 0 a 99999." }, { status: 400 });
+      }
+      return original(input, init);
+    });
+    render(<OSPage />);
+
+    const user = userEvent.setup();
+    // Os clientes chegam pela API; o <option> só existe depois disso.
+    await screen.findByRole("option", { name: "Heineken" });
+    await user.selectOptions(screen.getByLabelText(/Cliente \*/), "1");
+    await user.click(screen.getByRole("button", { name: "Gerar OS" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Qtd. sacos deve ser um número inteiro de 0 a 99999.");
   });
 
   it("mostra a assinatura da responsável no documento", async () => {
@@ -84,7 +183,7 @@ describe("/dashboard/os — encaminhamento", () => {
     });
 
     const documento = document.querySelector("#os-print-area");
-    expect(documento?.textContent).toContain("Data da Coleta: 03/09/2026");
+    expect(documento?.textContent).toContain("Data da coleta: 03/09/2026");
   });
 
   it("envia por e-mail para o endereço do cliente, já preenchido", async () => {
@@ -105,6 +204,31 @@ describe("/dashboard/os — encaminhamento", () => {
 
     const post = api.fetch.mock.calls.find(([url]) => String(url) === SEND);
     expect(JSON.parse(String(post![1]!.body))).toEqual({ id: 42, email: "contato@heineken.exemplo" });
+  });
+
+  /**
+   * Com MAIL_TRANSPORT=log o servidor responde sucesso sem enviar nada, e a tela
+   * dizia "Enviada para X".
+   */
+  it("diz que o e-mail só foi registrado em log quando o servidor está em modo de teste", async () => {
+    montar({
+      [SEND]: {
+        body: { ok: true, sent_to: "contato@heineken.exemplo", sent_at: "2026-09-03 14:22:00", logged_only: true },
+      },
+    });
+    render(<OSPage />);
+
+    const user = userEvent.setup();
+    await abrirOS(user);
+    await user.click(screen.getByRole("button", { name: "E-mail" }));
+
+    const aviso = await screen.findByRole("status");
+    expect(aviso).toHaveTextContent("Registrada em log (modo teste)");
+    expect(aviso).toHaveTextContent("contato@heineken.exemplo");
+    expect(aviso).toHaveTextContent("não foi enviado");
+    expect(aviso).not.toHaveTextContent("Enviada para");
+    // Não é erro (nem sucesso): é um aviso, em cor própria.
+    expect(aviso.className).toContain("yellow");
   });
 
   it("mostra o erro devolvido pelo servidor no envio por e-mail", async () => {
@@ -149,7 +273,7 @@ describe("/dashboard/os — encaminhamento", () => {
     await user.click(screen.getByRole("button", { name: "WhatsApp do robô" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("status")).toHaveTextContent("Enviada pelo robô para 5521999887766.");
+      expect(screen.getByRole("status")).toHaveTextContent("Aceita pela Meta para 5521999887766.");
     });
 
     const post = api.fetch.mock.calls.find(([url]) => String(url) === WHATSAPP);
@@ -224,6 +348,398 @@ describe("/dashboard/os — encaminhamento", () => {
       expect(screen.getByRole("status")).toHaveTextContent("não está configurado");
     });
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("/dashboard/os: janela fechada e envio cobrado", () => {
+  const FORA_DA_JANELA = {
+    error: "O cliente não escreve para este número há mais de 24 horas, fora da janela a Meta só entrega template aprovado.",
+    code: "whatsapp_outside_window",
+  };
+
+  const COBRADO = {
+    error: "Fora da janela de 24 horas este envio usa template e é cobrado pela Meta.",
+    code: "whatsapp_billable_confirmation_required",
+    billable: true,
+  };
+
+  const JA_ENVIADA = {
+    error: "Esta OS já foi enviada pelo WhatsApp do robô.",
+    code: "whatsapp_already_sent",
+    whatsapp_sent_at: "2026-09-03 14:22:00",
+    whatsapp_sent_to: "5521999887766",
+  };
+
+  const SUCESSO = {
+    ok: true,
+    whatsapp_sent_to: "5521999887766",
+    whatsapp_sent_at: "2026-09-03 14:22:00",
+    whatsapp_status: "accepted",
+    billable: true,
+  };
+
+  /** Responde ao robô com as respostas dadas, na ordem; o resto vai para o roteador. */
+  function montarComRespostas(respostas: Array<{ status: number; body: unknown }>) {
+    const api = montar();
+    const original = api.fetch.getMockImplementation()!;
+    const fila = [...respostas];
+    api.fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === WHATSAPP) {
+        const proxima = fila.shift()!;
+        return Response.json(proxima.body, { status: proxima.status });
+      }
+      return original(input, init);
+    });
+    return api;
+  }
+
+  const corposEnviados = (api: ReturnType<typeof montar>) =>
+    api.fetch.mock.calls
+      .filter(chamada => String(chamada[0]) === WHATSAPP)
+      .map(chamada => JSON.parse(String((chamada[1] as RequestInit).body)));
+
+  /**
+   * O comentário de os/whatsapp.php diz que a tela oferece o WhatsApp pessoal
+   * quando a janela fecha, mas o código só mostrava um texto vermelho.
+   */
+  it("oferece o Meu WhatsApp quando a Meta recusa por estar fora da janela", async () => {
+    montarComRespostas([{ status: 422, body: FORA_DA_JANELA }]);
+    const open = vi.fn();
+    vi.stubGlobal("open", open);
+    render(<OSPage />);
+
+    const user = userEvent.setup();
+    await abrirOS(user);
+    await user.click(screen.getByRole("button", { name: "WhatsApp do robô" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("mais de 24 horas");
+    await user.click(screen.getByRole("button", { name: "Abrir Meu WhatsApp" }));
+
+    expect(open).toHaveBeenCalledTimes(1);
+    const url = String(open.mock.calls[0][0]);
+    expect(url.startsWith("https://wa.me/5521999887766?text=")).toBe(true);
+    expect(decodeURIComponent(url)).toContain("https://ecolevaeco.com/api/os/view.php?id=42&t=abc");
+  });
+
+  it("não oferece o Meu WhatsApp para erros que não são de janela fechada", async () => {
+    montarComRespostas([{ status: 502, body: { error: "Erro na comunicação com o WhatsApp.", code: "whatsapp_send_failed" } }]);
+    render(<OSPage />);
+
+    const user = userEvent.setup();
+    await abrirOS(user);
+    await user.click(screen.getByRole("button", { name: "WhatsApp do robô" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Erro na comunicação");
+    expect(screen.queryByRole("button", { name: "Abrir Meu WhatsApp" })).toBeNull();
+  });
+
+  /**
+   * Com template configurado, fora da janela o envio sai PAGO. O primeiro clique
+   * não pode gastar: o servidor pergunta antes, e a tela mostra o custo.
+   */
+  it("pede confirmação antes de um envio que a Meta vai cobrar, sem enviar ainda", async () => {
+    const api = montarComRespostas([{ status: 409, body: COBRADO }]);
+    render(<OSPage />);
+
+    const user = userEvent.setup();
+    await abrirOS(user);
+    await user.click(screen.getByRole("button", { name: "WhatsApp do robô" }));
+
+    const dialogo = await screen.findByRole("dialog");
+    expect(dialogo).toHaveTextContent("cobrado pela Meta");
+    expect(corposEnviados(api)).toEqual([{ id: 42, confirm: false }]);
+    expect(screen.queryByText(/Aceita pela Meta para/)).toBeNull();
+  });
+
+  it("cancelar a confirmação do envio cobrado não envia nada", async () => {
+    const api = montarComRespostas([{ status: 409, body: COBRADO }]);
+    render(<OSPage />);
+
+    const user = userEvent.setup();
+    await abrirOS(user);
+    await user.click(screen.getByRole("button", { name: "WhatsApp do robô" }));
+    await user.click(await screen.findByRole("button", { name: "Cancelar" }));
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(corposEnviados(api)).toHaveLength(1);
+  });
+
+  it("confirmar o envio cobrado repete a chamada com confirm_billable", async () => {
+    const api = montarComRespostas([
+      { status: 409, body: COBRADO },
+      { status: 200, body: SUCESSO },
+    ]);
+    render(<OSPage />);
+
+    const user = userEvent.setup();
+    await abrirOS(user);
+    await user.click(screen.getByRole("button", { name: "WhatsApp do robô" }));
+    await user.click(await screen.findByRole("button", { name: "Enviar e pagar" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent("Aceita pela Meta para 5521999887766.");
+    });
+    expect(corposEnviados(api)).toEqual([
+      { id: 42, confirm: false },
+      { id: 42, confirm: false, confirm_billable: true },
+    ]);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("no reenvio de uma OS já enviada, as duas confirmações vêm uma de cada vez", async () => {
+    const api = montarComRespostas([
+      { status: 409, body: JA_ENVIADA },
+      { status: 409, body: COBRADO },
+      { status: 200, body: SUCESSO },
+    ]);
+    render(<OSPage />);
+
+    const user = userEvent.setup();
+    await abrirOS(user);
+    await user.click(screen.getByRole("button", { name: "WhatsApp do robô" }));
+
+    await user.click(await screen.findByRole("button", { name: "Enviar novamente" }));
+    // A confirmação de reenvio some e dá lugar à do custo; nunca as duas juntas.
+    await user.click(await screen.findByRole("button", { name: "Enviar e pagar" }));
+
+    await waitFor(() => expect(corposEnviados(api)).toHaveLength(3));
+    expect(corposEnviados(api)[2]).toEqual({ id: 42, confirm: true, confirm_billable: true });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("deixa trocar o envio cobrado pelo Meu WhatsApp, que é de graça", async () => {
+    const api = montarComRespostas([{ status: 409, body: COBRADO }]);
+    const open = vi.fn();
+    vi.stubGlobal("open", open);
+    render(<OSPage />);
+
+    const user = userEvent.setup();
+    await abrirOS(user);
+    await user.click(screen.getByRole("button", { name: "WhatsApp do robô" }));
+
+    const dialogo = await screen.findByRole("dialog");
+    await user.click(within(dialogo).getByRole("button", { name: "Usar Meu WhatsApp" }));
+
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(String(open.mock.calls[0][0]).startsWith("https://wa.me/5521999887766?text=")).toBe(true);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(corposEnviados(api)).toHaveLength(1);
+  });
+});
+
+describe("/dashboard/os: falha ao carregar a tela", () => {
+  /**
+   * Sessão vencida, 503 de schema ou rede caída: o histórico mostrava o estado
+   * vazio ("Nenhuma OS encontrada.") e o select de clientes ficava vazio, sem
+   * nenhum aviso de que algo tinha dado errado.
+   */
+  it("avisa que o histórico não carregou, em vez de dizer que não há OS", async () => {
+    montar({ [OS]: { status: 503, body: { error: "O banco de dados está desatualizado." } } });
+    render(<OSPage />);
+
+    const aviso = await screen.findByRole("alert");
+    expect(aviso).toHaveTextContent("Não foi possível carregar");
+    expect(aviso).toHaveTextContent("Histórico de OS: O banco de dados está desatualizado.");
+    expect(screen.queryByText("Nenhuma OS encontrada.")).toBeNull();
+    expect(screen.getByText("Histórico indisponível.")).toBeVisible();
+  });
+
+  it("avisa que a lista de clientes não carregou", async () => {
+    montar({ [CLIENTS]: { status: 403, body: { error: "Acesso negado." } } });
+    render(<OSPage />);
+
+    const aviso = await screen.findByRole("alert");
+    expect(aviso).toHaveTextContent("Lista de clientes: Acesso negado.");
+    // O histórico carregou normalmente e continua na tela.
+    expect(await screen.findByText("#00042")).toBeVisible();
+  });
+
+  it("explica a rede caída pelo nome, sem mostrar o texto técnico do navegador", async () => {
+    const api = montar();
+    const original = api.fetch.getMockImplementation()!;
+    api.fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).startsWith(OS)) throw new TypeError("Failed to fetch");
+      return original(input, init);
+    });
+    render(<OSPage />);
+
+    const aviso = await screen.findByRole("alert");
+    expect(aviso).toHaveTextContent("Histórico de OS: Sem conexão com o servidor.");
+    expect(aviso).not.toHaveTextContent("Failed to fetch");
+    expect(screen.queryByText("Nenhuma OS encontrada.")).toBeNull();
+  });
+
+  it("trata resposta que não é JSON (página de erro do servidor) como falha de carga", async () => {
+    const api = montar();
+    const original = api.fetch.getMockImplementation()!;
+    api.fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).startsWith(OS)) return new Response("<html>Erro 500</html>", { status: 500 });
+      return original(input, init);
+    });
+    render(<OSPage />);
+
+    const aviso = await screen.findByRole("alert");
+    expect(aviso).toHaveTextContent("Histórico de OS: O servidor respondeu 500.");
+  });
+
+  it("recarrega ao clicar em tentar novamente e limpa o aviso quando dá certo", async () => {
+    const api = montar();
+    const original = api.fetch.getMockImplementation()!;
+    let caiu = true;
+    api.fetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (caiu && String(input).startsWith(OS)) throw new TypeError("Failed to fetch");
+      return original(input, init);
+    });
+    render(<OSPage />);
+
+    const user = userEvent.setup();
+    await screen.findByRole("alert");
+
+    caiu = false;
+    await user.click(screen.getByRole("button", { name: "Tentar novamente" }));
+
+    expect(await screen.findByText("#00042")).toBeVisible();
+    await waitFor(() => expect(screen.queryByText(/Não foi possível carregar/)).toBeNull());
+  });
+
+  it("mostra 'Carregando' enquanto o histórico não chegou, e não 'Nenhuma OS encontrada.'", async () => {
+    const api = montar();
+    const original = api.fetch.getMockImplementation()!;
+    api.fetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) =>
+      String(input).startsWith(OS) ? new Promise<Response>(() => {}) : original(input, init)
+    );
+    render(<OSPage />);
+
+    expect(await screen.findByText("Carregando…")).toBeVisible();
+    expect(screen.queryByText("Nenhuma OS encontrada.")).toBeNull();
+  });
+
+  it("continua dizendo 'Nenhuma OS encontrada.' quando o servidor responde com a lista vazia", async () => {
+    montar({ [OS]: { body: { ok: true, service_orders: [] } } });
+    render(<OSPage />);
+
+    expect(await screen.findByText("Nenhuma OS encontrada.")).toBeVisible();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("/dashboard/os: o que aconteceu com a mensagem do robô", () => {
+  const enviada = {
+    whatsapp_sent_at: "2026-09-03 14:22:00",
+    whatsapp_sent_to: "5521999887766",
+  };
+
+  const comStatus = (id: number, status: string | null, extra: object = {}) => ({
+    ...ordem,
+    id,
+    client_name: `Cliente ${id}`,
+    ...enviada,
+    whatsapp_status: status,
+    ...extra,
+  });
+
+  /**
+   * Número fixo ou sem WhatsApp falha DEPOIS de a Meta aceitar o pedido, pelo
+   * webhook. A tela só sabia de `whatsapp_sent_at` e mostrava sempre o selo verde
+   * de "enviada".
+   */
+  it("mostra no histórico o que a Meta informou de cada envio, e não sempre 'enviada'", async () => {
+    montar({
+      [OS]: {
+        body: {
+          ok: true,
+          service_orders: [
+            comStatus(1, "accepted"),
+            comStatus(2, "delivered"),
+            comStatus(3, "read"),
+            comStatus(4, "failed", { whatsapp_error: "Message undeliverable" }),
+          ],
+        },
+      },
+    });
+    render(<OSPage />);
+
+    expect(await screen.findByText("Aceita pela Meta")).toBeVisible();
+    expect(screen.getByText("Entregue")).toBeVisible();
+    expect(screen.getByText("Lida")).toBeVisible();
+    expect(screen.getByText("Falhou")).toBeVisible();
+    expect(screen.queryByText(/^Enviada$/)).toBeNull();
+  });
+
+  it("pinta a falha de vermelho e leva o motivo da Meta no tooltip", async () => {
+    montar({
+      [OS]: { body: { ok: true, service_orders: [comStatus(4, "failed", { whatsapp_error: "Message undeliverable" })] } },
+    });
+    render(<OSPage />);
+
+    const selo = (await screen.findByText("Falhou")).closest("span[title]")!;
+    expect(selo.className).toContain("red");
+    expect(selo.getAttribute("title")).toContain("Message undeliverable");
+    expect(selo.getAttribute("title")).toContain("5521999887766");
+  });
+
+  it("não pinta de verde o que a Meta só aceitou", async () => {
+    montar({
+      [OS]: { body: { ok: true, service_orders: [comStatus(1, "accepted"), comStatus(2, "delivered")] } },
+    });
+    render(<OSPage />);
+
+    const aceita = (await screen.findByText("Aceita pela Meta")).closest("span[title]")!;
+    const entregue = screen.getByText("Entregue").closest("span[title]")!;
+    expect(aceita.className).not.toContain("accent");
+    expect(entregue.className).toContain("accent");
+  });
+
+  it("mantém 'Enviada' só para a OS antiga, enviada antes de o status ser guardado", async () => {
+    montar({ [OS]: { body: { ok: true, service_orders: [comStatus(1, null)] } } });
+    render(<OSPage />);
+
+    expect(await screen.findByText("Enviada")).toBeVisible();
+  });
+
+  it("não mostra selo de WhatsApp para a OS que o robô nunca enviou", async () => {
+    montar();
+    render(<OSPage />);
+
+    await screen.findByText("#00042");
+    expect(screen.queryByText("Aceita pela Meta")).toBeNull();
+    expect(screen.queryByText("Enviada")).toBeNull();
+  });
+
+  it("mostra o status também na pré-visualização da OS", async () => {
+    montar({ [OS]: { body: { ok: true, service_orders: [comStatus(7, "delivered")] } } });
+    render(<OSPage />);
+    await abrirOS(userEvent.setup());
+
+    // O <dt> do robô guarda o nome só para leitor de tela (sr-only).
+    const envios = screen.getByText("WhatsApp do robô", { selector: ".sr-only" }).closest("div")!;
+    expect(envios).toHaveTextContent("5521999887766");
+    expect(envios).toHaveTextContent("Entregue");
+  });
+
+  it("depois de enviar pelo robô, a OS passa a constar como aceita pela Meta, não como entregue", async () => {
+    montar({
+      [WHATSAPP]: {
+        body: {
+          ok: true,
+          whatsapp_sent_to: "5521999887766",
+          whatsapp_sent_at: "2026-09-03 14:22:00",
+          whatsapp_status: "accepted",
+        },
+      },
+    });
+    render(<OSPage />);
+
+    const user = userEvent.setup();
+    await abrirOS(user);
+    await user.click(screen.getByRole("button", { name: "WhatsApp do robô" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent("A entrega é confirmada em seguida");
+    });
+    // Uma vez na linha do histórico e outra na pré-visualização.
+    expect(screen.getAllByText("Aceita pela Meta")).toHaveLength(2);
+    expect(screen.queryByText("Entregue")).toBeNull();
   });
 });
 

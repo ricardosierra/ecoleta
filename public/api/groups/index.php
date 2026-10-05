@@ -46,7 +46,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (preg_match('/<iframe.*?src=["\']([^"\']+)["\']/i', $powerbiUrl, $matches)) {
         $powerbiUrl = $matches[1];
     }
-    
+
+    // Mesma regra de groups/edit.php: só https válido (vazio é permitido).
+    if ($powerbiUrl !== '' && !apiIsHttpsUrl($powerbiUrl)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'A URL do Power BI deve ser um endereço https válido (https://...).']);
+        exit;
+    }
+
     try {
         $stmt = $db->prepare("INSERT INTO `groups` (name, powerbi_url) VALUES (?, ?)");
         $stmt->execute([$name, $powerbiUrl ?: null]);

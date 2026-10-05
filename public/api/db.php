@@ -73,7 +73,21 @@ function apiDatabaseDsn(): string
  *                                   sabidamente defasado.
  */
 function getDbConnection(bool $requireCurrentSchema = true): PDO {
+    // Uma conexão por processo e por DSN. apiRequireAuthenticated() e
+    // apiRequireAdmin() reconsultam o usuário a cada requisição, e o endpoint em
+    // seguida abre a sua: sem isto cada requisição autenticada passaria a abrir
+    // duas conexões (e a rodar duas vezes a leitura de schema_migrations) numa
+    // hospedagem compartilhada, que limita conexões simultâneas por conta. O PHP
+    // não mantém estado entre requisições, então o `static` vive só até o fim
+    // desta.
+    static $connections = [];
+
     $dsn = apiDatabaseDsn();
+    $cacheKey = $dsn . '|' . ($requireCurrentSchema ? 'schema' : 'sem-schema');
+    if (isset($connections[$cacheKey])) {
+        return $connections[$cacheKey];
+    }
+
     $options = [
         PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
@@ -91,6 +105,8 @@ function getDbConnection(bool $requireCurrentSchema = true): PDO {
         // Uma leitura barata em schema_migrations, uma vez por requisição.
         apiRequireCurrentSchema($db);
     }
+
+    $connections[$cacheKey] = $db;
 
     return $db;
 }

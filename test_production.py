@@ -1,5 +1,12 @@
+import os
 import requests
 import sys
+
+# A senha do administrador vem do ambiente: nunca a grave neste arquivo.
+#   ECOLETA_ADMIN_PASSWORD='...' python3 test_production.py
+ADMIN_PASSWORD = os.environ.get('ECOLETA_ADMIN_PASSWORD')
+if not ADMIN_PASSWORD:
+    sys.exit('Defina ECOLETA_ADMIN_PASSWORD no ambiente.')
 
 session = requests.Session()
 BASE_URL = 'https://www.ecolevaeco.com/api'
@@ -11,7 +18,7 @@ session.headers.update({
     'Accept': 'application/json'
 })
 
-resp = session.post(f'{BASE_URL}/auth/login.php', json={'username': 'admin', 'password': 'Admin123!'})
+resp = session.post(f'{BASE_URL}/auth/login.php', json={'username': 'admin', 'password': ADMIN_PASSWORD})
 new_token = resp.json().get('csrf_token')
 if new_token: session.headers.update({'X-CSRF-Token': new_token})
 

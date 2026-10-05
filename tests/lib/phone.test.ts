@@ -53,6 +53,37 @@ describe("normalizePhone", () => {
     expect(normalizePhone("33445566")).toBe("552133445566");
   });
 
+  /**
+   * DDD 55 (RS) é o caso em que "começa com 55" não quer dizer DDI. Quem decide
+   * é o tamanho: 10 ou 11 dígitos é número local, mesmo começando com 55.
+   */
+  it("trata celular local do DDD 55 (RS) como número local, não como DDI", () => {
+    expect(normalizePhone("(55) 99999-1234")).toBe("5555999991234");
+    expect(normalizePhone("55999991234")).toBe("5555999991234");
+  });
+
+  it("trata fixo local do DDD 55 (RS) como número local, não como DDI", () => {
+    expect(normalizePhone("(55) 3344-5566")).toBe("555533445566");
+    expect(normalizePhone("5533445566")).toBe("555533445566");
+  });
+
+  it("mantém o número do DDD 55 que já vem com DDI (12 e 13 dígitos)", () => {
+    expect(normalizePhone("+55 (55) 99999-1234")).toBe("5555999991234");
+    expect(normalizePhone("5555999991234")).toBe("5555999991234");
+    expect(normalizePhone("+55 (55) 3344-5566")).toBe("555533445566");
+  });
+
+  it("é idempotente: normalizar o que já foi normalizado não muda nada", () => {
+    for (const entrada of ["(55) 99999-1234", "(55) 3344-5566", "(21) 99988-7766", "99988-7766", "3344-5566"]) {
+      const uma = normalizePhone(entrada);
+      expect(normalizePhone(uma)).toBe(uma);
+    }
+  });
+
+  it("completa o DDD padrão em fixo de 8 dígitos que começa com 55", () => {
+    expect(normalizePhone("5512-3456")).toBe("552155123456");
+  });
+
   it("retorna string vazia para entradas vazias, nulas ou indefinidas", () => {
     expect(normalizePhone("")).toBe("");
     expect(normalizePhone(null)).toBe("");

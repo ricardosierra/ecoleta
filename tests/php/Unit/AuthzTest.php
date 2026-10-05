@@ -121,6 +121,68 @@ final class AuthzTest extends TestCase
         }
     }
 
+    // --- trava de troca de senha --------------------------------------------
+
+    /**
+     * Travar a troca de quem ainda não trocou a senha temporária a deixa presa
+     * nela: force_password_change manda trocar, a trava faz change_password.php
+     * responder 403. Espelha `canTogglePasswordLock(root, alvo)` em
+     * lib/authz.ts; a mesma tabela está em tests/lib/authz.test.ts.
+     *
+     * @return array<string, array{0:bool, 1:bool, 2:bool}>
+     */
+    public static function alternarATravaDeSenha(): array
+    {
+        return [
+            // travada hoje, troca pendente, pode alternar?
+            'travar conta saudável' => [false, false, true],
+            'destravar' => [true, false, true],
+            'destravar conta que já estava presa' => [true, true, true],
+            'travar quem tem senha temporária' => [false, true, false],
+        ];
+    }
+
+    #[DataProvider('alternarATravaDeSenha')]
+    public function testRootAlternaATravaSoQuandoNaoPrendeAPessoa(bool $travada, bool $pendente, bool $esperado): void
+    {
+        // Alternar = o contrário do estado de hoje, sem redefinir a senha na mesma chamada.
+        $pode = apiRoleCanTogglePasswordLock('root')
+            && apiPasswordLockAllowed($travada, !$travada, false, $pendente);
+
+        self::assertSame($esperado, $pode);
+    }
+
+    public function testQuemNaoEhRootNuncaAlternaATrava(): void
+    {
+        foreach (['master', 'user', null] as $papel) {
+            self::assertFalse(apiRoleCanTogglePasswordLock($papel));
+        }
+    }
+
+    /** As combinações que a edição pode pedir, uma a uma. */
+    public function testTravaNaEdicaoNuncaPrendeQuemPrecisaTrocarASenha(): void
+    {
+        // [travada hoje, quer travada, redefine a senha, troca pendente] => permitido
+        $casos = [
+            [false, true, true, false, false],   // gerar senha e travar na mesma chamada
+            [false, true, false, true, false],   // travar quem ainda tem a temporária
+            [false, true, false, false, true],   // travar conta saudável
+            [false, false, true, false, true],   // gerar senha sem travar
+            [true, false, true, true, true],     // destravar e gerar senha: o caminho legítimo
+            [true, true, false, true, true],     // já travada e continua: não é ativação
+            [true, true, false, false, true],
+            [false, false, false, true, true],   // não mexe na trava
+        ];
+
+        foreach ($casos as [$travada, $quer, $redefine, $pendente, $esperado]) {
+            self::assertSame(
+                $esperado,
+                apiPasswordLockAllowed($travada, $quer, $redefine, $pendente),
+                sprintf('travada=%d quer=%d redefine=%d pendente=%d', $travada, $quer, $redefine, $pendente)
+            );
+        }
+    }
+
     // --- exclusão -----------------------------------------------------------
 
     public function testNinguemSeExclui(): void
@@ -283,6 +345,87 @@ final class AuthzTest extends TestCase
             'papel com caixa trocada' => [['user_id' => 1, 'role' => 'Root']],
             'id não numérico' => [['user_id' => 'abc', 'role' => 'root']],
         ];
+    }
+
+    // --- conciliação com o banco ----------------------------------------------
+
+    /** @return array<string,mixed> */
+    private static function linhaDeUsuario(array $troca = []): array
+    {
+        return array_merge([
+            'id' => 7,
+            'login' => 'chefe',
+            'role' => 'master',
+            'password_hash' => 'hash-vigente',
+            'force_password_change' => 0,
+        ], $troca);
+    }
+
+    public function testBancoAusenteInvalidaASessao(): void
+    {
+        self::assertNull(apiReconcileActor(null, null));
+        self::assertNull(apiReconcileActor(null, apiPasswordFingerprint('hash-vigente')));
+    }
+
+    /** O papel que vale é o da linha do banco, não o que a sessão guardou. */
+    public function testPapelVemDaLinhaDoBanco(): void
+    {
+        $_SESSION = ['user_id' => 7, 'role' => 'root', 'login' => 'antigo'];
+
+        $ator = apiReconcileActor(self::linhaDeUsuario(['role' => 'user']), null);
+
+        self::assertSame('user', $ator['role']);
+        self::assertSame('chefe', $ator['login']);
+        self::assertSame(7, $ator['id']);
+    }
+
+    public function testPapelDesconhecidoNoBancoInvalidaASessao(): void
+    {
+        self::assertNull(apiReconcileActor(self::linhaDeUsuario(['role' => 'superadmin']), null));
+        self::assertNull(apiReconcileActor(self::linhaDeUsuario(['role' => 'Root']), null));
+        self::assertNull(apiReconcileActor(self::linhaDeUsuario(['role' => null]), null));
+    }
+
+    public function testSenhaTrocadaDepoisDoLoginInvalidaASessao(): void
+    {
+        $antiga = apiPasswordFingerprint('hash-antigo');
+
+        self::assertNull(apiReconcileActor(self::linhaDeUsuario(), $antiga));
+    }
+
+    public function testSenhaIntactaMantemASessao(): void
+    {
+        $vigente = apiPasswordFingerprint('hash-vigente');
+
+        $ator = apiReconcileActor(self::linhaDeUsuario(), $vigente);
+
+        self::assertNotNull($ator);
+        self::assertSame($vigente, $ator['fingerprint']);
+    }
+
+    /** Sessão de antes da regra existir não tem impressão digital: é adotada, não derrubada. */
+    public function testSessaoSemImpressaoDigitalEhAdotada(): void
+    {
+        foreach ([null, '', 123, ['x']] as $valor) {
+            $ator = apiReconcileActor(self::linhaDeUsuario(), $valor);
+
+            self::assertNotNull($ator, 'impressão digital ausente derrubou a sessão: ' . json_encode($valor));
+            self::assertSame(apiPasswordFingerprint('hash-vigente'), $ator['fingerprint']);
+        }
+    }
+
+    public function testSenhaTemporariaPendenteVemDaLinhaDoBanco(): void
+    {
+        self::assertFalse(apiReconcileActor(self::linhaDeUsuario(['force_password_change' => 0]), null)['force_password_change']);
+        self::assertTrue(apiReconcileActor(self::linhaDeUsuario(['force_password_change' => 1]), null)['force_password_change']);
+        self::assertTrue(apiReconcileActor(self::linhaDeUsuario(['force_password_change' => '1']), null)['force_password_change']);
+    }
+
+    public function testImpressaoDigitalNaoEhOHashEMudaComEle(): void
+    {
+        self::assertNotSame('hash-vigente', apiPasswordFingerprint('hash-vigente'));
+        self::assertNotSame(apiPasswordFingerprint('a'), apiPasswordFingerprint('b'));
+        self::assertSame(apiPasswordFingerprint('a'), apiPasswordFingerprint('a'));
     }
 
     // ── Painel de WhatsApp ──────────────────────────────────────────────────

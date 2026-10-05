@@ -114,5 +114,10 @@ apiJsonResponse(200, [
     'ok' => true,
     'sent_to' => $destino,
     'sent_at' => $atualizada['sent_at'] ?? null,
+    // Em MAIL_TRANSPORT=log nada saiu: o destinatário só foi para o log. A tela diz
+    // "registrada em log (modo teste)" em vez de "Enviada para X". Fora desse modo,
+    // o sucesso é o `mail()` ter aceitado a mensagem, o que só garante que o MTA
+    // local a recebeu; a entrega em si não dá para saber daqui.
+    'logged_only' => osMailIsLogOnly(),
     'share_url' => $shareUrl,
 ]);

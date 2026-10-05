@@ -87,6 +87,15 @@ function asaasUpdateCustomer(string $customerId, array $data): array
     return asaasRequest('/customers/' . $customerId, 'POST', $data);
 }
 
+/**
+ * Remove um cliente do Asaas. Usado para desfazer o cadastro remoto quando a
+ * gravação local falha logo depois (ver `clientsInsertAfterAsaas()`).
+ */
+function asaasDeleteCustomer(string $customerId): array
+{
+    return asaasRequest('/customers/' . rawurlencode($customerId), 'DELETE');
+}
+
 function asaasCreatePayment(string $customerId, float $value, string $dueDate): array
 {
     $data = [

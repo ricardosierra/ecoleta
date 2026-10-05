@@ -4,6 +4,7 @@ require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../authz.php';
 require_once __DIR__ . '/../security_alerts.php';
 require_once __DIR__ . '/../auth/password_audit_lib.php';
+require_once __DIR__ . '/../auth/identity_lib.php';
 
 startSecureSession();
 apiRequireCsrfToken();
@@ -40,7 +41,7 @@ if (!$targetUserId || !$login || !$email) {
 $db = getDbConnection();
 
 // Busca o usuário alvo
-$stmt = $db->prepare("SELECT id, login, email, role, group_id, password_locked FROM users WHERE id = ? LIMIT 1");
+$stmt = $db->prepare("SELECT id, login, email, role, group_id, password_locked, force_password_change FROM users WHERE id = ? LIMIT 1");
 $stmt->execute([$targetUserId]);
 $targetUser = $stmt->fetch();
 
@@ -83,18 +84,21 @@ if ($groupId) {
     $groupName = $grp['name'];
 }
 
-// Verifica unicidade de login e email
-$checkUnique = $db->prepare("SELECT id, login, email FROM users WHERE (login = ? OR email = ?) AND id != ? LIMIT 1");
-$checkUnique->execute([$login, $email, $targetUserId]);
-$duplicate = $checkUnique->fetch();
-
-if ($duplicate) {
+// Formato do login: vale para o que entra, não para o que já existe. Conta antiga
+// com login fora do padrão continua editável enquanto o login não mudar; do
+// contrário, corrigir o e-mail de quem tem um espaço no login passaria a falhar.
+if ($login !== (string) $targetUser['login'] && !apiLoginFormatIsValid($login)) {
     http_response_code(400);
-    if ($duplicate['login'] === $login) {
-        echo json_encode(['error' => 'Este login já está em uso por outro usuário.']);
-    } else {
-        echo json_encode(['error' => 'Este e-mail já está em uso por outro usuário.']);
-    }
+    echo json_encode(['error' => 'Login inválido. Use de 3 a 50 caracteres: letras sem acento, números, ponto, hífen e sublinhado.']);
+    exit;
+}
+
+// Unicidade de login e e-mail, incluindo os cruzamentos que a busca do login
+// enxerga (login igual ao e-mail de outra conta, e o inverso).
+$clash = apiIdentityClash($db, $login, $email, $targetUserId);
+if ($clash !== null) {
+    http_response_code(400);
+    echo json_encode(['error' => apiIdentityClashMessage($clash['kind'])]);
     exit;
 }
 
@@ -126,6 +130,27 @@ if (!empty($targetUser['password_locked']) && ($generateNewPassword || $newPassw
     }
 }
 
+// Senha temporária e trava de troca nunca ficam juntas na mesma conta.
+// force_password_change manda a pessoa trocar a senha; password_locked faz
+// auth/change_password.php responder 403. Com as duas, ela fica presa na senha
+// temporária, que nunca expira. O bloco acima só barrava quando a conta JÁ
+// estava travada: root conseguia gerar a senha e ativar a trava na mesma
+// chamada, ou travar quem ainda não tinha trocado a temporária.
+//
+// Barra apenas ATIVAR a trava. Conta que já está travada continua editável
+// (o bloco acima cuida de quem tenta mudar a senha dela), assim como quem já
+// está na combinação por herança: nenhuma edição de outro campo falha por isso.
+if (!apiPasswordLockAllowed(
+    !empty($targetUser['password_locked']),
+    $passwordLocked === 1,
+    $generateNewPassword || (bool) $newPassword,
+    !empty($targetUser['force_password_change'])
+)) {
+    http_response_code(400);
+    echo json_encode(['error' => 'Não é possível travar a troca de senha de uma conta que acabou de ganhar senha temporária (ou que ainda não trocou a temporária): a pessoa ficaria presa nela. Destrave, deixe a conta trocar a senha e só então trave.']);
+    exit;
+}
+
 try {
     if ($generateNewPassword) {
         $chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$';
@@ -143,9 +168,9 @@ try {
         $updateStmt->execute([$login, $email, $role, $groupId, $hash, $passwordLocked, $targetUserId]);
         attributePasswordHashChange($db, (int) $targetUserId, $hash, 'reset_password', (int) $operatorId, (string) $operatorLogin);
     } elseif ($newPassword) {
-        if (strlen($newPassword) < 6) {
+        if (strlen($newPassword) < API_PASSWORD_MIN_LENGTH) {
             http_response_code(400);
-            echo json_encode(['error' => 'A nova senha deve ter pelo menos 6 caracteres.']);
+            echo json_encode(['error' => 'A nova senha deve ter pelo menos ' . API_PASSWORD_MIN_LENGTH . ' caracteres.']);
             exit;
         }
         $hash = password_hash($newPassword, PASSWORD_DEFAULT);

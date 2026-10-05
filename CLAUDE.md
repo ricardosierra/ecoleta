@@ -13,8 +13,8 @@ Referência visual oficial da cliente: <https://impactacomvoce.com.br/>.
 - **Next.js 16** (App Router, Turbopack)
 - **React 19** + **TypeScript** (strict)
 - **Tailwind CSS v4** (config inline via `@theme {}` no `globals.css`)
-- **Resend** para envio de e-mail (fallback SMTP via Nodemailer opcional)
-- **Zod** para validação do formulário de contato
+- **PHP** (`public/contact.php`, `mail()`) para o formulário de contato; SMTP via PHPMailer nos e-mails de OS e de fatura
+- **Zod** só para as opções do formulário (`lib/contact-schema.ts`)
 - Sem state manager, sem UI lib externa — componentes próprios
 
 ## Comandos
@@ -57,7 +57,7 @@ app/                       Rotas (App Router)
   esg/page.tsx             Página ESG e Impacto
   cases/page.tsx           Página Cases & Provas
   contato/page.tsx         Sobre + Contato (com formulário)
-  api/contact/route.ts     Endpoint do formulário
+  (endpoint do formulário: public/contact.php)
   sitemap.ts · robots.ts   SEO
   layout.tsx · globals.css
 
@@ -71,12 +71,12 @@ components/                Componentes reutilizáveis (16)
 
 lib/                       Utilitários e configuração
   site.config.ts           URLs, contatos, navegação (com placeholders)
-  contact-schema.ts        Schema Zod do formulário
+  contact-schema.ts        Opções do formulário (Zod)
   os-share.ts              Mensagem de WhatsApp e datas da OS
   logo-crop.ts             Geometria do recorte de logo (sem DOM)
   whatsapp.ts              Janela de 24h e formatação do painel
   phone.ts                 Normalização de telefone (espelho de phone_lib.php)
-  rate-limit.ts            Rate limit em memória (5 req/min/IP)
+  rate-limit.ts            Sem uso (o limite do formulário mora em public/contact.php)
   cn.ts                    Helper para classes condicionais
 
 db/                        Schema do banco (nunca publicado pelo deploy)
@@ -200,15 +200,57 @@ diretório antes do primeiro upload.
   descartar uma cobrança já criada no Asaas.
 
 - **O que decide e o que desenha mora em `public/api/billing_lib.php`** — quando
-  cobrar (`billingShouldIssue`, `billingDueDate`) e o documento do e-mail
-  (`billingNewInvoiceEmail`, `billingReminderEmail`). `api/cron/billing.php` fica
-  só com o efeito colateral. Foi assim que o link do boleto vazio passou
-  despercebido: com o HTML copiado dentro do cron, nenhum teste conseguia
-  renderizar o e-mail.
+  cobrar (`billingDueDatesToIssue`, `billingNextCycleIsOpen`, `billingDueDate`) e o
+  documento do e-mail (`billingNewInvoiceEmail`, `billingReminderEmail`). O ciclo
+  em si é `billingRunCycle()` em `billing_delivery.php`, e `api/cron/billing.php`
+  fica só com a porta de entrada (segredo, relógio, resposta). Foi assim que o
+  link do boleto vazio passou despercebido: com o HTML copiado dentro do cron,
+  nenhum teste conseguia renderizar o e-mail.
+- **O cron roda TODO DIA e é idempotente.** Cada execução garante, para cada
+  cliente ativo com valor mensal, o vencimento do mês corrente (enquanto não
+  passou, hoje inclusive) e o do mês seguinte (a partir do dia 30, ou do último
+  dia do mês). Era só o dia 30: cliente cadastrado no dia 3 com vencimento no dia 5
+  ficava um mês sem boleto, e um dia 30 perdido (cron fora do ar, Asaas caído)
+  perdia o mês inteiro sem ninguém saber. Nunca se emite data passada. Quem chama o
+  endpoint todo dia é `.github/workflows/billing-cron.yml` (GitHub Actions, precisa do
+  secret `CRON_SECRET` e do arquivo na branch padrão) e/ou o cron da hospedagem; os
+  dois juntos não cobram em dobro.
+- **Uma fatura por cliente por mês.** `billingFindMonthInvoice()` considera
+  qualquer fatura do cliente no mês, de qualquer data e **inclusive cancelada**:
+  é o que impede cobrança dupla depois de uma fatura avulsa ou de uma troca de
+  `due_day`, e de recriar o que a operadora cancelou de propósito. A tela de
+  Faturas, ao contrário, deixa gerar de novo para o mesmo vencimento depois de
+  cancelar.
+- **A trava do ciclo é por cliente e MÊS** (`month:<id>:AAAA-MM`), e a busca da fatura do mês
+  fica dentro dela. A trava por vencimento deixava dois ciclos simultâneos, ou uma troca de
+  `due_day` no meio do ciclo, emitirem duas faturas do mesmo mês (reproduzido em MariaDB). A
+  tela de Faturas, por outro lado, continua permitindo uma segunda fatura no mês (cobrança extra
+  é legítima) e pergunta antes. Cobrança que o Asaas devolve e que já está gravada aqui com
+  outro vencimento (prorrogada no painel do Asaas) é reaproveitada, não inserida de novo.
+- **Quem ficou sem fatura aparece, não some.** `billingClientsWithoutInvoice()` lista os
+  clientes ativos com valor mensal sem fatura no mês cujo vencimento já passou (o ciclo não emite
+  data passada). A tela de Faturas mostra a lista com "Preencher fatura". Cancelada conta como
+  "tem fatura".
+- **Marcar a entrega nunca deixa a tentativa "incerta".** Depois que o provedor aceitou, gravar o
+  id da mensagem e o histórico do painel é bookkeeping: se falhar, marca só `billing_delivery`.
+  (`activity_logs.target_login` é VARCHAR(255) desde a migration 019; era 50 e o id do WhatsApp
+  não cabia.) Fora da janela de 24h o WhatsApp exige `WHATSAPP_BILLING_TEMPLATE` aprovado.
+- **Cada execução deixa rastro.** `billingRecordRun()` grava `billing_cron_run`
+  em `activity_logs` (horário em UTC dentro do JSON, pelo PHP). A tela de Faturas
+  lê isso e avisa quando o cron nunca rodou ou parou há mais de 36 horas
+  (`lib/billing-status.ts`). É o único sinal de que o agendamento do servidor
+  existe. O passo a passo do agendamento está em `docs/deploy.md`.
+- **Lembrete não vai junto com a fatura nova.** Nos dias 3 e 7 o lembrete pula
+  fatura emitida há menos de 20 horas (`BILLING_REMINDER_MIN_AGE`), inclusive
+  entre duas execuções do cron no mesmo dia.
+- **Valor mínimo de R$ 5,00.** O Asaas não cobra menos; `BILLING_MIN_VALUE`
+  (PHP) e `MIN_MONTHLY_VALUE` em `components/ClienteForm.tsx` são espelhos.
+  Cadastro e edição barram antes, em vez de a fatura falhar todo dia.
 - **Cliente com `monthly_value > 0` precisa de CPF/CNPJ.** O Asaas cadastra o
-  cliente sem documento e recusa a COBRANÇA — recusa que só aconteceria no dia
-  30, dentro do `try/catch` do cron, no `error_log`. Cadastro e edição barram
-  antes; o cron registra o cadastro incompleto em vez de tentar.
+  cliente sem documento e recusa a COBRANÇA. Cadastro e edição barram antes; o
+  cron devolve o cadastro incompleto em `errors` (HTTP 502) em vez de sumir.
+  Cliente sem e-mail e sem WhatsApp também vira erro (`errors.destino`): a fatura
+  existe e ninguém é avisado.
 - **Os dois webhooks falham fechados.** `api/webhooks/asaas.php` exige
   `ASAAS_WEBHOOK_TOKEN` no cabeçalho `asaas-access-token`; `api/cron/billing.php`
   exige `CRON_SECRET` (cabeçalho `X-Cron-Secret`, ou `?secret=` por
@@ -218,6 +260,36 @@ diretório antes do primeiro upload.
 - Clientes, faturas e OS são módulos de **administrador nos dois lados**: a tela
   desenha "Acesso negado." e a API responde 403. São dados de carteira e de
   cobrança.
+
+### Autenticação e sessão
+
+- **O papel vem do banco a cada requisição.** `apiRequireAuthenticated()` e
+  `apiRequireAdmin()` reconsultam o usuário por id: rebaixar ou excluir vale na hora, e
+  trocar ou resetar a senha derruba as sessões abertas (a sessão guarda `pwd_fp`, um
+  sha256 do hash da senha). Teste que injeta sessão (`'session' => [...]`) precisa
+  semear no banco o usuário que a sessão cita, com o mesmo papel.
+- **Senha temporária só acessa `me.php`, `change_password.php` e `logout.php`**, também
+  na API (403 `password_change_required`). Gerar senha e travar a conta na mesma chamada é
+  recusado, porque deixaria o usuário preso na senha temporária.
+- Troca de senha: 8 caracteres, diferente da atual e, fora da troca forçada, exige a
+  senha atual.
+- **Limite de login** (`rate_limit.php`, três contadores: par login+IP, IP, conta). O da conta
+  (15 falhas, qualquer IP) usa o **id do usuário** como chave quando o login existe, então
+  login, e-mail e grafias que a colação do MySQL iguala caem no mesmo contador. O bloqueio de
+  conta escalona 60, 120, 240 e para em 300 s. Um **IP de confiança** (autenticou a conta com
+  sucesso nos últimos 30 dias, marcador `scope = 'trusted'` amarrado ao hash da senha vigente)
+  passa por cima do bloqueio de CONTA, mas continua sujeito ao do par e ao do IP: é o que
+  impede que quem conhece o login público do `admin` o tranque para o dono. Login bem-sucedido
+  zera o contador da conta (não o do IP). Atrás de proxy, `REMOTE_ADDR` é o do proxy e a
+  confiança vale para todos que saem por ele. Para liberar à mão:
+  `DELETE FROM login_throttle WHERE scope = 'account'` (contas), `scope IN ('login_ip','ip')`
+  (um IP) ou `scope = 'trusted'` (revogar toda a confiança).
+- `public/.htaccess` (a raiz do site) nega por `RewriteRule [F]` os arquivos internos de
+  `api/` (env, composer, scripts temporários) e `api/vendor/`. Não acrescente `Require` nele:
+  sem override de autenticação liberado no servidor, é 500 no site inteiro. (Os `.htaccess`
+  de `public/uploads/logos/` e o `api/migrations/` gerado pelo deploy usam `Require`, mas
+  cada um só cobre a própria pasta.) O deploy por FTP nunca apaga arquivo removido do
+  repositório, então apague à mão do servidor.
 
 ### Banco de dados
 
@@ -233,10 +305,10 @@ diretório antes do primeiro upload.
 
 ### Formulário e e-mail
 
-- Validação **dupla** (Zod no client + server). Backend é a fonte de verdade.
+- Validação **dupla**: o componente `ContactForm` e `public/contact.php`. O PHP é a fonte de verdade.
 - Honeypot (`website`) — bot recebe `200 OK` silencioso, sem feedback.
-- Rate limit em memória, 5 req/min/IP. Para escalar, trocar `lib/rate-limit.ts` por Redis/Upstash.
-- Endpoint tenta Resend → SMTP → modo dev (apenas log). Configurar via env (ver `.env.example`).
+- Limite de 5 envios por minuto e 30 por hora por `REMOTE_ADDR`, em arquivos na pasta temporária (falha aberto). Atrás de CDN ou proxy, `REMOTE_ADDR` pode ser o do proxy.
+- O envio é `mail()`; destino e remetente vêm de `CONTACT_TO_EMAIL` e `CONTACT_FROM_EMAIL` no `api/env.php`.
 - **Nunca** logar PII em produção. **Nunca** expor variáveis sem prefixo `NEXT_PUBLIC_` no client.
 
 ### Acessibilidade
@@ -260,7 +332,7 @@ Tudo via `.env.local` (copiar de `.env.example`):
 - `NEXT_PUBLIC_WHATSAPP_NUMBER` — formato internacional sem `+` (ex: `5511999999999`)
 - `NEXT_PUBLIC_INSTAGRAM_URL`, `NEXT_PUBLIC_LINKEDIN_URL`
 - `NEXT_PUBLIC_CNPJ`, `NEXT_PUBLIC_ADDRESS`
-- `CONTACT_TO_EMAIL`, `RESEND_API_KEY` (ou bloco `SMTP_*`)
+- `CONTACT_TO_EMAIL`, `CONTACT_FROM_EMAIL` (em branco valem os padrões de `public/contact.php`) e, se quiser SMTP nos e-mails de OS e fatura, o bloco `SMTP_*`
 - `SITE_BASE_URL` — **fixar em produção**: em branco, o link com token da OS é
   montado a partir do cabeçalho `Host`, que quem chama controla
 - `ASAAS_WEBHOOK_TOKEN` — o mesmo valor do campo "Token de autenticação" no

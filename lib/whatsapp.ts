@@ -54,10 +54,26 @@ export type WhatsAppTemplate = {
   name: string;
   language: string;
   category?: string;
+  /** Status real na Meta (`APPROVED`, `PENDING`...) ou `UNVERIFIED` quando a Meta não respondeu. */
   status?: string;
   body_text: string;
   params_count: number;
+  /** Rótulo de cada variável, na ordem. Só vem para templates que o servidor conhece. */
   param_labels?: string[];
+  /** O que cada variável é (`client_name`, `os_number`...). Só o nome do cliente é pré-preenchido. */
+  param_kinds?: string[];
+};
+
+/** Resposta de `api/whatsapp/templates.php`. */
+export type WhatsAppTemplatesResponse = {
+  ok?: boolean;
+  templates?: WhatsAppTemplate[];
+  /** `meta` quando veio da Meta; `config` quando a Meta não pôde ser consultada. */
+  source?: string;
+  /** Motivo, em português, de a Meta não ter sido consultada. */
+  error?: string | null;
+  /** Texto original da Meta, para quem for investigar. */
+  error_detail?: string | null;
 };
 
 /** Como a faixa no topo da conversa e o botão do robô devem se apresentar. */
@@ -273,4 +289,185 @@ export function mimeTypeToCategory(mimeType: string): "image" | "audio" | "docum
   if (lower.startsWith("audio/")) return "audio";
   if (lower.startsWith("video/")) return "video";
   return "document";
+}
+
+// ── Templates: o que a tela pode preencher e enviar ──────────────────────────
+
+/** A variável `index` (0-based) do template é o nome do cliente? */
+function isClientNameParam(template: WhatsAppTemplate, index: number): boolean {
+  const kinds = template.param_kinds;
+
+  if (kinds && kinds.length > 0) {
+    return kinds[index] === "client_name";
+  }
+
+  // Servidor antigo, sem os tipos: o rótulo ainda diz quando é o nome.
+  return /^nome\b/i.test((template.param_labels?.[index] ?? "").trim());
+}
+
+/**
+ * Valores iniciais das variáveis do template na conversa aberta.
+ *
+ * Só o que se sabe com segurança: o nome do cliente, no parâmetro que é o nome.
+ * Número da OS, valor, vencimento e link ficam VAZIOS, porque um chute ("00001",
+ * a URL do site) segue para o cliente como se fosse o dado real, numa mensagem
+ * que a Meta cobra. Quem chama troca de template reconstruindo o objeto, nunca
+ * mesclando com o anterior.
+ */
+export function initialTemplateValues(
+  template: WhatsAppTemplate | null | undefined,
+  conversation: Pick<WhatsAppConversation, "name"> | null | undefined
+): Record<string, string> {
+  const valores: Record<string, string> = {};
+  const nome = (conversation?.name ?? "").trim();
+
+  if (!template || nome === "") {
+    return valores;
+  }
+
+  for (let i = 0; i < template.params_count; i++) {
+    if (isClientNameParam(template, i)) {
+      valores[String(i + 1)] = nome;
+    }
+  }
+
+  return valores;
+}
+
+/** Variáveis (1, 2, 3...) que ainda estão em branco. Espaço não conta como preenchido. */
+export function missingTemplateParams(
+  template: Pick<WhatsAppTemplate, "params_count">,
+  values: Record<string, string>
+): number[] {
+  const faltando: number[] = [];
+
+  for (let i = 1; i <= template.params_count; i++) {
+    if ((values[String(i)] ?? "").trim() === "") {
+      faltando.push(i);
+    }
+  }
+
+  return faltando;
+}
+
+/**
+ * O que a tela faz com o template: `ok` envia, `unverified` envia com aviso (a
+ * Meta não respondeu, então a aprovação é desconhecida) e `blocked` não envia
+ * (em análise, rejeitado, pausado...: a Meta recusaria).
+ */
+export function templateSendability(
+  template: Pick<WhatsAppTemplate, "status"> | null | undefined
+): "ok" | "unverified" | "blocked" {
+  const status = (template?.status ?? "").toUpperCase();
+
+  if (status === "APPROVED") return "ok";
+  if (status === "UNVERIFIED") return "unverified";
+
+  return "blocked";
+}
+
+/** O status do template em português, para o seletor e a faixa do modal. */
+export function templateStatusLabel(status?: string | null): string {
+  const valor = (status ?? "").trim().toUpperCase();
+
+  switch (valor) {
+    case "":
+    case "UNKNOWN":
+      return "Situação desconhecida";
+    case "APPROVED":
+      return "Aprovado";
+    case "PENDING":
+      return "Em análise na Meta";
+    case "IN_APPEAL":
+      return "Em recurso na Meta";
+    case "REJECTED":
+      return "Rejeitado pela Meta";
+    case "PAUSED":
+      return "Pausado pela Meta";
+    case "DISABLED":
+      return "Desativado pela Meta";
+    case "UNVERIFIED":
+      return "Não verificado na Meta";
+    default:
+      return valor;
+  }
+}
+
+// ── Busca e gravação de áudio ────────────────────────────────────────────────
+
+/**
+ * O termo da busca é um telefone (dígitos e a pontuação de máscara), e não um
+ * nome com número? "Posto 3" não é: tratar o 3 como telefone casava com toda
+ * conversa cujo número tivesse um 3.
+ */
+export function looksLikePhoneSearch(term: string): boolean {
+  const limpo = term.trim();
+
+  return /^[\d\s().+-]+$/.test(limpo) && /\d/.test(limpo);
+}
+
+/** Minúsculas e sem acento: o mesmo que a busca do servidor (collation do MySQL) enxerga. */
+function normalizeSearchText(texto: string): string {
+  return texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+/**
+ * A conversa casa com o termo digitado na busca?
+ *
+ * Procura no nome, no perfil do WhatsApp, no nome do cliente e na prévia, sem
+ * ligar para caixa nem acento; no telefone só quando o termo é um telefone. É a
+ * mesma regra de `api/whatsapp/conversations.php?q=`, que alcança as conversas
+ * fora das 300 mais recentes: aqui ela dá a resposta imediata, enquanto o
+ * servidor confirma.
+ */
+export function matchesConversationSearch(
+  conversation: Pick<
+    WhatsAppConversation,
+    "name" | "profile_name" | "client_name" | "phone" | "last_message_preview"
+  >,
+  term: string
+): boolean {
+  const termo = normalizeSearchText(term);
+
+  if (termo === "") {
+    return true;
+  }
+
+  const textos = [
+    conversation.name,
+    conversation.profile_name,
+    conversation.client_name,
+    conversation.last_message_preview,
+  ];
+
+  if (textos.some(texto => normalizeSearchText(texto ?? "").includes(termo))) {
+    return true;
+  }
+
+  if (looksLikePhoneSearch(term)) {
+    const digitos = term.replace(/\D/g, "");
+
+    return digitos !== "" && conversation.phone.includes(digitos);
+  }
+
+  return false;
+}
+
+/**
+ * Formatos que o gravador do navegador pode usar e a Meta aceita, em ordem de
+ * preferência. WebM, que é o que o Chrome grava por padrão, a Meta recusa: nele
+ * o envio sempre falhava depois de a pessoa já ter gravado.
+ */
+const WHATSAPP_RECORDER_MIME_TYPES = ["audio/ogg;codecs=opus", "audio/mp4"];
+
+/**
+ * O primeiro formato de gravação aceito pelo WhatsApp que o navegador suporta,
+ * ou `undefined` quando não há nenhum (a tela avisa antes de gravar).
+ */
+export function recorderMimeType(isSupported: (mimeType: string) => boolean): string | undefined {
+  return WHATSAPP_RECORDER_MIME_TYPES.find(isSupported);
 }

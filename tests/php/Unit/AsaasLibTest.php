@@ -19,4 +19,12 @@ final class AsaasLibTest extends TestCase
 
         asaasUpdateCustomer('cus_test123', ['mobilePhone' => '5511999999999']);
     }
+
+    public function testAsaasDeleteCustomerLancaExcecaoSemApiKey(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('ASAAS_API_KEY não configurada.');
+
+        asaasDeleteCustomer('cus_test123');
+    }
 }

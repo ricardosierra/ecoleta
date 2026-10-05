@@ -27,7 +27,8 @@ final class Endpoint
      *     dsn?: string|null,
      *     env?: array<string,string>,
      *     remote_addr?: string,
-     *     server?: array<string,string>
+     *     server?: array<string,string>,
+     *     ini?: array<string,string>
      * } $options
      */
     public static function call(string $script, array $options = []): EndpointResponse
@@ -114,7 +115,7 @@ final class Endpoint
             $env[(string) $name] = (string) $value;
         }
 
-        self::run($path, $env, $rawBody, $workDir);
+        self::run($path, $env, $rawBody, $workDir, $options['ini'] ?? []);
 
         $raw = file_get_contents($context['output_file']);
         $decoded = is_string($raw) ? json_decode($raw, true) : null;
@@ -141,7 +142,34 @@ final class Endpoint
         );
     }
 
-    private static function run(string $path, array $env, string $stdin, string $workDir): void
+    /**
+     * Chama um script de public/ que não mora em public/api/. Hoje é o
+     * contact.php, que é o endpoint REAL do formulário de contato (o site é
+     * export estático, não há rota do Next para isso).
+     *
+     * Reaproveita call() por inteiro: o caminho sai de public/api/ subindo um
+     * nível, e SCRIPT_NAME/REQUEST_URI/SCRIPT_FILENAME são ajustados para o que
+     * o servidor mostraria. Sem `dsn` na chamada, assume null: esses scripts não
+     * falam com o banco.
+     *
+     * @param string $script caminho relativo a public/, ex.: 'contact.php'
+     * @param array<string,mixed> $options as mesmas de call()
+     */
+    public static function callPublic(string $script, array $options = []): EndpointResponse
+    {
+        $relative = ltrim($script, '/');
+        $options += ['dsn' => null];
+        $options['server'] = array_merge([
+            'SCRIPT_NAME' => '/' . $relative,
+            'REQUEST_URI' => '/' . $relative,
+            'SCRIPT_FILENAME' => ECOLETA_ROOT . '/public/' . $relative,
+        ], $options['server'] ?? []);
+
+        return self::call('../' . $relative, $options);
+    }
+
+    /** @param array<string,string> $ini diretivas extras do PHP filho (-d nome=valor) */
+    private static function run(string $path, array $env, string $stdin, string $workDir, array $ini = []): void
     {
         $descriptors = [
             0 => ['pipe', 'r'],
@@ -153,8 +181,16 @@ final class Endpoint
             PHP_BINARY,
             '-d', 'auto_prepend_file=' . __DIR__ . '/harness.php',
             '-d', 'display_errors=0',
-            $path,
         ];
+
+        // Diretivas de sistema que o script não consegue mudar em tempo de
+        // execução (sendmail_path, por exemplo) só entram pela linha de comando.
+        foreach ($ini as $name => $value) {
+            $command[] = '-d';
+            $command[] = $name . '=' . $value;
+        }
+
+        $command[] = $path;
 
         $process = proc_open($command, $descriptors, $pipes, ECOLETA_ROOT, $env);
         if (!is_resource($process)) {

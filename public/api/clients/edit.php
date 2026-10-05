@@ -12,6 +12,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../authz.php';
 require_once __DIR__ . '/../asaas_lib.php';
+require_once __DIR__ . '/../billing_lib.php';
 require_once __DIR__ . '/phone_lib.php';
 
 startSecureSession();
@@ -74,6 +75,14 @@ if (!is_finite($monthlyValue) || $monthlyValue < 0) {
 if ($dueDay < 1 || $dueDay > 31) {
     http_response_code(400);
     echo json_encode(['error' => 'Dia de vencimento deve estar entre 1 e 31.']);
+    exit;
+}
+
+// Mesma regra do cadastro. Só olha o que esta requisição enviou: um cadastro antigo
+// com valor abaixo do mínimo continua editável nos outros campos.
+if (array_key_exists('monthly_value', $body) && $monthlyValue > 0 && $monthlyValue < BILLING_MIN_VALUE) {
+    http_response_code(400);
+    echo json_encode(['error' => 'O valor mensal mínimo é R$ 5,00, o menor valor que o Asaas aceita cobrar.']);
     exit;
 }
 

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ClientesPage from "@/app/dashboard/clientes/page";
@@ -150,6 +150,57 @@ describe("/dashboard/clientes/novo — Cadastro e Cobrança Mensal", () => {
   }, 15_000);
 });
 
+describe("/dashboard/clientes/novo: valor mínimo da cobrança mensal", () => {
+  it("barra valor abaixo de R$ 5,00 no próprio campo, sem chamar a API", async () => {
+    const api = installApiMock({ [ME]: { body: sessionOf("root") }, [CLIENTS]: rotaClientes });
+    render(<NovoClientePage />);
+
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Nome / Empresa *"), "Valor Baixo");
+    await user.click(screen.getByRole("switch", { name: /cobrança mensal/i }));
+    const campoValor = screen.getByLabelText("Valor Mensal Fixo (R$) *");
+    await user.type(campoValor, "4.99");
+    await user.type(screen.getByLabelText(/CPF\/CNPJ \*/i), "12345678000199");
+    await user.click(screen.getByRole("button", { name: "Salvar Cliente" }));
+
+    expect(campoValor).toBeInvalid();
+    const post = api.fetch.mock.calls.find(
+      ([url, init]) => String(url).startsWith(CLIENTS) && init?.method === "POST"
+    );
+    expect(post).toBeUndefined();
+  }, 15_000);
+
+  it("explica o mínimo em texto mesmo quando a validação nativa do navegador é contornada", async () => {
+    const api = installApiMock({ [ME]: { body: sessionOf("root") }, [CLIENTS]: rotaClientes });
+    render(<NovoClientePage />);
+
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Nome / Empresa *"), "Valor Baixo");
+    await user.click(screen.getByRole("switch", { name: /cobrança mensal/i }));
+    await user.type(screen.getByLabelText("Valor Mensal Fixo (R$) *"), "4.99");
+    await user.type(screen.getByLabelText(/CPF\/CNPJ \*/i), "12345678000199");
+    fireEvent.submit(screen.getByRole("button", { name: "Salvar Cliente" }).closest("form")!);
+
+    expect(await screen.findByText(/valor mensal mínimo é R\$ 5,00/i)).toBeVisible();
+    const post = api.fetch.mock.calls.find(
+      ([url, init]) => String(url).startsWith(CLIENTS) && init?.method === "POST"
+    );
+    expect(post).toBeUndefined();
+  }, 15_000);
+
+  it("explica quando a primeira fatura sai, em vez de prometer uma assinatura no Asaas", async () => {
+    installApiMock({ [ME]: { body: sessionOf("root") }, [CLIENTS]: rotaClientes });
+    render(<NovoClientePage />);
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("switch", { name: /cobrança mensal/i }));
+
+    expect(screen.getByText(/a primeira sai no próximo ciclo diário/i)).toBeVisible();
+    expect(screen.getByText(/a partir do dia 30/i)).toBeVisible();
+    expect(screen.queryByText(/ativada no Asaas todo mês/i)).not.toBeInTheDocument();
+  });
+});
+
 describe("/dashboard/clientes/editar — Edição e Toggle", () => {
   it("carrega dados do cliente na tela de edição e reflete cobrança ativa", async () => {
     const rotaClienteIndividual = {
@@ -182,6 +233,39 @@ describe("/dashboard/clientes/editar — Edição e Toggle", () => {
     expect(screen.getByLabelText("Valor Mensal Fixo (R$) *")).toHaveValue(600);
     expect(screen.getByLabelText("Dia de Vencimento *")).toHaveValue(15);
     expect(screen.getByRole("switch", { name: /cobrança mensal/i })).toHaveAttribute("aria-checked", "true");
+  });
+
+  /**
+   * Desativar o cliente o tira da cobrança automática, mas não toca nas faturas
+   * que já existem: o boleto emitido continua pagável. Quem desativa precisa ler
+   * isso antes de achar que a cobrança acabou.
+   */
+  it("avisa na edição que as faturas já emitidas continuam valendo depois de inativar", async () => {
+    installApiMock({
+      [ME]: { body: sessionOf("root") },
+      [CLIENTS]: {
+        status: 200,
+        body: {
+          ok: true,
+          client: {
+            id: 42,
+            name: "Bia Associação",
+            email: null,
+            whatsapp: "5521994077572",
+            document: "40207218000136",
+            monthly_value: 600,
+            due_day: 10,
+            status: "active",
+          },
+        },
+      },
+    });
+
+    render(<EditarClientePage />);
+
+    expect(await screen.findByRole("heading", { name: "Editar Cliente: Bia Associação" })).toBeVisible();
+    expect(screen.getByText(/faturas já emitidas continuam valendo/i)).toBeVisible();
+    expect(screen.getByText(/cancele-as em Faturas/i)).toBeVisible();
   });
 
   it("permite desabilitar cobrança mensal na edição enviando monthly_value: 0", async () => {

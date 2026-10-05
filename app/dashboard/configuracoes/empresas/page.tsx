@@ -88,6 +88,9 @@ export default function EmpresasPage() {
 
   const fetchData = async () => {
     try {
+      // Aqui a lista vem COMPLETA, inclusive as desativadas, porque o cookie da
+      // sessão de admin vai junto: sem ele a API devolve só as ativas (é o que o
+      // visitante do site recebe) e não haveria como reativar uma empresa.
       const res = await fetch("/api/site/empresas.php");
       const data = await readJson(res);
       if (!res.ok || !data?.ok) throw new Error(errorMessage(data, res, "Erro ao carregar empresas."));

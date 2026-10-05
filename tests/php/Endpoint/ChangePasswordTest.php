@@ -57,7 +57,7 @@ final class ChangePasswordTest extends TestCase
     {
         $antes = $this->hashDe($this->joaoId);
 
-        $resposta = $this->call($this->comoJoao(), ['new_password' => 'senha-nova-456']);
+        $resposta = $this->call($this->comoJoao(), ['new_password' => 'senha-nova-456', 'current_password' => 'senha-antiga-123']);
 
         self::assertSame(200, $resposta->status);
         self::assertNotSame($antes, $this->hashDe($this->joaoId));
@@ -79,7 +79,7 @@ final class ChangePasswordTest extends TestCase
     /** Troca de senha é mudança de privilégio: o token CSRF anterior morre. */
     public function testTokenCsrfEhTrocado(): void
     {
-        $resposta = $this->call($this->comoJoao(), ['new_password' => 'senha-nova-456']);
+        $resposta = $this->call($this->comoJoao(), ['new_password' => 'senha-nova-456', 'current_password' => 'senha-antiga-123']);
 
         self::assertNotSame(str_repeat('a', 64), $resposta->json()['csrf_token']);
         self::assertSame(64, strlen($resposta->json()['csrf_token']));
@@ -95,6 +95,7 @@ final class ChangePasswordTest extends TestCase
 
         $resposta = $this->call($this->comoJoao(), [
             'new_password' => 'senha-invadida-789',
+            'current_password' => 'senha-antiga-123',
             'user_id' => $this->adminId,
             'id' => $this->adminId,
         ]);
@@ -132,10 +133,126 @@ final class ChangePasswordTest extends TestCase
     {
         $antes = $this->hashDe($this->joaoId);
 
-        $resposta = $this->call($this->comoJoao(), ['new_password' => 'abc']);
+        $resposta = $this->call($this->comoJoao(), ['new_password' => 'abc', 'current_password' => 'senha-antiga-123']);
 
         self::assertSame(400, $resposta->status);
         self::assertSame($antes, $this->hashDe($this->joaoId));
+    }
+
+    /**
+     * Seis caracteres passavam. O corte agora é oito: sete é recusado, oito
+     * passa: a fronteira exata, nos dois lados.
+     */
+    public function testSenhaDeSeteCaracteresEhRecusadaEDeOitoPassa(): void
+    {
+        $antes = $this->hashDe($this->joaoId);
+
+        $curta = $this->call($this->comoJoao(), ['new_password' => 'abcdefg', 'current_password' => 'senha-antiga-123']);
+        self::assertSame(400, $curta->status, $curta->body);
+        self::assertStringContainsString('8 caracteres', (string) $curta->error());
+        self::assertSame($antes, $this->hashDe($this->joaoId));
+
+        $ok = $this->call($this->comoJoao(), ['new_password' => 'abcdefgh', 'current_password' => 'senha-antiga-123']);
+        self::assertSame(200, $ok->status, $ok->body);
+    }
+
+    // --- troca voluntária: a senha atual vale ---------------------------------
+
+    public function testTrocaVoluntariaExigeASenhaAtual(): void
+    {
+        $antes = $this->hashDe($this->joaoId);
+
+        $resposta = $this->call($this->comoJoao(), ['new_password' => 'senha-nova-456']);
+
+        self::assertSame(400, $resposta->status, $resposta->body);
+        self::assertSame('current_password_required', $resposta->json()['code'] ?? null);
+        self::assertSame($antes, $this->hashDe($this->joaoId), 'a senha mudou sem a senha atual');
+    }
+
+    public function testTrocaVoluntariaRecusaSenhaAtualErrada(): void
+    {
+        $antes = $this->hashDe($this->joaoId);
+
+        $resposta = $this->call($this->comoJoao(), ['new_password' => 'senha-nova-456', 'current_password' => 'chute-errado']);
+
+        self::assertSame(403, $resposta->status, $resposta->body);
+        self::assertSame('current_password_invalid', $resposta->json()['code'] ?? null);
+        self::assertSame($antes, $this->hashDe($this->joaoId));
+
+        $rastro = $this->db->rows('activity_logs');
+        self::assertCount(1, $rastro);
+        self::assertSame('change_password_wrong_current', $rastro[0]['action']);
+    }
+
+    /**
+     * Errar a senha atual é adivinhar a senha da conta por outra porta, então
+     * entra nos contadores do login. Sob SQLite o throttle falha aberto (é
+     * SQL de MySQL) e a tentativa continua recusada; o que a suíte confere é
+     * que o contador foi de fato chamado, pelo erro que ele registra.
+     */
+    public function testSenhaAtualErradaPassaPeloThrottleDoLogin(): void
+    {
+        $resposta = $this->call($this->comoJoao(), ['new_password' => 'senha-nova-456', 'current_password' => 'chute-errado']);
+
+        self::assertSame(403, $resposta->status, $resposta->body);
+        self::assertTrue(
+            $resposta->logged('Rate limit de login indisponível na escrita'),
+            'a falha de senha atual não foi registrada no contador de login'
+        );
+    }
+
+    public function testTrocaVoluntariaVerificaOThrottleAntesDeConferirASenha(): void
+    {
+        $resposta = $this->call($this->comoJoao(), ['new_password' => 'senha-nova-456', 'current_password' => 'senha-antiga-123']);
+
+        self::assertSame(200, $resposta->status, $resposta->body);
+        self::assertTrue($resposta->logged('Rate limit de login indisponível na leitura'));
+    }
+
+    // --- troca forçada: não exige a senha atual -------------------------------
+
+    public function testTrocaForcadaNaoExigeASenhaAtual(): void
+    {
+        $this->db->pdo()->exec("UPDATE users SET force_password_change = 1 WHERE id = {$this->joaoId}");
+
+        $resposta = $this->call($this->comoJoao(), ['new_password' => 'senha-nova-456']);
+
+        self::assertSame(200, $resposta->status, $resposta->body);
+        self::assertTrue(password_verify('senha-nova-456', $this->hashDe($this->joaoId)));
+    }
+
+    // --- nova senha diferente da atual ----------------------------------------
+
+    public function testNovaSenhaIgualAAtualEhRecusada(): void
+    {
+        $antes = $this->hashDe($this->joaoId);
+
+        $resposta = $this->call($this->comoJoao(), ['new_password' => 'senha-antiga-123', 'current_password' => 'senha-antiga-123']);
+
+        self::assertSame(400, $resposta->status, $resposta->body);
+        self::assertStringContainsString('diferente', (string) $resposta->error());
+        self::assertSame($antes, $this->hashDe($this->joaoId));
+    }
+
+    /** Na troca forçada a "atual" é a temporária: repeti-la deixaria a temporária valendo. */
+    public function testTrocaForcadaTambemRecusaRepetirASenhaTemporaria(): void
+    {
+        $this->db->pdo()->exec("UPDATE users SET force_password_change = 1 WHERE id = {$this->joaoId}");
+        $antes = $this->hashDe($this->joaoId);
+
+        $resposta = $this->call($this->comoJoao(), ['new_password' => 'senha-antiga-123']);
+
+        self::assertSame(400, $resposta->status, $resposta->body);
+        self::assertSame($antes, $this->hashDe($this->joaoId));
+        self::assertSame(1, $this->forcaTroca($this->joaoId), 'a exigência de troca foi desligada sem trocar nada');
+    }
+
+    private function forcaTroca(int $id): int
+    {
+        $stmt = $this->db->pdo()->prepare('SELECT force_password_change FROM users WHERE id = ?');
+        $stmt->execute([$id]);
+
+        return (int) $stmt->fetchColumn();
     }
 
     public function testSemTokenCsrfNaoTrocaSenha(): void
@@ -150,7 +267,7 @@ final class ChangePasswordTest extends TestCase
 
     public function testTrocaFicaNaTrilhaDeAuditoria(): void
     {
-        $this->call($this->comoJoao(), ['new_password' => 'senha-nova-456']);
+        $this->call($this->comoJoao(), ['new_password' => 'senha-nova-456', 'current_password' => 'senha-antiga-123']);
 
         $auditoria = $this->db->rows('activity_logs');
         self::assertCount(1, $auditoria);
@@ -162,7 +279,7 @@ final class ChangePasswordTest extends TestCase
     /** A linha que o trigger grava ganha autoria: troca pela aplicação nunca fica como 'db_trigger'. */
     public function testHistoricoDeHashRecebeAutoriaDaTroca(): void
     {
-        $this->call($this->comoJoao(), ['new_password' => 'senha-nova-456']);
+        $this->call($this->comoJoao(), ['new_password' => 'senha-nova-456', 'current_password' => 'senha-antiga-123']);
 
         $stmt = $this->db->pdo()->prepare('SELECT * FROM password_hash_history WHERE user_id = ? ORDER BY id DESC');
         $stmt->execute([$this->joaoId]);
@@ -226,6 +343,7 @@ final class ChangePasswordTest extends TestCase
 
         $resposta = $this->call($this->comoJoao(), [
             'new_password' => 'senha-nova-456',
+            'current_password' => 'senha-antiga-123',
             'email' => 'tentativa@outro.com',
         ]);
 
@@ -245,6 +363,7 @@ final class ChangePasswordTest extends TestCase
     {
         $resposta = $this->call($this->comoJoao(), [
             'new_password' => 'senha-nova-456',
+            'current_password' => 'senha-antiga-123',
             'email' => 'joao@exemplo.com.br',
         ]);
 
@@ -257,6 +376,7 @@ final class ChangePasswordTest extends TestCase
     {
         $resposta = $this->call($this->comoJoao(), [
             'new_password' => 'senha-nova-456',
+            'current_password' => 'senha-antiga-123',
             'email' => '   ',
         ]);
 
@@ -267,7 +387,7 @@ final class ChangePasswordTest extends TestCase
     /** A senha nova é a que passa a valer no login. */
     public function testSenhaNovaAutenticaEAAntigaNao(): void
     {
-        $this->call($this->comoJoao(), ['new_password' => 'senha-nova-456']);
+        $this->call($this->comoJoao(), ['new_password' => 'senha-nova-456', 'current_password' => 'senha-antiga-123']);
 
         $comNova = Endpoint::call('auth/login.php', [
             'dsn' => $this->db->dsn(),

@@ -211,6 +211,133 @@ enquanto ele estiver vazio. É ele que prova que o corpo veio da Meta — sem es
 conferência, qualquer um na internet abriria a janela de 24 horas mandando uma
 mensagem inventada de cliente.
 
+## Faturamento automático (cron)
+
+As cobranças mensais só saem se alguém chamar `api/cron/billing.php` **uma vez por
+dia**. O arquivo não se agenda sozinho: o agendamento mora no painel de Cron Jobs
+da hospedagem. Enquanto ele não existir, nenhum cliente com valor mensal recebe
+fatura. A auditoria de 05/09 já registrava que o agendamento nunca foi verificado.
+
+O que cada execução faz. Ela é idempotente: rodar duas vezes no dia, ou perder um
+dia, não duplica nem esquece nada.
+
+- Garante a fatura de cada cliente **ativo** com valor mensal: a do mês corrente
+  enquanto o vencimento não passou (hoje inclusive) e a do mês seguinte a partir do
+  dia 30 (ou do último dia do mês, em fevereiro). Nunca emite data passada.
+- Uma fatura do cliente naquele mês, de qualquer data e de qualquer status
+  (inclusive cancelada), conta como a do mês: nada é emitido em duplicidade.
+- Nos dias 3 e 7 reenvia o lembrete do que continua pendente ou vencido. A fatura
+  emitida há menos de 20 horas não recebe lembrete.
+- Grava o registro da execução (`billing_cron_run` em `activity_logs`). A tela de
+  Faturas mostra o aviso "Faturamento automático" acima do formulário e avisa quando
+  o cron nunca rodou ou parou há mais de 36 horas.
+
+### Agendando
+
+Uma chamada por dia, em qualquer horário. A data é calculada em
+`America/Sao_Paulo`, então só evite os minutos em volta da meia-noite de Brasília.
+Escolha a forma que o painel permitir:
+
+```bash
+# HTTP. O cabeçalho mantém o segredo fora do log de acesso; -f faz o curl falhar
+# em 4xx/5xx, o que o painel costuma avisar por e-mail.
+curl -fsS -H "X-Cron-Secret: <valor de CRON_SECRET>" https://<dominio>/api/cron/billing.php
+
+# CLI, no próprio servidor. Não precisa do cabeçalho, mas CRON_SECRET continua
+# exigido no api/env.php.
+php /caminho/da/conta/public_html/api/cron/billing.php
+```
+
+Frequência diária. Exemplo: `0 11 * * *` se o relógio do servidor for UTC (08:00 em
+Brasília) ou `0 8 * * *` se for o de Brasília. Confirme o fuso do painel antes.
+
+### Agendador do GitHub Actions (já no repositório)
+
+`.github/workflows/billing-cron.yml` chama `api/cron/billing.php` todo dia às 11:00 UTC
+(08:00 em Brasília) e pode ser disparado à mão. É o agendador que o repositório controla,
+e não depende de alguém ter criado o cron no painel da hospedagem. Como o ciclo é
+idempotente, usar este e o da hospedagem ao mesmo tempo não cobra em dobro.
+
+Para funcionar:
+
+1. O arquivo precisa estar na **branch padrão**: o GitHub só executa agendamentos a
+   partir dela.
+2. Em Settings > Secrets and variables > Actions > Secrets, crie `CRON_SECRET` com o
+   **mesmo valor** do `CRON_SECRET` do `api/env.php` do servidor.
+3. Opcional, em Variables: `CRON_URL`, se o endereço não for
+   `https://www.ecolevaeco.com/api/cron/billing.php`.
+
+Disparo manual (o "primeiro envio", que alcança os clientes antigos que ficaram sem a
+fatura do mês): aba Actions, workflow `faturamento-automatico`, botão Run workflow.
+
+O job fica vermelho (e o GitHub avisa por e-mail) quando o servidor responde 502, 503 ou
+403, ou não responde. O corpo da resposta não vai para o log, porque o repositório é
+público e o log também; o detalhe das falhas está no aviso "Faturamento automático" da tela
+de Faturas. O GitHub pode atrasar um agendamento em horário de pico e desativa
+agendamentos de repositório público sem nenhuma atividade por 60 dias: o aviso da tela de
+Faturas, que acusa o cron parado depois de 36 horas, é a rede de proteção contra isso. Não
+foi possível testar daqui a chamada de um runner do GitHub ao servidor de produção: se a
+hospedagem bloquear esse tráfego, o job acusa 403 ou "sem resposta".
+
+### Respostas
+
+| Resposta | Significa |
+| --- | --- |
+| `200`, "Cron rodou com sucesso" | Rodou e nada falhou (pode ter gerado zero faturas) |
+| `502` com JSON em `errors` | Rodou, mas algum cliente falhou: cadastro incompleto, Asaas fora, envio recusado, cliente sem e-mail e sem WhatsApp |
+| `503` "CRON_SECRET não configurado" | `CRON_SECRET` vazio no `api/env.php`; o cron se recusa a rodar |
+| `403` "Acesso negado" | Segredo diferente do configurado |
+
+O que falhou é tentado de novo na execução do dia seguinte, até o vencimento.
+
+### Antes do primeiro disparo
+
+A primeira execução **emite e envia por e-mail e WhatsApp** as faturas que estiverem
+faltando: todo cliente ativo com valor mensal e vencimento ainda por vir neste mês.
+Confira a lista de clientes (valor, dia e contatos) antes de disparar e não use
+cliente de teste com e-mail ou telefone de gente real. Depois de agendar, abra
+`/dashboard/faturas`: o aviso passa a mostrar a última execução.
+
+### Pré-requisitos do primeiro disparo
+
+- **Migration 019 aplicada antes do deploy dos arquivos** (a regra de sempre: migrations
+  primeiro). Ela alarga `activity_logs.target_login`, que guarda o id da mensagem do WhatsApp.
+- **`WHATSAPP_BILLING_TEMPLATE` configurado e aprovado na Meta.** Fora da janela de 24 horas o
+  WhatsApp só entrega template; sem ele o canal do WhatsApp falha e o e-mail segue. A falha se
+  repete a cada execução até o vencimento do cliente, então o cron responde 502 e o workflow do
+  GitHub fica vermelho todo dia, o que esconde erro de verdade. Parâmetros do corpo, nesta ordem:
+  cliente, valor, vencimento e link.
+- **Vencimento já passado.** O ciclo nunca emite data passada (o Asaas recusa). Se o primeiro
+  disparo acontecer depois do dia de vencimento de um cliente, ele não recebe fatura do mês, e a
+  tela de Faturas lista esses clientes no painel "Clientes sem fatura neste mês", com o botão
+  "Preencher fatura" que já leva o cliente, o valor e o vencimento de hoje para o formulário.
+
+### Entrega que ficou em "resultado incerto"
+
+Antes da migration 019, em MySQL estrito, o id da mensagem do WhatsApp não cabia em
+`target_login`: a mensagem saía, mas a linha ficava em `billing_attempt`, e todo ciclo seguinte
+devolvia "Envio anterior com resultado incerto" para aquele canal. Confira se há alguma:
+
+```sql
+SELECT id, description, created_at FROM activity_logs WHERE action = 'billing_attempt' ORDER BY id;
+```
+
+`description` é `invoice:<id da fatura>:new:whatsapp` (ou `:email`). Depois de **conferir no painel
+da Meta se a mensagem saiu**, marque cada uma:
+
+```sql
+UPDATE activity_logs SET action = 'billing_delivery' WHERE id IN (...);  -- saiu
+UPDATE activity_logs SET action = 'billing_failed'   WHERE id IN (...);  -- não saiu: o ciclo tenta de novo
+```
+
+### Arquivos temporários no servidor
+
+O deploy por FTP só envia arquivos: **nunca apaga** o que saiu do repositório. Um
+script removido do Git continua respondendo na hospedagem até alguém apagá-lo pelo
+gerenciador de arquivos. Depois de remover qualquer arquivo de `public/`, apague-o
+do servidor também. Confira especialmente `api/temp_reset.php` e
+`api/migrate_temp.php`, que já estiveram no repositório.
+
 ## Checklist
 
 - [ ] `.env` com `DB_*`, `DB_DDL_*` e `FTP_*` preenchidos
@@ -222,3 +349,5 @@ mensagem inventada de cliente.
 - [ ] `DASHBOARD_INSTALL_TOKEN` vazio no `.env` (fora da instalação inicial)
 - [ ] `SITE_BASE_URL` apontando para o domínio de produção
 - [ ] Webhook do WhatsApp verificado no painel da Meta (ver acima)
+- [ ] Cron diário do faturamento agendado e visível na tela de Faturas (ver acima)
+- [ ] `api/temp_reset.php` e `api/migrate_temp.php` não existem no servidor

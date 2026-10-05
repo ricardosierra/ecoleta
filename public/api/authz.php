@@ -13,9 +13,19 @@ declare(strict_types=1);
  *   root   — administra tudo, inclusive outros administradores.
  *   master — administra apenas contas `user`, e a gestão de grupos.
  *   user   — só o próprio painel e o próprio histórico.
+ *
+ * QUEM É A PESSOA, QUEM DECIDE É O BANCO. A sessão guarda só o id (e, por
+ * conveniência, papel e login); a cada requisição autenticada
+ * apiRequireAuthenticated() e apiRequireAdmin() reconsultam o usuário por id.
+ * Antes o papel era gravado no login e nunca mais conferido, e como o timeout de
+ * inatividade renova a sessão a cada requisição, revogar acesso não revogava:
+ * master rebaixado seguia administrando, master excluído seguia lendo clientes.
  */
 
 require_once __DIR__ . '/security.php';
+// Reconsultar o usuário exige conexão. Todo endpoint que usa este arquivo já
+// carrega db.php antes; o require_once aqui só garante isso para quem esquecer.
+require_once __DIR__ . '/db.php';
 
 const API_ROLE_ROOT = 'root';
 const API_ROLE_MASTER = 'master';
@@ -93,6 +103,37 @@ function apiRoleCanGeneratePassword(?string $actorRole, ?string $targetRole): bo
 function apiRoleCanTogglePasswordLock(?string $actorRole): bool
 {
     return apiNormalizeRole($actorRole) === API_ROLE_ROOT;
+}
+
+/**
+ * Esta edição pode deixar a troca de senha da conta TRAVADA?
+ *
+ * Senha temporária e trava nunca ficam juntas: `force_password_change` manda a
+ * pessoa trocar a senha e `password_locked` faz auth/change_password.php
+ * responder 403, então ela ficaria presa na temporária, que nunca expira.
+ * Barra-se apenas ATIVAR a trava (a conta não estava travada e passa a ficar):
+ * conta já travada segue editável (quem tenta redefinir a senha dela é
+ * recusado em outro ponto, com alerta), e destravar nunca é problema.
+ *
+ * Espelho de `canTogglePasswordLock(actor, alvo)` em lib/authz.ts, que só decide
+ * se o botão aparece.
+ *
+ * @param bool $currentlyLocked       a conta já está travada
+ * @param bool $wantsLocked           a edição pede a conta travada
+ * @param bool $resettingPassword     a mesma chamada gera ou define uma senha
+ * @param bool $passwordChangePending a conta ainda não trocou a senha temporária
+ */
+function apiPasswordLockAllowed(
+    bool $currentlyLocked,
+    bool $wantsLocked,
+    bool $resettingPassword,
+    bool $passwordChangePending
+): bool {
+    if (!$wantsLocked || $currentlyLocked) {
+        return true;
+    }
+
+    return !$resettingPassword && !$passwordChangePending;
 }
 
 /** Excluir exige o mesmo que editar, mais a trava de não apagar a si próprio. */
@@ -211,16 +252,50 @@ function apiRoleCanViewUserLogs(?string $actorRole, int $actorId, int $targetId)
 }
 
 /**
+ * Chave da sessão com a impressão digital do hash de senha vigente. Ver
+ * apiPasswordFingerprint().
+ */
+const API_SESSION_PASSWORD_KEY = 'pwd_fp';
+
+/** Código de erro que a tela reconhece como "defina uma senha nova antes". */
+const API_PASSWORD_CHANGE_REQUIRED = 'password_change_required';
+
+/**
+ * Impressão digital do hash de senha: o que a sessão guarda no lugar do hash.
+ *
+ * É o que faz trocar a senha derrubar as sessões que já estavam abertas: o
+ * hash muda, a impressão não bate mais, a sessão é esvaziada. Sem isto, resetar
+ * a senha de uma conta suspeita deixava o invasor logado.
+ */
+function apiPasswordFingerprint(string $passwordHash): string
+{
+    return hash('sha256', $passwordHash);
+}
+
+/**
+ * Amarra a sessão atual ao hash de senha vigente. Chamar no login e logo depois
+ * de a PRÓPRIA pessoa trocar a senha (quem trocou não pode ser derrubado pela
+ * troca que acabou de fazer).
+ */
+function apiBindSessionToPassword(string $passwordHash): void
+{
+    $_SESSION[API_SESSION_PASSWORD_KEY] = apiPasswordFingerprint($passwordHash);
+}
+
+/**
  * Quem está agindo, lido da sessão. `null` quando não há sessão autenticada ou
  * quando o papel guardado não é conhecido — uma sessão com papel estranho é
  * tratada como não autenticada.
+ *
+ * Só LÊ a sessão: não confirma nada no banco. Quem decide é
+ * apiRequireAuthenticated()/apiRequireAdmin(), que reconsultam o usuário.
  */
 function apiSessionActor(): ?array
 {
-    $id = $_SESSION['user_id'] ?? null;
+    $id = apiSessionUserId();
     $role = apiNormalizeRole($_SESSION['role'] ?? null);
 
-    if (!is_int($id) && !(is_string($id) && ctype_digit($id))) {
+    if ($id === null) {
         return null;
     }
 
@@ -229,22 +304,153 @@ function apiSessionActor(): ?array
     }
 
     return [
-        'id' => (int) $id,
+        'id' => $id,
         'role' => $role,
         'login' => is_string($_SESSION['login'] ?? null) ? $_SESSION['login'] : 'admin',
     ];
 }
 
+/** Id de usuário guardado na sessão, ou `null` quando não há um id válido. */
+function apiSessionUserId(): ?int
+{
+    $id = $_SESSION['user_id'] ?? null;
+
+    if (is_int($id)) {
+        return $id;
+    }
+
+    if (is_string($id) && ctype_digit($id)) {
+        return (int) $id;
+    }
+
+    return null;
+}
+
+/**
+ * Concilia a linha do banco com a sessão. Pura: não toca em sessão nem em banco.
+ *
+ * `null` quer dizer "esta sessão não vale mais": a conta não existe, tem papel
+ * desconhecido, ou a senha mudou desde que a sessão foi aberta.
+ *
+ * Sessão sem impressão digital (aberta antes desta regra existir) é ADOTADA, não
+ * derrubada: derrubar derrubaria todo mundo que está logado no deploy.
+ *
+ * @param array<string,mixed>|null $row linha de `users`: id, login, role, password_hash, force_password_change
+ * @param mixed $sessionFingerprint o que a sessão tinha em API_SESSION_PASSWORD_KEY
+ * @return array{id:int,role:string,login:string,force_password_change:bool,fingerprint:string}|null
+ */
+function apiReconcileActor(?array $row, $sessionFingerprint): ?array
+{
+    if ($row === null) {
+        return null;
+    }
+
+    $role = apiNormalizeRole($row['role'] ?? null);
+    if ($role === null) {
+        return null;
+    }
+
+    $fingerprint = apiPasswordFingerprint((string) ($row['password_hash'] ?? ''));
+    if (is_string($sessionFingerprint) && $sessionFingerprint !== '' && !hash_equals($sessionFingerprint, $fingerprint)) {
+        return null;
+    }
+
+    return [
+        'id' => (int) $row['id'],
+        'role' => $role,
+        'login' => (string) $row['login'],
+        'force_password_change' => !empty($row['force_password_change']),
+        'fingerprint' => $fingerprint,
+    ];
+}
+
+/**
+ * Reconsulta o usuário da sessão no banco e a acerta por ele.
+ *
+ * - conta inexistente, papel desconhecido ou senha trocada desde o login: a
+ *   sessão é destruída e o retorno é `null` (quem chama responde como se não
+ *   houvesse sessão);
+ * - papel ou login mudaram: a sessão é atualizada, e o papel que vale daqui em
+ *   diante é o do banco.
+ *
+ * É um SELECT por id por requisição. Falha fechada: se o banco não responde, a
+ * requisição termina em 500, e nunca segue adiante apoiada no que a sessão diz.
+ *
+ * @return array{id:int,role:string,login:string,force_password_change:bool}|null
+ */
+function apiResolveSessionActor(int $userId): ?array
+{
+    $db = getDbConnection();
+
+    try {
+        $stmt = $db->prepare('SELECT id, login, role, password_hash, force_password_change FROM users WHERE id = ? LIMIT 1');
+        $stmt->execute([$userId]);
+        $row = $stmt->fetch();
+    } catch (\Throwable $e) {
+        error_log('Falha ao reconsultar o usuário da sessão: ' . $e->getMessage());
+        apiJsonResponse(500, ['error' => 'Não foi possível validar a sessão.']);
+    }
+
+    $stored = $_SESSION[API_SESSION_PASSWORD_KEY] ?? null;
+    $actor = apiReconcileActor(is_array($row) ? $row : null, $stored);
+
+    if ($actor === null) {
+        apiDestroySession();
+
+        return null;
+    }
+
+    $_SESSION['user_id'] = $actor['id'];
+    $_SESSION['role'] = $actor['role'];
+    $_SESSION['login'] = $actor['login'];
+    $_SESSION[API_SESSION_PASSWORD_KEY] = $actor['fingerprint'];
+
+    unset($actor['fingerprint']);
+
+    return $actor;
+}
+
+/**
+ * Recusa a requisição enquanto a conta tem senha temporária.
+ *
+ * A tela de troca já barrava no navegador, mas a API não: quem tem a flag em 1
+ * e chama o endpoint direto trabalhava normalmente, e a senha temporária nunca
+ * expirava. Só me.php, change_password.php e logout.php ficam de fora.
+ */
+function apiRefuseWhilePasswordChangePending(array $actor): void
+{
+    if (!empty($actor['force_password_change'])) {
+        apiJsonResponse(403, [
+            'error' => 'É necessário definir uma nova senha antes de continuar.',
+            'code' => API_PASSWORD_CHANGE_REQUIRED,
+        ]);
+    }
+}
+
 /**
  * Exige uma sessão autenticada. Encerra a requisição com 401 quando não há.
  *
- * @return array{id:int,role:string,login:string}
+ * O ator devolvido vem do BANCO (ver apiResolveSessionActor()), não do que a
+ * sessão guardou no login.
+ *
+ * @param bool $allowPasswordChangePending só change_password.php passa `true`:
+ *        é por onde a senha temporária deixa de existir.
+ * @return array{id:int,role:string,login:string,force_password_change:bool}
  */
-function apiRequireAuthenticated(): array
+function apiRequireAuthenticated(bool $allowPasswordChangePending = false): array
 {
-    $actor = apiSessionActor();
+    $sessionActor = apiSessionActor();
+    if ($sessionActor === null) {
+        apiJsonResponse(401, ['error' => 'Não autenticado.']);
+    }
+
+    $actor = apiResolveSessionActor($sessionActor['id']);
     if ($actor === null) {
         apiJsonResponse(401, ['error' => 'Não autenticado.']);
+    }
+
+    if (!$allowPasswordChangePending) {
+        apiRefuseWhilePasswordChangePending($actor);
     }
 
     return $actor;
@@ -256,15 +462,29 @@ function apiRequireAuthenticated(): array
  * O 403 é o mesmo para sessão ausente e para papel insuficiente — de propósito:
  * a resposta não diz se o problema foi "não logado" ou "logado sem permissão".
  *
- * @return array{id:int,role:string,login:string}
+ * Sessão cujo papel gravado já não é de administrador é recusada sem consultar
+ * o banco: ela só pode estar defasada "para baixo" (a pessoa foi promovida
+ * depois do login), e recusar é a escolha segura: me.php, que a tela chama ao
+ * abrir, traz a sessão para o papel do banco. Já sessão de administrador sempre
+ * confere o banco, e é o papel de lá que vale.
+ *
+ * @return array{id:int,role:string,login:string,force_password_change:bool}
  */
 function apiRequireAdmin(): array
 {
-    $actor = apiSessionActor();
+    $sessionActor = apiSessionActor();
+
+    if ($sessionActor === null || !apiRoleIsAdmin($sessionActor['role'])) {
+        apiJsonResponse(403, ['error' => API_ACCESS_DENIED]);
+    }
+
+    $actor = apiResolveSessionActor($sessionActor['id']);
 
     if ($actor === null || !apiRoleIsAdmin($actor['role'])) {
         apiJsonResponse(403, ['error' => API_ACCESS_DENIED]);
     }
+
+    apiRefuseWhilePasswordChangePending($actor);
 
     return $actor;
 }

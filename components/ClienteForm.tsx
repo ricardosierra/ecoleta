@@ -22,6 +22,9 @@ type ClienteFormProps = {
   onSuccess?: (client: Client) => void;
 };
 
+/** Menor cobrança que o Asaas aceita, em reais. Espelho de `BILLING_MIN_VALUE` em `public/api/billing_lib.php`. */
+const MIN_MONTHLY_VALUE = 5;
+
 const inputClass =
   "mt-1.5 w-full rounded-xl border border-[var(--color-border-dark)] bg-black/30 px-3.5 py-2.5 text-sm text-white outline-none transition-colors placeholder:text-white/30 focus:border-[var(--color-accent)]";
 
@@ -83,6 +86,10 @@ export function ClienteForm({ initialData, onSuccess }: ClienteFormProps) {
       const parsedValue = parseFloat(monthlyValue);
       if (!parsedValue || parsedValue <= 0) {
         setError("Informe um valor mensal válido maior que zero quando a cobrança estiver habilitada.");
+        return;
+      }
+      if (parsedValue < MIN_MONTHLY_VALUE) {
+        setError("O valor mensal mínimo é R$ 5,00, o menor valor que o Asaas aceita cobrar.");
         return;
       }
       if (!document.trim()) {
@@ -242,7 +249,7 @@ export function ClienteForm({ initialData, onSuccess }: ClienteFormProps) {
             </div>
             <p className="text-xs text-[var(--color-text-on-dark)] mt-1">
               {hasMonthlyBilling
-                ? "Cobrança mensal automática ativada no Asaas todo mês."
+                ? "O faturamento automático gera a fatura e envia por e-mail e WhatsApp. Se o vencimento deste mês ainda não passou, a primeira sai no próximo ciclo diário; as seguintes saem a partir do dia 30 de cada mês."
                 : "Cliente avulso ou sem faturamento recorrente. Não é necessário definir valor ou vencimento."}
             </p>
           </div>
@@ -285,7 +292,7 @@ export function ClienteForm({ initialData, onSuccess }: ClienteFormProps) {
                 id="cliente-valor"
                 type="number"
                 step="0.01"
-                min="0.01"
+                min={MIN_MONTHLY_VALUE}
                 required={hasMonthlyBilling}
                 value={monthlyValue}
                 onChange={e => setMonthlyValue(e.target.value)}
@@ -294,7 +301,7 @@ export function ClienteForm({ initialData, onSuccess }: ClienteFormProps) {
                 className={inputClass}
               />
               <p className="text-xs text-white/40 mt-1.5">
-                Valor líquido da assinatura ou contrato mensal.
+                Valor líquido da assinatura ou contrato mensal. Mínimo de R$ 5,00, o menor valor que o Asaas aceita cobrar.
               </p>
             </div>
 
@@ -320,7 +327,7 @@ export function ClienteForm({ initialData, onSuccess }: ClienteFormProps) {
           </div>
         ) : (
           <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-xs text-white/60">
-            💡 Como a cobrança mensal está desabilitada, o cliente será registrado com valor R$ 0,00 e não entrará na régua de faturamento automático do Asaas.
+            💡 Como a cobrança mensal está desabilitada, o cliente será registrado com valor R$ 0,00 e não entrará no faturamento automático.
           </div>
         )}
       </div>
@@ -357,6 +364,10 @@ export function ClienteForm({ initialData, onSuccess }: ClienteFormProps) {
           </div>
           <p className="text-xs text-white/40">
             Clientes inativos não recebem cobranças automáticas nem aparecem nas listagens ativas de OS.
+          </p>
+          {/* Inativar não mexe no que já foi emitido: o boleto segue pagável no Asaas. */}
+          <p className="text-xs text-white/40">
+            As faturas já emitidas continuam valendo e o cliente ainda pode pagá-las. Para impedir, cancele-as em Faturas.
           </p>
         </div>
       )}

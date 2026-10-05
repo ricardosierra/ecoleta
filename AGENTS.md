@@ -4,14 +4,14 @@
 
 ## TL;DR
 
-- **Stack:** Next.js 16 + React 19 + TS + Tailwind v4 + Resend + Zod.
+- **Stack:** Next.js 16 + React 19 + TS + Tailwind v4 (o formulário de contato é `public/contact.php`, em PHP).
 - **Comandos:** `npm run dev` · `npm run build` · `npm run lint` · `npm run typecheck` · `npm test` · `npm run test:php`.
 - **Autorização por papel:** espelhada em `lib/authz.ts` (cliente, desenho) e `public/api/authz.php` (servidor, decisão). Mudou um, mude o outro e os testes dos dois.
 - **Tokens** estão em `app/globals.css` no bloco `@theme {}`. Usar variáveis CSS, não hex hardcoded.
 - **Tipografia:** Montserrat apenas (400/500/600/700).
 - **Botão pílula** (`border-radius: 50px`) é assinatura visual — não mudar.
 - **Componentes próprios**, sem UI lib externa.
-- **Formulário:** validação dupla (Zod), honeypot, rate limit. Tentativa Resend → SMTP → modo dev.
+- **Formulário:** `public/contact.php` valida no servidor, escapa o HTML do e-mail, tem honeypot e limite por IP; envia por `mail()`.
 
 ## Não fazer
 

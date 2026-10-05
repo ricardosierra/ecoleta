@@ -11,6 +11,25 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../authz.php';
+require_once __DIR__ . '/../billing_delivery.php';
+
+/** O que a tela mostra quando a falha é nossa e não da integração. */
+const INVOICES_GENERIC_ERROR = 'Não foi possível concluir a operação agora. Tente novamente em instantes.';
+
+/**
+ * Registra uma falha interna sem o texto dela: a mensagem de um erro de banco
+ * pode carregar dado pessoal. Classe, código e local bastam para achar a causa.
+ */
+function invoicesLogInternalError(Throwable $e): void
+{
+    error_log(sprintf(
+        'Faturas: falha interna %s (código %s) em %s:%d',
+        get_class($e),
+        (string) $e->getCode(),
+        basename($e->getFile()),
+        $e->getLine()
+    ));
+}
 
 startSecureSession();
 apiRequireCsrfToken();
@@ -26,12 +45,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         JOIN clients c ON i.client_id = c.id
         ORDER BY i.due_date DESC
     ");
-    echo json_encode(['ok' => true, 'invoices' => $stmt->fetchAll()]);
+    // `billing_cron` é a última execução do faturamento automático (ou null): a tela
+    // avisa a operadora quando o agendamento do servidor nunca rodou ou parou.
+    // `billing_missing` lista os clientes ativos sem fatura no mes cujo vencimento ja passou
+    // (o ciclo nao emite data passada) e `today` e a data de Brasilia que a tela sugere
+    // como novo vencimento: nada disso e calculado no navegador, que pode estar em outro fuso.
+    $today = new DateTimeImmutable('now', new DateTimeZone('America/Sao_Paulo'));
+    echo json_encode([
+        'ok' => true,
+        'invoices' => $stmt->fetchAll(),
+        'billing_cron' => billingLastRun($db),
+        'billing_missing' => billingClientsWithoutInvoice($db, $today),
+        'today' => $today->format('Y-m-d'),
+    ]);
     exit;
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    require_once __DIR__ . '/../billing_delivery.php';
     $body = json_decode((string) file_get_contents('php://input'), true);
     if (!is_array($body)) apiJsonResponse(400, ['error' => 'Dados inválidos.']);
     $action = $body['action'] ?? 'create';
@@ -99,14 +129,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 apiJsonResponse(400, ['error' => 'O vencimento deve ser hoje ou uma data futura.']);
             }
             $invoice = billingIssueInvoice($db, $client, (float) ($body['value'] ?? $client['monthly_value']), $dueDate);
+            // Reaproveitada e já quitada (ou estornada): não há o que enviar. Dizer que
+            // "as notificações foram processadas" para uma fatura paga engana quem gerou.
+            if (!$invoice['created'] && !in_array($invoice['status'], ['PENDING', 'OVERDUE'], true)) {
+                $situacao = ['RECEIVED' => 'paga', 'CONFIRMED' => 'confirmada', 'REFUNDED' => 'estornada', 'CHARGEBACK_REQUESTED' => 'contestada'][$invoice['status']] ?? 'encerrada';
+                apiJsonResponse(409, ['error' => 'Já existe uma fatura ' . $situacao . ' deste cliente para este vencimento. Escolha outra data.']);
+            }
         }
         if ($client['status'] !== 'active') apiJsonResponse(400, ['error' => 'Cliente inativo.']);
         $delivery = billingDeliverInvoice($db, $invoice, $client);
         apiJsonResponse(200, ['ok' => true, 'invoice' => $invoice, 'delivery' => $delivery]);
     } catch (InvalidArgumentException $e) {
         apiJsonResponse(400, ['error' => $e->getMessage()]);
-    } catch (Throwable $e) {
+    } catch (PDOException $e) {
+        // PDOException É uma RuntimeException: precisa vir antes dela. A mensagem do
+        // driver traz nome de tabela e coluna, e numa chave duplicada o próprio
+        // valor (e-mail, CPF). Vai para quem opera só o aviso genérico; o log
+        // guarda a classe e o SQLSTATE, sem a mensagem.
+        invoicesLogInternalError($e);
+        apiJsonResponse(500, ['error' => INVOICES_GENERIC_ERROR]);
+    } catch (RuntimeException $e) {
+        // Falha da integração (Asaas recusou, sem chave, fora do ar, cobrança em
+        // processamento): essa mensagem é a explicação útil e segue para a tela.
         apiJsonResponse(502, ['error' => $e->getMessage()]);
+    } catch (Throwable $e) {
+        // Qualquer outra coisa é erro nosso (TypeError, ValueError...), e o texto
+        // dele não diz nada a quem clicou.
+        invoicesLogInternalError($e);
+        apiJsonResponse(500, ['error' => INVOICES_GENERIC_ERROR]);
     }
 }
 

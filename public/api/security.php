@@ -14,6 +14,11 @@ const API_CSRF_SESSION_KEY = 'csrf_token';
 const API_CSRF_HEADER = 'X-CSRF-Token';
 // Sessão parada por mais tempo que isto é esvaziada (8 horas).
 const API_SESSION_IDLE_TIMEOUT = 28800;
+// Tamanho mínimo de qualquer senha que uma pessoa ou um administrador escolhe.
+// A senha temporária que o sistema gera tem 10 caracteres e não passa por aqui.
+// lib/dashboard-api.ts não conhece este número: a tela de troca
+// (components/DashboardGate.tsx) repete o mesmo 8.
+const API_PASSWORD_MIN_LENGTH = 8;
 
 /**
  * Detecta HTTPS considerando proxies/balanceadores comuns em hospedagem
@@ -131,6 +136,42 @@ function apiSecret(string $name): string
     }
 
     return trim($value);
+}
+
+/**
+ * URL absoluta https, sem credencial embutida e sem espaço ou caractere de
+ * controle. Serve a todo campo que o painel grava e depois entrega como `src`
+ * ou `href` (hoje, a URL do relatório Power BI de cada grupo).
+ *
+ * Só esquema https de propósito: `javascript:` e `data:` num `src` de iframe
+ * executam no navegador de quem abre o painel, e `http:` seria conteúdo misto
+ * dentro de uma página servida por https. A credencial embutida
+ * (`https://app.powerbi.com@outro.site/`) é a máscara clássica de link falso:
+ * o host de verdade é o que vem depois do `@`.
+ */
+function apiIsHttpsUrl(string $url): bool
+{
+    if ($url === '' || strlen($url) > 2048) {
+        return false;
+    }
+
+    if (preg_match('/[\x00-\x20\x7f]/', $url) === 1) {
+        return false;
+    }
+
+    if (filter_var($url, FILTER_VALIDATE_URL) === false) {
+        return false;
+    }
+
+    $parts = parse_url($url);
+    if (!is_array($parts)) {
+        return false;
+    }
+
+    return strtolower((string) ($parts['scheme'] ?? '')) === 'https'
+        && (string) ($parts['host'] ?? '') !== ''
+        && !isset($parts['user'])
+        && !isset($parts['pass']);
 }
 
 function apiSendJsonHeaders(): void

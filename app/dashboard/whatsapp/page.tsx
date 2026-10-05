@@ -11,14 +11,21 @@ import {
   formatMessageTime,
   formatPhone,
   groupMessagesByDay,
+  initialTemplateValues,
   initials,
+  matchesConversationSearch,
   mimeTypeToCategory,
+  missingTemplateParams,
+  recorderMimeType,
+  templateSendability,
+  templateStatusLabel,
   windowLabel,
   windowTone,
   type WhatsAppClientOption,
   type WhatsAppConversation,
   type WhatsAppMessage,
   type WhatsAppTemplate,
+  type WhatsAppTemplatesResponse,
 } from "@/lib/whatsapp";
 
 /**
@@ -42,6 +49,20 @@ export default function WhatsAppPage() {
 
 const REFRESH_MS = 20000;
 
+const TEMPLATE_FILL_ALL_ERROR = "Preencha todas as variáveis do modelo antes de enviar.";
+
+/**
+ * O que identifica o template no seletor. O nome basta quase sempre, mas a Meta
+ * aceita o mesmo nome em idiomas (ou em versões) diferentes: nesse caso o valor
+ * passa a levar idioma e status, senão a escolha da segunda opção selecionaria
+ * a primeira.
+ */
+function templateOptionValue(template: WhatsAppTemplate, todos: WhatsAppTemplate[]): string {
+  const repetido = todos.filter(t => t.name === template.name).length > 1;
+
+  return repetido ? `${template.name}|${template.language}|${template.status ?? ""}` : template.name;
+}
+
 function WhatsAppMain() {
   const { user } = useDashboardAuth();
   const permitido = canViewWhatsAppPanel(user);
@@ -51,9 +72,19 @@ function WhatsAppMain() {
   const [activeId, setActiveId] = useState<number | null>(null);
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
   const [activeConversation, setActiveConversation] = useState<WhatsAppConversation | null>(null);
+  // Quantas conversas e clientes existem de verdade: a lista vem cortada nas mais recentes.
+  const [totalConversas, setTotalConversas] = useState<number | null>(null);
+  const [totalClientes, setTotalClientes] = useState<number | null>(null);
   const [busca, setBusca] = useState("");
+  // O termo que vai para o servidor: a busca dele alcança as conversas fora do corte.
+  const [buscaServidor, setBuscaServidor] = useState("");
   const [activeTab, setActiveTab] = useState<"all" | "unread" | "closed">("all");
   const [erro, setErro] = useState("");
+  // "carregando" e "erro" são estados à parte de "sem mensagens": confundir os três
+  // fazia uma falha do servidor aparecer como conversa vazia.
+  const [messagesStatus, setMessagesStatus] = useState<"loading" | "ok" | "error">("loading");
+  const [messagesError, setMessagesError] = useState("");
+  const [messagesTruncated, setMessagesTruncated] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   // Composer states
@@ -80,6 +111,11 @@ function WhatsAppMain() {
   const [selectedTemplate, setSelectedTemplate] = useState<WhatsAppTemplate | null>(null);
   const [templateValues, setTemplateValues] = useState<Record<string, string>>({});
   const [isSendingTemplate, setIsSendingTemplate] = useState(false);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  // Erros do template ficam DENTRO do modal: um toast de 3,5 s no canto ficava por
+  // baixo do fundo escuro e sumia antes de alguém ler.
+  const [templateError, setTemplateError] = useState("");
+  const [templateErrorDetail, setTemplateErrorDetail] = useState("");
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -91,9 +127,10 @@ function WhatsAppMain() {
 
   const showToast = (message: string, type: "success" | "error" = "success") => {
     setToast({ message, type });
+    // Erro fica mais tempo na tela: é o que a pessoa precisa ler para agir.
     setTimeout(() => {
       setToast(prev => (prev?.message === message ? null : prev));
-    }, 3500);
+    }, type === "error" ? 7000 : 3500);
   };
 
   const scrollToBottom = () => {
@@ -104,6 +141,26 @@ function WhatsAppMain() {
     scrollToBottom();
   }, [messages]);
 
+  // A busca vai para o servidor depois de uma pausa na digitação: a lista é cortada
+  // nas conversas mais recentes e só o servidor enxerga as demais.
+  useEffect(() => {
+    const termo = busca.trim();
+    const timer = setTimeout(() => setBuscaServidor(termo), 300);
+
+    return () => clearTimeout(timer);
+  }, [busca]);
+
+  // Interromper a gravação se a tela for fechada com o microfone aberto.
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      audioStreamRef.current?.getTracks().forEach(t => t.stop());
+    };
+  }, []);
+
   // Carregar lista de conversas
   useEffect(() => {
     if (!permitido) return;
@@ -111,14 +168,21 @@ function WhatsAppMain() {
 
     const carregar = async () => {
       try {
-        const res = await fetch("/api/whatsapp/conversations.php");
+        const url =
+          buscaServidor === ""
+            ? "/api/whatsapp/conversations.php"
+            : `/api/whatsapp/conversations.php?q=${encodeURIComponent(buscaServidor)}`;
+        const res = await fetch(url);
         const data = await res.json();
         if (cancelado) return;
 
         if (res.ok && data.ok) {
-          setConversations(data.conversations ?? []);
+          const lista: WhatsAppConversation[] = data.conversations ?? [];
+          setConversations(lista);
+          setTotalConversas(typeof data.total === "number" ? data.total : lista.length);
           if (Array.isArray(data.clients)) {
             setClientsList(data.clients);
+            setTotalClientes(typeof data.clients_total === "number" ? data.clients_total : data.clients.length);
           }
           setErro("");
         } else {
@@ -138,7 +202,7 @@ function WhatsAppMain() {
       cancelado = true;
       clearInterval(timer);
     };
-  }, [permitido]);
+  }, [permitido, buscaServidor]);
 
   // Carregar mensagens da conversa ativa
   useEffect(() => {
@@ -148,13 +212,25 @@ function WhatsAppMain() {
     const carregar = async () => {
       try {
         const res = await fetch(`/api/whatsapp/messages.php?conversation_id=${activeId}`);
-        const data = await res.json();
-        if (!cancelado && res.ok && data.ok) {
+        const data = await res.json().catch(() => null);
+        if (cancelado) return;
+
+        if (res.ok && data?.ok) {
           setMessages(data.messages);
           setActiveConversation(data.conversation);
+          setMessagesTruncated(data.truncated === true);
+          setMessagesStatus("ok");
+          setMessagesError("");
+        } else {
+          // `messagesError` guarda só o detalhe devolvido pela API, se houver.
+          setMessagesStatus("error");
+          setMessagesError(data?.error || "");
         }
       } catch {
-        // Falha silenciosa em background
+        if (!cancelado) {
+          setMessagesStatus("error");
+          setMessagesError("");
+        }
       }
     };
 
@@ -171,6 +247,9 @@ function WhatsAppMain() {
     setActiveId(conversa.id);
     setActiveConversation(conversa);
     setMessages([]);
+    setMessagesStatus("loading");
+    setMessagesError("");
+    setMessagesTruncated(false);
 
     if (conversa.unread_count > 0) {
       setConversations(lista =>
@@ -304,21 +383,24 @@ function WhatsAppMain() {
       return;
     }
 
+    // A Meta não aceita webm, que é o que o Chrome grava por padrão: escolhe só entre
+    // os formatos que ela aceita e, se o navegador não grava nenhum, avisa ANTES de
+    // abrir o microfone, e não depois de a pessoa ter gravado.
+    const mimeTypeGravacao = recorderMimeType(tipo => MediaRecorder.isTypeSupported(tipo));
+    if (!mimeTypeGravacao) {
+      showToast(
+        "Este navegador não grava áudio em formato aceito pelo WhatsApp (ogg com opus ou mp4). Anexe um arquivo de áudio em mp3, ogg, aac, amr ou mp4.",
+        "error"
+      );
+      return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioStreamRef.current = stream;
       audioChunksRef.current = [];
 
-      const options: MediaRecorderOptions = {};
-      if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
-        options.mimeType = "audio/webm;codecs=opus";
-      } else if (MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")) {
-        options.mimeType = "audio/ogg;codecs=opus";
-      } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
-        options.mimeType = "audio/mp4";
-      }
-
-      const recorder = new MediaRecorder(stream, options);
+      const recorder = new MediaRecorder(stream, { mimeType: mimeTypeGravacao });
       mediaRecorderRef.current = recorder;
 
       recorder.ondataavailable = event => {
@@ -455,26 +537,28 @@ function WhatsAppMain() {
 
     const unread = activeConversation.unread_count > 0;
     try {
-      if (unread) {
-        await apiPostJson("/api/whatsapp/messages.php", { conversation_id: activeId });
-        setActiveConversation(prev => (prev ? { ...prev, unread_count: 0 } : prev));
-        setConversations(lista =>
-          lista.map(c => (c.id === activeId ? { ...c, unread_count: 0 } : c))
-        );
-        showToast("Conversa marcada como lida.", "success");
-      } else {
-        await apiPostJson("/api/whatsapp/messages.php", {
-          action: "mark_unread",
-          conversation_id: activeId,
-        });
-        setActiveConversation(prev => (prev ? { ...prev, unread_count: 1 } : prev));
-        setConversations(lista =>
-          lista.map(c => (c.id === activeId ? { ...c, unread_count: 1 } : c))
-        );
-        showToast("Conversa marcada como não lida.", "success");
+      // Só anuncia sucesso (e só muda a tela) se o servidor confirmou: antes o
+      // POST recusado também virava "marcada como lida".
+      const res = await apiPostJson(
+        "/api/whatsapp/messages.php",
+        unread
+          ? { conversation_id: activeId }
+          : { action: "mark_unread", conversation_id: activeId }
+      );
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || "Erro ao alterar estado de leitura.");
       }
-    } catch {
-      showToast("Erro ao alterar estado de leitura.", "error");
+
+      const novoTotal = unread ? 0 : 1;
+      setActiveConversation(prev => (prev ? { ...prev, unread_count: novoTotal } : prev));
+      setConversations(lista =>
+        lista.map(c => (c.id === activeId ? { ...c, unread_count: novoTotal } : c))
+      );
+      showToast(unread ? "Conversa marcada como lida." : "Conversa marcada como não lida.", "success");
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : "Erro ao alterar estado de leitura.", "error");
     }
   };
 
@@ -547,6 +631,9 @@ function WhatsAppMain() {
         setActiveId(nova.id);
         setActiveConversation(nova);
         setMessages([]);
+        setMessagesStatus("loading");
+        setMessagesError("");
+        setMessagesTruncated(false);
         setModalNewChatOpen(false);
         setNewChatPhone("");
         setNewChatName("");
@@ -563,29 +650,52 @@ function WhatsAppMain() {
     }
   };
 
-  // Abertura do modal de template
+  // Abertura do modal de template. O modal abre NA HORA e carrega por dentro: se a
+  // consulta falhar, o motivo aparece nele (antes ele simplesmente não abria).
   const handleOpenTemplateModal = async () => {
+    setTemplateError("");
+    setTemplateErrorDetail("");
+    setTemplates([]);
+    setSelectedTemplate(null);
+    setTemplateValues({});
+    setTemplatesLoading(true);
+    setModalTemplateOpen(true);
+
     try {
       const res = await fetch("/api/whatsapp/templates.php");
-      const data = await res.json();
-      if (res.ok && data.ok && Array.isArray(data.templates)) {
-        setTemplates(data.templates);
-        const inicial = data.templates[0] || null;
-        setSelectedTemplate(inicial);
+      const data = (await res.json().catch(() => null)) as WhatsAppTemplatesResponse | null;
 
-        // Preenche com sugestões inteligentes
-        if (inicial && activeConversation) {
-          const vals: Record<string, string> = {};
-          if (inicial.params_count >= 1) vals["1"] = activeConversation.name || "Cliente";
-          if (inicial.params_count >= 2) vals["2"] = "00001";
-          if (inicial.params_count >= 3) vals["3"] = "https://www.ecolevaeco.com";
-          setTemplateValues(vals);
-        }
+      const lista = Array.isArray(data?.templates) ? data.templates : [];
+      setTemplates(lista);
+
+      // Começa por um template aprovado, se houver; senão, pelo primeiro.
+      const inicial = lista.find(t => templateSendability(t) === "ok") ?? lista[0] ?? null;
+      setSelectedTemplate(inicial);
+      // Só o nome do cliente é conhecido com segurança; o resto o operador preenche.
+      setTemplateValues(initialTemplateValues(inicial, activeConversation));
+
+      if (!res.ok || !data?.ok) {
+        setTemplateError(data?.error || "Não foi possível carregar os templates.");
+      } else if (data.error) {
+        setTemplateError(data.error);
+        setTemplateErrorDetail(data.error_detail ?? "");
       }
     } catch {
-      // Ignora erro de fetch
+      setTemplateError("Não foi possível carregar os templates.");
+    } finally {
+      setTemplatesLoading(false);
     }
-    setModalTemplateOpen(true);
+  };
+
+  // Troca de template: os valores do anterior não valem para o novo (as variáveis
+  // mudam de número e de significado), então tudo é reconstruído do zero.
+  const handleSelectTemplate = (valor: string) => {
+    const tpl = templates.find(t => templateOptionValue(t, templates) === valor);
+    if (!tpl) return;
+
+    setSelectedTemplate(tpl);
+    setTemplateValues(initialTemplateValues(tpl, activeConversation));
+    setTemplateError(prev => (prev === TEMPLATE_FILL_ALL_ERROR ? "" : prev));
   };
 
   // Disparo de template
@@ -593,10 +703,28 @@ function WhatsAppMain() {
     e.preventDefault();
     if (!selectedTemplate || !activeId || isSendingTemplate) return;
 
+    // A Meta cobra a mensagem: não sai template com variável em branco (o
+    // `required` do campo deixa passar espaço) nem template que ela não aprovou.
+    if (templateSendability(selectedTemplate) === "blocked") {
+      setTemplateError(
+        `Este template está como "${templateStatusLabel(selectedTemplate.status)}" e a Meta não entrega mensagens dele.`
+      );
+      setTemplateErrorDetail("");
+      return;
+    }
+
+    if (missingTemplateParams(selectedTemplate, templateValues).length > 0) {
+      setTemplateError(TEMPLATE_FILL_ALL_ERROR);
+      setTemplateErrorDetail("");
+      return;
+    }
+
+    setTemplateError("");
+    setTemplateErrorDetail("");
     setIsSendingTemplate(true);
     try {
       const parameters = Array.from({ length: selectedTemplate.params_count }, (_, i) => {
-        return templateValues[String(i + 1)] ?? "";
+        return (templateValues[String(i + 1)] ?? "").trim();
       });
 
       const res = await apiPostJson("/api/whatsapp/templates.php", {
@@ -628,8 +756,9 @@ function WhatsAppMain() {
         throw new Error(data?.error || "Erro ao enviar template.");
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Erro ao enviar template.";
-      showToast(msg, "error");
+      // No modal, onde a pessoa está olhando; um toast ficava por baixo do fundo escuro.
+      setTemplateError(err instanceof Error ? err.message : "Erro ao enviar template.");
+      setTemplateErrorDetail("");
     } finally {
       setIsSendingTemplate(false);
     }
@@ -648,20 +777,16 @@ function WhatsAppMain() {
       lista = lista.filter(c => c.status !== "closed");
     }
 
-    const termo = busca.trim().toLowerCase();
-    if (termo === "") return lista;
-
-    const digitos = termo.replace(/\D/g, "");
-
-    return lista.filter(
-      c =>
-        c.name.toLowerCase().includes(termo) ||
-        (digitos !== "" && c.phone.includes(digitos)) ||
-        (c.last_message_preview ?? "").toLowerCase().includes(termo)
-    );
+    // Resposta imediata, na mesma regra do servidor; o servidor (que enxerga além
+    // das 300 mais recentes) confirma logo depois.
+    return lista.filter(c => matchesConversationSearch(c, busca));
   }, [conversations, busca, activeTab]);
 
   const naoLidas = conversations.reduce((total, c) => total + c.unread_count, 0);
+  // A lista vem cortada nas mais recentes: o total real e o aviso evitam que a
+  // conversa 301 em diante simplesmente "não exista".
+  const totalExibido = totalConversas ?? conversations.length;
+  const listaCortada = totalExibido > conversations.length;
 
   if (!permitido) return <div className="p-8 text-white">Acesso negado.</div>;
 
@@ -670,7 +795,7 @@ function WhatsAppMain() {
       {/* Toast Notification */}
       {toast && (
         <div
-          className={`fixed bottom-6 right-6 z-50 px-5 py-3 rounded-xl shadow-2xl text-sm font-semibold flex items-center gap-3 transition-all animate-fade-in ${
+          className={`fixed bottom-6 right-6 z-[60] px-5 py-3 rounded-xl shadow-2xl text-sm font-semibold flex items-center gap-3 transition-all animate-fade-in ${
             toast.type === "error" ? "bg-red-600 text-white" : "bg-[#118c7e] text-white"
           }`}
         >
@@ -683,7 +808,7 @@ function WhatsAppMain() {
         <div>
           <h1 className="text-3xl font-bold">WhatsApp</h1>
           <p className="text-[var(--color-text-on-dark)] mt-1">
-            {conversations.length} conversa{conversations.length === 1 ? "" : "s"}
+            {totalExibido} conversa{totalExibido === 1 ? "" : "s"}
             {naoLidas > 0 && ` · ${naoLidas} não lida${naoLidas === 1 ? "" : "s"}`}
           </p>
         </div>
@@ -763,6 +888,12 @@ function WhatsAppMain() {
               </button>
             </div>
           </div>
+
+          {listaCortada && (
+            <p className="px-3 py-2 text-[11px] text-[#92400e] bg-[#fff9ea] border-b border-[#fde68a]">
+              Mostrando as {conversations.length} conversas mais recentes de {totalExibido}. Use a busca para achar as demais.
+            </p>
+          )}
 
           {/* Lista de conversas */}
           <ul className="flex-1 overflow-y-auto">
@@ -909,8 +1040,28 @@ function WhatsAppMain() {
 
               {/* Lista de Mensagens */}
               <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-5">
+                {messagesStatus === "error" && (
+                  <div
+                    role="alert"
+                    className="mb-3 rounded-lg bg-[#fdeae8] border border-[#f5c2bd] px-3 py-2 text-center text-xs text-[#a32b1f]"
+                  >
+                    <p className="font-bold">Não foi possível carregar as mensagens.</p>
+                    {messagesError && <p className="mt-0.5">{messagesError}</p>}
+                  </div>
+                )}
+
+                {messagesTruncated && (
+                  <p className="mb-3 text-center text-[11px] text-[var(--color-wa-time)]">
+                    Mostrando as 500 mensagens mais recentes desta conversa.
+                  </p>
+                )}
+
                 {messages.length === 0 ? (
-                  <p className="text-center text-sm text-[var(--color-wa-time)]">Nenhuma mensagem.</p>
+                  messagesStatus === "loading" ? (
+                    <p className="text-center text-sm text-[var(--color-wa-time)]">Carregando mensagens...</p>
+                  ) : messagesStatus === "ok" ? (
+                    <p className="text-center text-sm text-[var(--color-wa-time)]">Nenhuma mensagem.</p>
+                  ) : null
                 ) : (
                   groupMessagesByDay(messages).map(grupo => (
                     <div key={grupo.day}>
@@ -1078,7 +1229,12 @@ function WhatsAppMain() {
       {/* Modal: Nova Conversa */}
       {modalNewChatOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl text-[var(--color-text)] space-y-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Iniciar nova conversa"
+            className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl text-[var(--color-text)] space-y-4"
+          >
             <div className="flex items-center justify-between border-b pb-3">
               <h2 className="text-lg font-bold">Iniciar Nova Conversa</h2>
               <button
@@ -1120,6 +1276,11 @@ function WhatsAppMain() {
                       </option>
                     ))}
                   </select>
+                  {totalClientes !== null && totalClientes > clientsList.length && (
+                    <p className="mt-1 text-[11px] text-[#92400e]">
+                      Mostrando {clientsList.length} de {totalClientes} clientes com WhatsApp. Para os demais, digite o telefone.
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -1174,9 +1335,14 @@ function WhatsAppMain() {
       )}
 
       {/* Modal: Retomar com Template */}
-      {modalTemplateOpen && selectedTemplate && (
+      {modalTemplateOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl text-[var(--color-text)] space-y-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Retomar conversa com template"
+            className="bg-white rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl text-[var(--color-text)] space-y-4"
+          >
             <div className="flex items-center justify-between border-b pb-3">
               <div>
                 <h2 className="text-lg font-bold">Retomar Conversa com Template</h2>
@@ -1187,74 +1353,111 @@ function WhatsAppMain() {
               <button
                 type="button"
                 onClick={() => setModalTemplateOpen(false)}
+                aria-label="Fechar"
                 className="text-gray-400 hover:text-gray-700 text-xl font-bold cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleSendTemplate} className="space-y-4">
-              {/* Seletor de template */}
-              <div>
-                <label htmlFor="select-template" className="block text-xs font-bold text-gray-600 mb-1">
-                  Modelo de mensagem homologado
-                </label>
-                <select
-                  id="select-template"
-                  value={selectedTemplate.name}
-                  onChange={e => {
-                    const tpl = templates.find(t => t.name === e.target.value);
-                    if (tpl) {
-                      setSelectedTemplate(tpl);
-                    }
-                  }}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--color-wa-teal)]/30"
-                >
-                  {templates.map(tpl => (
-                    <option key={tpl.name} value={tpl.name}>
-                      {tpl.name} ({tpl.language})
-                    </option>
-                  ))}
-                </select>
+            {/* Erro da Meta ou do envio: fica aqui dentro até a pessoa agir. */}
+            {templateError && (
+              <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+                <p className="font-bold">{templateError}</p>
+                {templateErrorDetail && (
+                  <p className="mt-1 text-[11px] text-red-600">Detalhe da Meta: {templateErrorDetail}</p>
+                )}
               </div>
+            )}
 
-              {/* Variáveis do template */}
-              {selectedTemplate.params_count > 0 && (
-                <div className="space-y-2 bg-gray-50 p-3 rounded-xl border border-gray-200">
-                  <div className="text-xs font-bold text-gray-700">Preencha as variáveis do modelo:</div>
-                  {Array.from({ length: selectedTemplate.params_count }, (_, i) => {
-                    const idx = String(i + 1);
-                    const label = selectedTemplate.param_labels?.[i] || `Variável {{${idx}}}`;
-                    return (
-                      <div key={idx}>
-                        <label htmlFor={`param-${idx}`} className="block text-[11px] font-semibold text-gray-600 mb-0.5">
-                          {label}
-                        </label>
-                        <input
-                          id={`param-${idx}`}
-                          value={templateValues[idx] ?? ""}
-                          onChange={e =>
-                            setTemplateValues(prev => ({
-                              ...prev,
-                              [idx]: e.target.value,
-                            }))
-                          }
-                          required
-                          className="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-wa-teal)]/30"
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
+            <form onSubmit={handleSendTemplate} className="space-y-4">
+              {templatesLoading && <p className="text-xs text-gray-500">Carregando templates...</p>}
+
+              {!templatesLoading && !selectedTemplate && (
+                <p className="rounded-xl bg-gray-50 border border-gray-200 p-3 text-xs text-gray-600">
+                  Nenhum template disponível para envio neste momento.
+                </p>
               )}
 
-              {/* Prévia do texto */}
-              <div className="bg-[#e4f8ed] p-3 rounded-xl border border-[#aee4c9] text-xs text-[#0e7a4c]">
-                <div className="font-bold mb-1">Prévia no WhatsApp:</div>
-                <p className="whitespace-pre-wrap">
-                  {selectedTemplate.body_text.replace(/\{\{(\d+)\}\}/g, (_, num) => templateValues[num] || `[${num}]`)}
-                </p>
-              </div>
+              {selectedTemplate && (
+                <>
+                  {/* Seletor de template */}
+                  <div>
+                    <label htmlFor="select-template" className="block text-xs font-bold text-gray-600 mb-1">
+                      Modelo de mensagem homologado
+                    </label>
+                    <select
+                      id="select-template"
+                      value={templateOptionValue(selectedTemplate, templates)}
+                      onChange={e => handleSelectTemplate(e.target.value)}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--color-wa-teal)]/30"
+                    >
+                      {templates.map(tpl => (
+                        <option key={templateOptionValue(tpl, templates)} value={templateOptionValue(tpl, templates)}>
+                          {tpl.name} ({tpl.language})
+                          {templateSendability(tpl) === "ok" ? "" : ` · ${templateStatusLabel(tpl.status)}`}
+                        </option>
+                      ))}
+                    </select>
+
+                    {/* Situação real do template na Meta */}
+                    {templateSendability(selectedTemplate) === "blocked" && (
+                      <p className="mt-1.5 text-[11px] font-semibold text-red-700">
+                        {templateStatusLabel(selectedTemplate.status)}: a Meta não entrega mensagens deste template.
+                      </p>
+                    )}
+                    {templateSendability(selectedTemplate) === "unverified" && (
+                      <p className="mt-1.5 text-[11px] font-semibold text-[#92400e]">
+                        {templateStatusLabel(selectedTemplate.status)}: não foi possível confirmar a aprovação, o envio pode ser recusado.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Variáveis do template */}
+                  {selectedTemplate.params_count > 0 && (
+                    <div className="space-y-2 bg-gray-50 p-3 rounded-xl border border-gray-200">
+                      <div className="text-xs font-bold text-gray-700">Preencha as variáveis do modelo:</div>
+                      {Array.from({ length: selectedTemplate.params_count }, (_, i) => {
+                        const idx = String(i + 1);
+                        const label = selectedTemplate.param_labels?.[i] || `Variável {{${idx}}}`;
+                        return (
+                          <div key={idx}>
+                            <label htmlFor={`param-${idx}`} className="block text-[11px] font-semibold text-gray-600 mb-0.5">
+                              {label}
+                            </label>
+                            <input
+                              id={`param-${idx}`}
+                              value={templateValues[idx] ?? ""}
+                              onChange={e => {
+                                const valor = e.target.value;
+                                setTemplateValues(prev => ({
+                                  ...prev,
+                                  [idx]: valor,
+                                }));
+                                setTemplateError(prev => (prev === TEMPLATE_FILL_ALL_ERROR ? "" : prev));
+                              }}
+                              required
+                              className="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-wa-teal)]/30"
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Prévia do texto */}
+                  <div className="bg-[#e4f8ed] p-3 rounded-xl border border-[#aee4c9] text-xs text-[#0e7a4c]">
+                    <div className="font-bold mb-1">Prévia no WhatsApp:</div>
+                    {selectedTemplate.body_text.trim() === "" ? (
+                      <p>Prévia indisponível: o texto deste template não foi confirmado na Meta.</p>
+                    ) : (
+                      <p className="whitespace-pre-wrap">
+                        {selectedTemplate.body_text.replace(/\{\{(\d+)\}\}/g, (_, num) => templateValues[num] || `[${num}]`)}
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
 
               <div className="flex justify-end gap-3 pt-2">
                 <button
@@ -1266,8 +1469,13 @@ function WhatsAppMain() {
                 </button>
                 <button
                   type="submit"
-                  disabled={isSendingTemplate}
-                  className="px-5 py-2 rounded-full bg-[#1d7afc] hover:bg-[#196cdb] text-white text-sm font-bold shadow-md cursor-pointer disabled:opacity-50"
+                  disabled={
+                    isSendingTemplate ||
+                    templatesLoading ||
+                    !selectedTemplate ||
+                    templateSendability(selectedTemplate) === "blocked"
+                  }
+                  className="px-5 py-2 rounded-full bg-[#1d7afc] hover:bg-[#196cdb] text-white text-sm font-bold shadow-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isSendingTemplate ? "Enviando..." : "Enviar Template"}
                 </button>

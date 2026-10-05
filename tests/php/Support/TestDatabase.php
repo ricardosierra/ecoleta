@@ -27,7 +27,7 @@ final class TestDatabase
      * Versão de schema que este espelho reproduz. Precisa acompanhar
      * ECOLETA_SCHEMA_VERSION — SchemaMirrorTest garante isso.
      */
-    public const MIRRORED_VERSION = 18;
+    public const MIRRORED_VERSION = 19;
 
     private string $path;
 
@@ -116,12 +116,13 @@ final class TestDatabase
         string $status = 'active',
         ?string $whatsapp = null,
         ?string $asaasCustomerId = null,
-        ?string $email = null
+        ?string $email = null,
+        ?string $document = null
     ): int {
         $stmt = $this->pdo()->prepare(
-            'INSERT INTO clients (name, monthly_value, due_day, status, whatsapp, asaas_customer_id, email) VALUES (?, ?, ?, ?, ?, ?, ?)'
+            'INSERT INTO clients (name, monthly_value, due_day, status, whatsapp, asaas_customer_id, email, document) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
         );
-        $stmt->execute([$name, $monthlyValue, $dueDay, $status, $whatsapp, $asaasCustomerId, $email]);
+        $stmt->execute([$name, $monthlyValue, $dueDay, $status, $whatsapp, $asaasCustomerId, $email, $document]);
 
         return (int) $this->pdo()->lastInsertId();
     }
@@ -246,7 +247,7 @@ final class TestDatabase
         $pdo->exec('CREATE TABLE activity_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NULL,
-            target_login TEXT NULL,
+            target_login TEXT NULL, -- 019: VARCHAR(255) em MySQL
             action TEXT NOT NULL,
             description TEXT NULL,
             performed_by_id INTEGER NULL,

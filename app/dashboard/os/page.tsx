@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { DashboardGate, useDashboardAuth } from "@/components/DashboardGate";
 import { DashboardModal, ModalActions } from "@/components/DashboardModal";
 import {
@@ -14,11 +14,16 @@ import {
 import { isAdmin } from "@/lib/authz";
 import { apiPostJson } from "@/lib/dashboard-api";
 import {
+  OS_LIMITS,
+  OS_SUPPORT_PHONE,
   formatOsDate,
   formatOsDateTime,
+  osDocumentFields,
   osFieldValue,
   osNumber,
   osWhatsAppLink,
+  osWhatsAppStatusLabel,
+  osWhatsAppStatusTone,
   type ServiceOrder,
 } from "@/lib/os-share";
 import { windowTooltip } from "@/lib/whatsapp";
@@ -26,10 +31,24 @@ import Logo from "@/components/Logo";
 
 type Client = { id: number; name: string };
 
-type Feedback = { tone: "ok" | "erro"; text: string };
+type Feedback = { tone: "ok" | "aviso" | "erro"; text: string; oferecerMeuWhatsApp?: boolean };
+
+/** Cor do texto de retorno: verde deu certo, amarelo é aviso, vermelho falhou. */
+const FEEDBACK_TONE_CLASS = {
+  ok: "text-[var(--color-accent)]",
+  aviso: "text-yellow-300",
+  erro: "text-red-400",
+} as const;
 
 /** Dados do reenvio pendente de confirmação (resposta 409 de os/whatsapp.php). */
 type ReenvioWhatsApp = { sentAt: string | null; sentTo: string | null };
+
+/**
+ * Envio cobrado pendente de confirmação (409 `whatsapp_billable_confirmation_required`).
+ * `reenvioConfirmado` guarda se o operador já confirmou o reenvio, para a chamada
+ * final levar as duas confirmações.
+ */
+type CustoWhatsApp = { reenvioConfirmado: boolean };
 
 const inputClass =
   "mt-1.5 w-full rounded-xl border border-[var(--color-border-dark)] bg-black/30 px-3.5 py-2.5 text-sm text-white outline-none transition-colors placeholder:text-white/30 focus:border-[var(--color-accent)]";
@@ -40,6 +59,67 @@ const cardClass = "rounded-2xl border border-[var(--color-border-dark)] bg-[rgba
 
 const secondaryButton =
   "inline-flex items-center justify-center gap-2 rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20 disabled:opacity-50";
+
+/**
+ * GET de uma lista do dashboard. Devolve os itens ou o motivo da falha, sem nunca
+ * lançar: resposta de erro do servidor (sessão vencida, 503 de schema), corpo que
+ * não é JSON e rede caída são três falhas distintas, e as três precisam chegar à
+ * tela como aviso, não como lista vazia.
+ */
+async function carregarLista<T>(url: string, chave: string): Promise<{ itens: T[] } | { erro: string }> {
+  try {
+    const res = await fetch(url);
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok || !data?.ok || !Array.isArray(data[chave])) {
+      return { erro: typeof data?.error === "string" && data.error !== "" ? data.error : `O servidor respondeu ${res.status}.` };
+    }
+
+    return { itens: data[chave] as T[] };
+  } catch {
+    return { erro: "Sem conexão com o servidor." };
+  }
+}
+
+/** As duas listas da tela, buscadas juntas. Nunca lança (ver `carregarLista`). */
+function buscarTela() {
+  return Promise.all([
+    carregarLista<Client>("/api/clients/index.php", "clients"),
+    carregarLista<ServiceOrder>("/api/os/index.php", "service_orders"),
+  ]);
+}
+
+/** Cor do selo de WhatsApp: verde só quando a mensagem chegou ao cliente. */
+const WHATSAPP_TONE_CLASS = {
+  ok: "bg-[var(--color-accent-soft)] text-[var(--color-accent)]",
+  pendente: "bg-white/10 text-white/80",
+  erro: "bg-red-500/20 text-red-300",
+} as const;
+
+/**
+ * O que o robô sabe da última mensagem desta OS. `whatsapp_sent_at` só diz que a
+ * Meta aceitou o pedido; o selo mostra o status que o webhook foi gravando
+ * (aceita, entregue, lida, falhou). OS enviada antes de o status ser guardado
+ * não tem como dizer mais do que "Enviada".
+ */
+function SeloWhatsApp({ os }: { os: ServiceOrder }) {
+  const rotulo = osWhatsAppStatusLabel(os.whatsapp_status) ?? "Enviada";
+  const tom = osWhatsAppStatusTone(os.whatsapp_status);
+  const detalhes = [
+    os.whatsapp_sent_to ? `WhatsApp: ${os.whatsapp_sent_to}` : "WhatsApp",
+    os.whatsapp_status === "failed" && os.whatsapp_error ? os.whatsapp_error : null,
+  ].filter(Boolean);
+
+  return (
+    <span
+      title={detalhes.join(" · ")}
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${WHATSAPP_TONE_CLASS[tom]}`}
+    >
+      <BotIcon width={14} height={14} />
+      {rotulo}
+    </span>
+  );
+}
 
 export default function OSPage() {
   return (
@@ -75,12 +155,42 @@ function OSMain() {
   const [sending, setSending] = useState<"email" | "whatsapp" | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [reenvio, setReenvio] = useState<ReenvioWhatsApp | null>(null);
+  const [custo, setCusto] = useState<CustoWhatsApp | null>(null);
+
+  // Clientes e histórico vêm de duas chamadas. Cada uma pode falhar sozinha, e o
+  // aviso diz qual: antes o erro era engolido e a falha aparecia como lista
+  // vazia ("Nenhuma OS encontrada.", select de clientes sem opções).
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [loadErrors, setLoadErrors] = useState<{ clients?: string; history?: string }>({});
+
+  const aplicarCarga = useCallback(([clientes, historico]: Awaited<ReturnType<typeof buscarTela>>) => {
+    if ("itens" in clientes) setClients(clientes.itens);
+    if ("itens" in historico) setHistory(historico.itens);
+    setLoadErrors({
+      clients: "erro" in clientes ? clientes.erro : undefined,
+      history: "erro" in historico ? historico.erro : undefined,
+    });
+    setHistoryLoading(false);
+  }, []);
 
   useEffect(() => {
     if (!isUserAdmin) return;
-    fetch("/api/clients/index.php").then(r => r.json()).then(d => { if(d.ok) setClients(d.clients); });
-    fetch("/api/os/index.php").then(r => r.json()).then(d => { if(d.ok) setHistory(d.service_orders); });
-  }, [isUserAdmin]);
+
+    let ativo = true;
+    void buscarTela().then(carga => {
+      if (ativo) aplicarCarga(carga);
+    });
+
+    return () => {
+      ativo = false;
+    };
+  }, [isUserAdmin, aplicarCarga]);
+
+  const recarregar = () => {
+    setHistoryLoading(true);
+    setLoadErrors({});
+    void buscarTela().then(aplicarCarga);
+  };
 
   /** Abre uma OS na pré-visualização e zera o que era do documento anterior. */
   const abrirOS = (os: ServiceOrder) => {
@@ -88,6 +198,7 @@ function OSMain() {
     setEmailTo(os.client_email ?? "");
     setFeedback(null);
     setReenvio(null);
+    setCusto(null);
   };
 
   /** Reflete um envio na pré-visualização e na linha do histórico. */
@@ -159,7 +270,13 @@ function OSMain() {
 
       if (res.ok && data.ok) {
         registrarEnvio(activeOS.id, { sent_at: data.sent_at ?? null, sent_to: data.sent_to ?? null });
-        setFeedback({ tone: "ok", text: `Enviada para ${data.sent_to}.` });
+        // Servidor em modo de teste (MAIL_TRANSPORT=log): o destinatário só foi para
+        // o log, nada saiu. "Enviada" seria mentira.
+        setFeedback(
+          data.logged_only
+            ? { tone: "aviso", text: `Registrada em log (modo teste): o e-mail para ${data.sent_to} não foi enviado.` }
+            : { tone: "ok", text: `Enviada para ${data.sent_to}.` }
+        );
       } else {
         setFeedback({ tone: "erro", text: data.error ?? "Não foi possível enviar o e-mail." });
       }
@@ -171,32 +288,63 @@ function OSMain() {
   };
 
   /**
-   * WhatsApp do robô. Sem `confirm`, o servidor responde 409 quando a OS já foi
-   * disparada antes — é o que abre a tela de confirmação. O segundo clique
-   * repete a chamada com `confirm: true`.
+   * WhatsApp do robô. O servidor pode pedir duas confirmações, uma de cada vez:
+   *
+   *  - sem `confirm`, responde 409 quando a OS já foi disparada antes;
+   *  - sem `confirm_billable`, responde 409 quando o envio sairia como template
+   *    fora da janela de 24h, que a Meta COBRA.
+   *
+   * Cada 409 abre o seu diálogo, e o clique de confirmar repete a chamada com a
+   * flag correspondente (e mantém a anterior: confirmar o custo de um reenvio já
+   * confirmado manda as duas). `confirm_billable` só vai no corpo quando é
+   * `true`, para a primeira chamada seguir idêntica à de sempre.
    */
-  const handleWhatsAppRobo = async (confirmar = false) => {
+  const handleWhatsAppRobo = async (confirmar = false, confirmarCusto = false) => {
     if (!activeOS || sending) return;
 
     setSending("whatsapp");
     setFeedback(null);
 
     try {
-      const res = await apiPostJson("/api/os/whatsapp.php", { id: activeOS.id, confirm: confirmar });
+      const res = await apiPostJson("/api/os/whatsapp.php", {
+        id: activeOS.id,
+        confirm: confirmar,
+        ...(confirmarCusto ? { confirm_billable: true } : {}),
+      });
       const data = await res.json();
 
       if (res.ok && data.ok) {
         setReenvio(null);
+        setCusto(null);
+        // Logo depois do envio a Meta só ACEITOU o pedido: entrega e leitura
+        // chegam depois, pelo webhook, e aparecem na próxima carga do histórico.
         registrarEnvio(activeOS.id, {
           whatsapp_sent_at: data.whatsapp_sent_at ?? null,
           whatsapp_sent_to: data.whatsapp_sent_to ?? null,
+          whatsapp_status: data.whatsapp_status ?? "accepted",
+          whatsapp_error: null,
         });
-        setFeedback({ tone: "ok", text: `Enviada pelo robô para ${data.whatsapp_sent_to}.` });
+        setFeedback({
+          tone: "ok",
+          text: `Aceita pela Meta para ${data.whatsapp_sent_to}. A entrega é confirmada em seguida.`,
+        });
       } else if (data.code === "whatsapp_already_sent") {
+        setCusto(null);
         setReenvio({ sentAt: data.whatsapp_sent_at ?? null, sentTo: data.whatsapp_sent_to ?? null });
+      } else if (data.code === "whatsapp_billable_confirmation_required") {
+        // O reenvio, se havia, já foi confirmado: o diálogo de custo toma o lugar.
+        setReenvio(null);
+        setCusto({ reenvioConfirmado: confirmar });
       } else {
         setReenvio(null);
-        setFeedback({ tone: "erro", text: data.error ?? "Não foi possível enviar pelo WhatsApp." });
+        setCusto(null);
+        setFeedback({
+          tone: "erro",
+          text: data.error ?? "Não foi possível enviar pelo WhatsApp.",
+          // Janela fechada sem template: a Meta não entrega, mas o operador ainda
+          // pode mandar do próprio WhatsApp, com o texto e o link prontos.
+          oferecerMeuWhatsApp: data.code === "whatsapp_outside_window",
+        });
       }
     } catch {
       setFeedback({ tone: "erro", text: "Não foi possível enviar pelo WhatsApp." });
@@ -224,6 +372,19 @@ function OSMain() {
         </p>
       </div>
 
+      {(loadErrors.history || loadErrors.clients) && (
+        <div role="alert" className="rounded-xl border border-red-500/40 bg-red-950/60 p-4 text-sm text-red-200 print:hidden">
+          <p className="font-semibold">Não foi possível carregar a tela por completo.</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5">
+            {loadErrors.history && <li>Histórico de OS: {loadErrors.history}</li>}
+            {loadErrors.clients && <li>Lista de clientes: {loadErrors.clients}</li>}
+          </ul>
+          <button type="button" onClick={recarregar} className={`${secondaryButton} mt-3`}>
+            Tentar novamente
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-6 print:hidden lg:grid-cols-2">
         {/* Formulário */}
         <div className={`${cardClass} p-5 sm:p-6`}>
@@ -236,30 +397,30 @@ function OSMain() {
               </select>
             </label>
             <label className={labelClass} htmlFor="os-endereco">Endereço da Coleta
-              <input id="os-endereco" value={collectionAddress} onChange={e => setCollectionAddress(e.target.value)} placeholder="Ex: Av. das Américas, 500 - Barra da Tijuca" className={inputClass} />
+              <input id="os-endereco" maxLength={OS_LIMITS.address} value={collectionAddress} onChange={e => setCollectionAddress(e.target.value)} placeholder="Ex: Av. das Américas, 500 - Barra da Tijuca" className={inputClass} />
             </label>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <label className={labelClass} htmlFor="os-data">Data da Coleta
                 <input id="os-data" type="date" value={collectionDate} onChange={e => setCollectionDate(e.target.value)} className={inputClass} />
               </label>
               <label className={labelClass} htmlFor="os-horario">Horário Aproximado
-                <input id="os-horario" value={approximateTime} onChange={e => setApproximateTime(e.target.value)} placeholder="Ex: 10:00 ou Manhã" className={inputClass} />
+                <input id="os-horario" maxLength={OS_LIMITS.time} value={approximateTime} onChange={e => setApproximateTime(e.target.value)} placeholder="Ex: 10:00 ou Manhã" className={inputClass} />
               </label>
               <label className={labelClass} htmlFor="os-material">Material Coletado
-                <input id="os-material" value={materialCollected} onChange={e => setMaterialCollected(e.target.value)} placeholder="Ex: Óleo vegetal usado" className={inputClass} />
+                <input id="os-material" maxLength={OS_LIMITS.material} value={materialCollected} onChange={e => setMaterialCollected(e.target.value)} placeholder="Ex: Óleo vegetal usado" className={inputClass} />
               </label>
               <label className={labelClass} htmlFor="os-peso">Pesagem
-                <input id="os-peso" value={weight} onChange={e => setWeight(e.target.value)} placeholder="150 kg" className={inputClass} />
+                <input id="os-peso" maxLength={OS_LIMITS.weight} value={weight} onChange={e => setWeight(e.target.value)} placeholder="150 kg" className={inputClass} />
               </label>
               <label className={labelClass} htmlFor="os-sacos">Qtd. Sacos
-                <input id="os-sacos" type="number" inputMode="numeric" min="0" value={bagsCount} onChange={e => setBagsCount(e.target.value)} className={inputClass} />
+                <input id="os-sacos" type="number" inputMode="numeric" min="0" max={OS_LIMITS.quantity} value={bagsCount} onChange={e => setBagsCount(e.target.value)} className={inputClass} />
               </label>
               <label className={labelClass} htmlFor="os-containers">Qtd. Contêineres
-                <input id="os-containers" type="number" inputMode="numeric" min="0" value={containersCount} onChange={e => setContainersCount(e.target.value)} className={inputClass} />
+                <input id="os-containers" type="number" inputMode="numeric" min="0" max={OS_LIMITS.quantity} value={containersCount} onChange={e => setContainersCount(e.target.value)} className={inputClass} />
               </label>
             </div>
             <label className={labelClass} htmlFor="os-responsavel">Responsável pela Coleta
-              <input id="os-responsavel" value={responsible} onChange={e => setResponsible(e.target.value)} className={inputClass} />
+              <input id="os-responsavel" maxLength={OS_LIMITS.responsible} value={responsible} onChange={e => setResponsible(e.target.value)} className={inputClass} />
             </label>
 
             {formError && (
@@ -341,10 +502,19 @@ function OSMain() {
                 {feedback && (
                   <p
                     role="status"
-                    className={`text-sm ${feedback.tone === "ok" ? "text-[var(--color-accent)]" : "text-red-400"}`}
+                    className={`text-sm ${FEEDBACK_TONE_CLASS[feedback.tone]}`}
                   >
                     {feedback.text}
                   </p>
+                )}
+
+                {/* Janela de 24h fechada e sem template: o robô não consegue, mas o
+                    WhatsApp do próprio operador sim, com texto e link já prontos. */}
+                {feedback?.oferecerMeuWhatsApp && (
+                  <button type="button" onClick={handleWhatsAppPessoal} className={secondaryButton}>
+                    <SmartphoneIcon width={16} height={16} />
+                    Abrir Meu WhatsApp
+                  </button>
                 )}
 
                 {(activeOS.sent_at || activeOS.whatsapp_sent_at) && (
@@ -356,9 +526,13 @@ function OSMain() {
                       </div>
                     )}
                     {activeOS.whatsapp_sent_at && (
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <dt><BotIcon width={14} height={14} className="text-white/60" /><span className="sr-only">WhatsApp do robô</span></dt>
                         <dd className="min-w-0 break-all">{activeOS.whatsapp_sent_to} · {formatOsDateTime(activeOS.whatsapp_sent_at)}</dd>
+                        <dd><SeloWhatsApp os={activeOS} /></dd>
+                        {activeOS.whatsapp_status === "failed" && activeOS.whatsapp_error && (
+                          <dd className="basis-full text-red-300">{activeOS.whatsapp_error}</dd>
+                        )}
                       </div>
                     )}
                   </dl>
@@ -375,18 +549,16 @@ function OSMain() {
                   </div>
                 </div>
 
-                <div className="space-y-3 text-sm sm:text-base">
-                  <p><span className="font-semibold text-gray-700">Cliente:</span> {activeOS.client_name}</p>
-                  <p><span className="font-semibold text-gray-700">Endereço da Coleta:</span> {osFieldValue(activeOS.collection_address)}</p>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <p><span className="font-semibold text-gray-700">Data da Coleta:</span> {formatOsDate(activeOS.collection_date)}</p>
-                    <p><span className="font-semibold text-gray-700">Horário Aproximado:</span> {osFieldValue(activeOS.approximate_time)}</p>
-                    <p><span className="font-semibold text-gray-700">Material Coletado:</span> {osFieldValue(activeOS.material_collected)}</p>
-                    <p><span className="font-semibold text-gray-700">Pesagem:</span> {osFieldValue(activeOS.weight)}</p>
-                    <p><span className="font-semibold text-gray-700">Responsável:</span> {osFieldValue(activeOS.responsible)}</p>
-                    <p><span className="font-semibold text-gray-700">Qtd. Sacos:</span> {osFieldValue(activeOS.bags_count)}</p>
-                    <p><span className="font-semibold text-gray-700">Qtd. Contêineres:</span> {osFieldValue(activeOS.containers_count)}</p>
-                  </div>
+                {/* Rótulos, ordem e marcador de vazio vêm de osDocumentFields(): é o
+                    documento que o PHP entrega ao cliente (os_lib.php), e a
+                    pré-visualização não pode ter redação própria. Cliente e
+                    endereço ocupam a linha toda. */}
+                <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 sm:text-base">
+                  {osDocumentFields(activeOS).map(({ label, value }, indice) => (
+                    <p key={label} className={indice < 2 ? "sm:col-span-2" : undefined}>
+                      <span className="font-semibold text-gray-700">{label}:</span> {value}
+                    </p>
+                  ))}
                 </div>
 
                 <div className="mt-14 text-center sm:mt-20">
@@ -402,7 +574,7 @@ function OSMain() {
                     {activeOS.signature_text || "Responsável Técnica - ECOLEVA"}
                   </p>
                   <p className="mt-8 text-xs text-gray-500">
-                    Caso precise de suporte ou esclarecimentos, envie WhatsApp para <strong>(21) 99152-9383</strong>
+                    Caso precise de suporte ou esclarecimentos, envie mensagem para nosso WhatsApp: <strong>{OS_SUPPORT_PHONE}</strong>
                   </p>
                 </div>
               </div>
@@ -420,7 +592,9 @@ function OSMain() {
       <section className={`${cardClass} overflow-hidden print:hidden`}>
         <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border-dark)] p-4">
           <h3 className="font-semibold">Histórico de OS Geradas</h3>
-          <span className="text-xs text-white/50">{history.length} {history.length === 1 ? "registro" : "registros"}</span>
+          {!historyLoading && !loadErrors.history && (
+            <span className="text-xs text-white/50">{history.length} {history.length === 1 ? "registro" : "registros"}</span>
+          )}
         </div>
         <div className="data-table-wrap">
           <table className="data-table text-white/85">
@@ -436,7 +610,11 @@ function OSMain() {
           </thead>
           <tbody>
             {history.length === 0 ? (
-              <tr><td colSpan={6} className="data-table-empty py-8 text-center text-sm text-white/50">Nenhuma OS encontrada.</td></tr>
+              <tr>
+                <td colSpan={6} className="data-table-empty py-8 text-center text-sm text-white/50">
+                  {historyLoading ? "Carregando…" : loadErrors.history ? "Histórico indisponível." : "Nenhuma OS encontrada."}
+                </td>
+              </tr>
             ) : history.map(os => {
               const ativa = activeOS?.id === os.id;
               return (
@@ -453,12 +631,7 @@ function OSMain() {
                           <span className="sr-only">E-mail enviado</span>
                         </span>
                       )}
-                      {os.whatsapp_sent_at && (
-                        <span title={os.whatsapp_sent_to ? `WhatsApp: ${os.whatsapp_sent_to}` : "WhatsApp"} className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[var(--color-accent-soft)] text-[var(--color-accent)]">
-                          <BotIcon width={14} height={14} />
-                          <span className="sr-only">WhatsApp enviado</span>
-                        </span>
-                      )}
+                      {os.whatsapp_sent_at && <SeloWhatsApp os={os} />}
                       {!os.sent_at && !os.whatsapp_sent_at && <span className="text-white/30">—</span>}
                     </span>
                   </td>
@@ -502,6 +675,48 @@ function OSMain() {
               className="inline-flex items-center justify-center rounded-full bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-[var(--color-bg-dark)] transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               {sending === "whatsapp" ? "Enviando…" : "Enviar novamente"}
+            </button>
+          </ModalActions>
+        </DashboardModal>
+      )}
+
+      {/* Confirmação do custo: fora da janela de 24h o robô envia template, e a Meta cobra */}
+      {custo && activeOS && (
+        <DashboardModal
+          title="Envio cobrado pela Meta"
+          icon={<BotIcon width={18} height={18} />}
+          tone="warning"
+          size="sm"
+          onClose={() => setCusto(null)}
+        >
+          <p className="text-sm text-[var(--color-text-on-dark)]">
+            Este cliente não escreve para o nosso número há mais de 24 horas. Fora da janela, o robô envia um
+            template aprovado e o envio é cobrado pela Meta.
+          </p>
+          <p className="mt-2 text-sm text-[var(--color-text-on-dark)]">
+            O Meu WhatsApp abre o seu aplicativo com o texto e o link prontos, sem custo.
+          </p>
+          <ModalActions>
+            <button type="button" onClick={() => setCusto(null)} className={secondaryButton}>
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCusto(null);
+                handleWhatsAppPessoal();
+              }}
+              className={secondaryButton}
+            >
+              Usar Meu WhatsApp
+            </button>
+            <button
+              type="button"
+              onClick={() => handleWhatsAppRobo(custo.reenvioConfirmado, true)}
+              disabled={sending !== null}
+              className="inline-flex items-center justify-center rounded-full bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-[var(--color-bg-dark)] transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {sending === "whatsapp" ? "Enviando…" : "Enviar e pagar"}
             </button>
           </ModalActions>
         </DashboardModal>

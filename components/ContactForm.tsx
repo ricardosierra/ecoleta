@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import Button from "@/components/Button";
 import { ArrowRightIcon } from "@/components/icons";
 import { tipoOperacaoOptions } from "@/lib/contact-schema";
@@ -10,6 +11,26 @@ type Status =
   | { kind: "submitting" }
   | { kind: "success" }
   | { kind: "error"; message: string };
+
+// Quanto o envio pode esperar o servidor. Sem isto, uma hospedagem lenta deixa o
+// botão em "Enviando…" para sempre e a pessoa sem saber se a mensagem saiu.
+const SUBMIT_TIMEOUT_MS = 15_000;
+
+const GENERIC_ERROR =
+  "Não foi possível enviar sua mensagem agora. Tente novamente ou fale pelo WhatsApp.";
+
+const TIMEOUT_ERROR =
+  "O envio demorou mais do que o esperado. Verifique sua conexão e tente de novo, ou fale pelo WhatsApp.";
+
+// Ordem dos campos na tela: é por ela que o foco vai ao primeiro inválido.
+const FIELD_ORDER = [
+  "nome",
+  "email",
+  "telefone",
+  "empresa",
+  "tipoOperacao",
+  "mensagem",
+] as const;
 
 const initialState = {
   nome: "",
@@ -25,6 +46,31 @@ export default function ContactForm() {
   const [values, setValues] = useState(initialState);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const formRef = useRef<HTMLFormElement>(null);
+  const successRef = useRef<HTMLDivElement>(null);
+  // Pedido de foco para um campo: objeto novo a cada pedido, para o efeito
+  // rodar de novo mesmo quando o campo é o mesmo da vez anterior.
+  const [focusRequest, setFocusRequest] = useState<{ id: string } | null>(null);
+
+  // O foco só vai depois do render: é nele que o aria-describedby do campo
+  // passa a apontar para a mensagem, e o leitor de tela lê as duas juntas.
+  useEffect(() => {
+    if (!focusRequest) return;
+    formRef.current?.querySelector<HTMLElement>(`#${focusRequest.id}`)?.focus();
+  }, [focusRequest]);
+
+  // Ao enviar, o formulário sai do DOM e leva o foco junto. Sem este efeito,
+  // quem usa teclado ou leitor de tela cairia no <body> sem saber que deu certo.
+  useEffect(() => {
+    if (status.kind === "success") successRef.current?.focus();
+  }, [status.kind]);
+
+  /** Marca os erros e leva o foco ao primeiro campo inválido, na ordem da tela. */
+  function showErrors(next: Record<string, string>) {
+    setErrors(next);
+    const first = FIELD_ORDER.find((id) => next[id]);
+    if (first) setFocusRequest({ id: first });
+  }
 
   function update<K extends keyof typeof initialState>(
     key: K,
@@ -52,16 +98,20 @@ export default function ContactForm() {
       localErrors.mensagem = "Conte um pouco sobre sua operação.";
 
     if (Object.keys(localErrors).length > 0) {
-      setErrors(localErrors);
+      showErrors(localErrors);
       setStatus({ kind: "idle" });
       return;
     }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), SUBMIT_TIMEOUT_MS);
 
     try {
       const res = await fetch("/contact.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(values),
+        signal: controller.signal,
       });
 
       if (res.ok) {
@@ -76,26 +126,29 @@ export default function ContactForm() {
         for (const issue of data.issues) {
           if (issue.path) fieldErrors[issue.path] = issue.message;
         }
-        setErrors(fieldErrors);
+        showErrors(fieldErrors);
       }
-      setStatus({
-        kind: "error",
-        message:
-          data.error ||
-          "Não foi possível enviar sua mensagem agora. Tente novamente ou fale pelo WhatsApp.",
-      });
+      setStatus({ kind: "error", message: data.error || GENERIC_ERROR });
     } catch {
       setStatus({
         kind: "error",
-        message:
-          "Não foi possível enviar sua mensagem agora. Tente novamente ou fale pelo WhatsApp.",
+        message: controller.signal.aborted ? TIMEOUT_ERROR : GENERIC_ERROR,
       });
+    } finally {
+      // Só aqui, depois de ler o corpo: o abort também cobre uma resposta que
+      // chegou os cabeçalhos e parou no meio.
+      clearTimeout(timer);
     }
   }
 
   if (status.kind === "success") {
     return (
-      <div className="rounded-[10px] bg-(--color-bg-light) border border-(--color-accent) p-8 text-center">
+      <div
+        ref={successRef}
+        role="status"
+        tabIndex={-1}
+        className="rounded-[10px] bg-(--color-bg-light) border border-(--color-accent) p-8 text-center"
+      >
         <div className="size-12 rounded-full bg-(--color-accent) text-(--color-bg-dark) inline-flex items-center justify-center mb-4">
           <svg
             width={22}
@@ -119,7 +172,12 @@ export default function ContactForm() {
         </p>
         <button
           type="button"
-          onClick={() => setStatus({ kind: "idle" })}
+          onClick={() => {
+            setStatus({ kind: "idle" });
+            // O botão some junto com o painel de sucesso: o foco volta ao
+            // começo do formulário em vez de se perder.
+            setFocusRequest({ id: FIELD_ORDER[0] });
+          }}
           className="mt-6 text-sm font-semibold text-(--color-secondary) hover:underline"
         >
           Enviar outra mensagem
@@ -132,6 +190,7 @@ export default function ContactForm() {
 
   return (
     <form
+      ref={formRef}
       onSubmit={handleSubmit}
       noValidate
       className="grid gap-4"
@@ -202,7 +261,10 @@ export default function ContactForm() {
           htmlFor="tipoOperacao"
           className="block text-sm font-medium mb-1.5"
         >
-          Tipo de operação <span className="text-red-500">*</span>
+          Tipo de operação{" "}
+          <span className="text-red-700" aria-hidden>
+            *
+          </span>
         </label>
         <select
           id="tipoOperacao"
@@ -212,6 +274,7 @@ export default function ContactForm() {
           onChange={(e) => update("tipoOperacao", e.target.value)}
           className="w-full rounded-[5px] border border-(--color-border-light) bg-white px-4 py-3 text-sm focus:border-(--color-secondary) focus:outline-none focus:ring-2 focus:ring-(--color-accent)/30 transition-colors"
           aria-invalid={!!errors.tipoOperacao}
+          aria-describedby={errors.tipoOperacao ? "tipoOperacao-error" : undefined}
         >
           <option value="">Selecione…</option>
           {tipoOperacaoOptions.map((o) => (
@@ -221,7 +284,9 @@ export default function ContactForm() {
           ))}
         </select>
         {errors.tipoOperacao && (
-          <p className="mt-1 text-xs text-red-500">{errors.tipoOperacao}</p>
+          <p id="tipoOperacao-error" className="mt-1 text-xs text-red-700">
+            {errors.tipoOperacao}
+          </p>
         )}
       </div>
 
@@ -230,7 +295,10 @@ export default function ContactForm() {
           htmlFor="mensagem"
           className="block text-sm font-medium mb-1.5"
         >
-          Mensagem <span className="text-red-500">*</span>
+          Mensagem{" "}
+          <span className="text-red-700" aria-hidden>
+            *
+          </span>
         </label>
         <textarea
           id="mensagem"
@@ -242,9 +310,12 @@ export default function ContactForm() {
           placeholder="Conte sobre sua operação, tipo de resíduo gerado, periodicidade, etc."
           className="w-full rounded-[5px] border border-(--color-border-light) bg-white px-4 py-3 text-sm focus:border-(--color-secondary) focus:outline-none focus:ring-2 focus:ring-(--color-accent)/30 transition-colors resize-y min-h-[120px]"
           aria-invalid={!!errors.mensagem}
+          aria-describedby={errors.mensagem ? "mensagem-error" : undefined}
         />
         {errors.mensagem && (
-          <p className="mt-1 text-xs text-red-500">{errors.mensagem}</p>
+          <p id="mensagem-error" className="mt-1 text-xs text-red-700">
+            {errors.mensagem}
+          </p>
         )}
       </div>
 
@@ -267,7 +338,15 @@ export default function ContactForm() {
           {submitting ? "Enviando…" : "Enviar mensagem"}
         </Button>
         <p className="mt-3 text-xs text-(--color-text-muted)">
-          Ao enviar, você concorda em receber retorno da equipe Ecoleva.
+          Ao enviar, você concorda em receber retorno da equipe Ecoleva. Saiba
+          como tratamos seus dados na{" "}
+          <Link
+            href="/politica-de-privacidade"
+            className="font-semibold text-(--color-secondary) underline underline-offset-2 hover:no-underline"
+          >
+            Política de Privacidade
+          </Link>
+          .
         </p>
       </div>
     </form>
@@ -299,7 +378,12 @@ function Field({
     <div>
       <label htmlFor={id} className="block text-sm font-medium mb-1.5">
         {label}
-        {required && <span className="text-red-500"> *</span>}
+        {required && (
+          <span className="text-red-700" aria-hidden>
+            {" "}
+            *
+          </span>
+        )}
       </label>
       <input
         id={id}
@@ -311,9 +395,14 @@ function Field({
         autoComplete={autoComplete}
         inputMode={inputMode}
         aria-invalid={!!error}
+        aria-describedby={error ? `${id}-error` : undefined}
         className="w-full rounded-[5px] border border-(--color-border-light) bg-white px-4 py-3 text-sm focus:border-(--color-secondary) focus:outline-none focus:ring-2 focus:ring-(--color-accent)/30 transition-colors"
       />
-      {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+      {error && (
+        <p id={`${id}-error`} className="mt-1 text-xs text-red-700">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
