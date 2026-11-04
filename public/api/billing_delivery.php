@@ -127,7 +127,7 @@ function billingDeliverInvoice(PDO $db, array $invoice, array $client, string $e
         if ($destination === '') continue;
         $key = 'invoice:' . $invoice['id'] . ':' . $event . ':' . $channel;
         try {
-            $result[$channel] = billingLocked($db, $key, function () use ($db, $invoice, $client, $email, $channel, $destination, $key, $mail, $whatsapp): string {
+            $result[$channel] = billingLocked($db, $key, function () use ($db, $invoice, $client, $email, $channel, $destination, $key, $mail, $whatsapp, $overdue): string {
                 $check = $db->prepare("SELECT id, action, target_login FROM activity_logs WHERE action IN ('billing_delivery', 'billing_attempt', 'billing_failed') AND description = ? ORDER BY id DESC LIMIT 1");
                 $check->execute([$key]);
                 $previous = $check->fetch();
