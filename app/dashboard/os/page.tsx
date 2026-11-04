@@ -148,6 +148,7 @@ function OSMain() {
   const [responsible, setResponsible] = useState("");
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState("");
+  const [formNotice, setFormNotice] = useState("");
 
   const [activeOS, setActiveOS] = useState<ServiceOrder | null>(null);
 
@@ -227,6 +228,7 @@ function OSMain() {
 
     setCreating(true);
     setFormError("");
+    setFormNotice("");
     try {
       const res = await apiPostJson("/api/os/index.php", payload);
       const data = await res.json();
@@ -236,6 +238,12 @@ function OSMain() {
         const criada: ServiceOrder = data.service_order;
         setHistory([criada, ...history]);
         abrirOS(criada);
+        setFormNotice(`OS Nº ${osNumber(criada.id)} gerada.`);
+        // O documento abre na coluna ao lado, no topo do formulário. O botão
+        // fica no fim da página, então sem rolar a OS "não aparece".
+        requestAnimationFrame(() => {
+          document.getElementById("os-gerada")?.scrollIntoView({ block: "start", behavior: "smooth" });
+        });
 
         // Clear form
         setCollectionAddress("");
@@ -436,6 +444,11 @@ function OSMain() {
                 {formError}
               </p>
             )}
+            {formNotice && !formError && (
+              <p role="status" className="rounded-xl border border-[var(--color-accent)]/40 bg-[var(--color-accent-soft)] p-3 text-sm text-[var(--color-accent)]">
+                {formNotice} O documento está nesta página, acima do histórico.
+              </p>
+            )}
 
             <button
               type="submit"
@@ -449,7 +462,7 @@ function OSMain() {
         </div>
 
         {/* Pré-visualização e Ações */}
-        <div className="min-w-0">
+        <div id="os-gerada" className="min-w-0 scroll-mt-4">
           {activeOS ? (
             <div className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
