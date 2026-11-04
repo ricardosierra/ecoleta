@@ -113,7 +113,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             apiJsonResponse(200, ['ok' => true, 'message' => 'Fatura cancelada com sucesso.']);
         }
 
-        if ($action === 'send') {
+        if ($action === 'send' || $action === 'resend_email') {
             $stmt = $db->prepare('SELECT * FROM invoices WHERE id = ?');
             $stmt->execute([(int) ($body['id'] ?? 0)]);
             $invoice = $stmt->fetch();
@@ -146,10 +146,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // `new` no ciclo automático. Sem um evento novo, "Gerar e enviar"
         // respondia sucesso e não mandava nada. "Tentar envios pendentes"
         // continua no evento `new`, para não repetir o que já saiu.
-        $event = ($action === 'create' && empty($invoice['created']))
-            ? 'manual:' . gmdate('YmdHis')
-            : 'new';
-        $delivery = billingDeliverInvoice($db, $invoice, $client, $event);
+        // Reenvio do e-mail usa um evento novo e só esse canal: o template sai
+        // outra vez sem repetir o WhatsApp, que a Meta cobra fora da janela.
+        if ($action === 'resend_email') {
+            $delivery = billingDeliverInvoice($db, $invoice, $client, 'resend:' . gmdate('YmdHis'), null, null, ['email']);
+        } else {
+            $event = ($action === 'create' && empty($invoice['created']))
+                ? 'manual:' . gmdate('YmdHis')
+                : 'new';
+            $delivery = billingDeliverInvoice($db, $invoice, $client, $event);
+        }
         apiJsonResponse(200, ['ok' => true, 'invoice' => $invoice, 'delivery' => $delivery]);
     } catch (InvalidArgumentException $e) {
         apiJsonResponse(400, ['error' => $e->getMessage()]);

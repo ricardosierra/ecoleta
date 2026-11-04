@@ -110,7 +110,7 @@ function billingIssueInvoice(PDO $db, array $client, float $value, string $dueDa
 }
 
 /** One notification per invoice, event and channel; failures remain retryable. */
-function billingDeliverInvoice(PDO $db, array $invoice, array $client, string $event = 'new', ?callable $mail = null, ?callable $whatsapp = null): array
+function billingDeliverInvoice(PDO $db, array $invoice, array $client, string $event = 'new', ?callable $mail = null, ?callable $whatsapp = null, ?array $channels = null): array
 {
     if (!in_array($invoice['status'], ['PENDING', 'OVERDUE'], true)) return ['email' => 'skipped', 'whatsapp' => 'skipped', 'errors' => []];
     $mail ??= 'osSendMail';
@@ -123,8 +123,16 @@ function billingDeliverInvoice(PDO $db, array $invoice, array $client, string $e
             : billingNewInvoiceEmail($client['name'], $invoice['value'], $invoice['due_date'], (string) ($invoice['pix_qrcode_text'] ?? ''), (string) $invoice['invoice_url']));
     $result = ['email' => 'skipped', 'whatsapp' => 'skipped', 'errors' => []];
     foreach (['email', 'whatsapp'] as $channel) {
+        if ($channels !== null && !in_array($channel, $channels, true)) continue;
         $destination = $channel === 'email' ? trim((string) ($client['email'] ?? '')) : normalizePhone($client['whatsapp'] ?? '');
-        if ($destination === '') continue;
+        if ($destination === '') {
+            if ($channels !== null) {
+                $result['errors'][$channel] = $channel === 'email'
+                    ? 'Cliente sem e-mail cadastrado.'
+                    : 'Cliente sem WhatsApp cadastrado.';
+            }
+            continue;
+        }
         $key = 'invoice:' . $invoice['id'] . ':' . $event . ':' . $channel;
         try {
             $result[$channel] = billingLocked($db, $key, function () use ($db, $invoice, $client, $email, $channel, $destination, $key, $mail, $whatsapp, $overdue): string {
@@ -224,7 +232,7 @@ function billingDeliverInvoice(PDO $db, array $invoice, array $client, string $e
     // Os dois canais sem destinatário: a cobrança existe no Asaas, mas ninguém recebe
     // aviso. Sem este erro a tela dizia "notificações processadas" e o cron "rodou com
     // sucesso" para uma fatura que nunca chegou a quem deveria pagá-la.
-    if ($result['email'] === 'skipped' && $result['whatsapp'] === 'skipped') {
+    if ($channels === null && $result['email'] === 'skipped' && $result['whatsapp'] === 'skipped') {
         $result['errors']['destino'] = 'Cliente sem e-mail e sem WhatsApp cadastrados: ninguém foi avisado desta fatura.';
     }
     return $result;

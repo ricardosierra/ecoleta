@@ -24,6 +24,7 @@ describe("Faturas", () => {
     const posts = mockApi(); const user = userEvent.setup(); render(<FaturasPage />);
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     expect(await screen.findByText("10/09/2026")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Nova fatura avulsa" }));
     await user.selectOptions(screen.getByLabelText("Cliente"), "1");
     expect(screen.getByLabelText("Valor (R$)")).toHaveValue(7.5);
     await user.type(screen.getByLabelText("Vencimento"), "2026-09-12");
@@ -35,6 +36,7 @@ describe("Faturas", () => {
     const posts = mockApi(); const user = userEvent.setup(); render(<FaturasPage />);
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     await screen.findByText("10/09/2026");
+    await user.click(screen.getByRole("button", { name: "Nova fatura avulsa" }));
     await user.selectOptions(screen.getByLabelText("Cliente"), "1");
     await user.type(screen.getByLabelText("Vencimento"), "2026-10-05");
     await user.click(screen.getByRole("button", { name: "Gerar e enviar fatura" }));
@@ -46,6 +48,7 @@ describe("Faturas", () => {
     const posts = mockApi(); const user = userEvent.setup(); render(<FaturasPage />);
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     await screen.findByText("10/09/2026");
+    await user.click(screen.getByRole("button", { name: "Nova fatura avulsa" }));
     await user.selectOptions(screen.getByLabelText("Cliente"), "1");
     await user.type(screen.getByLabelText("Vencimento"), "2026-09-20");
     await user.click(screen.getByRole("button", { name: "Gerar e enviar fatura" }));
@@ -67,6 +70,15 @@ describe("Faturas", () => {
     expect(screen.getByLabelText("Cliente")).toHaveValue("1");
     expect(screen.getByLabelText("Valor (R$)")).toHaveValue(170);
     expect(screen.getByLabelText("Vencimento")).toHaveValue("2026-10-06");
+    expect(screen.getByRole("dialog", { name: "Nova fatura avulsa" })).toBeVisible();
+  });
+  it("reenvia só o e-mail da linha, sem gerar outra cobrança", async () => {
+    const posts = mockApi();
+    const user = userEvent.setup();
+    render(<FaturasPage />);
+    await user.click(await screen.findByRole("button", { name: "Reenviar e-mail" }));
+    await waitFor(() => expect(posts).toEqual([{ action: "resend_email", id: 1 }]));
+    expect(await screen.findByRole("status")).toHaveTextContent("E-mail reenviado.");
   });
   it("não mostra o painel quando todo cliente ativo tem fatura no mês", async () => {
     mockApi(undefined, null, { today: "2026-10-06", billing_missing: [] });

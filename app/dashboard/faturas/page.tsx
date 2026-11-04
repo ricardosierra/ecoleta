@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { DashboardGate, useDashboardAuth } from "@/components/DashboardGate";
+import { DashboardModal, ModalActions } from "@/components/DashboardModal";
 import { apiPostJson } from "@/lib/dashboard-api";
 import { describeBillingRun, type BillingCronRun, type BillingCronStatus } from "@/lib/billing-status";
 import { formatOsDate } from "@/lib/os-share";
@@ -77,6 +78,7 @@ function FaturasMain() {
   const [cronStatus, setCronStatus] = useState<BillingCronStatus | null>(null);
   const [missing, setMissing] = useState<MissingClient[]>([]);
   const [today, setToday] = useState("");
+  const [composerOpen, setComposerOpen] = useState(false);
 
   /** Aplica a listagem da API: as faturas, o faturamento automático e quem ficou sem fatura. */
   function applyListing(data: {
@@ -92,11 +94,11 @@ function FaturasMain() {
   }
 
   /** Leva o cliente sem fatura para o formulário, com vencimento hoje (data de Brasília, vinda da API). */
-  function prefill(m: MissingClient) {
-    setClientId(String(m.client_id));
-    setValue(String(m.value));
-    setDueDate(today);
-    document.getElementById("gerar-fatura")?.scrollIntoView({ block: "center" });
+  function openComposer(prefill?: { clientId: string; value: string; dueDate: string }) {
+    setClientId(prefill?.clientId ?? "");
+    setValue(prefill?.value ?? "");
+    setDueDate(prefill?.dueDate ?? today);
+    setComposerOpen(true);
   }
 
   /**
@@ -116,6 +118,7 @@ function FaturasMain() {
       );
       if (!ok) return;
     }
+    setComposerOpen(false);
     void submit({ action: "create", client_id: id, value: Number(value), due_date: dueDate });
   }
 
@@ -127,6 +130,10 @@ function FaturasMain() {
       if (!res.ok || !data.ok) throw new Error(data.error || "Não foi possível processar a fatura.");
       if (body.action === "cancel") {
         setFeedback(data.message || "Fatura cancelada com sucesso.");
+      } else if (body.action === "resend_email") {
+        const delivery = data.delivery ?? {};
+        const problem = delivery.errors?.email;
+        setFeedback(problem ? `O e-mail não saiu: ${problem}` : delivery.email === "sent" ? "E-mail reenviado." : "O e-mail não saiu nesta tentativa.");
       } else {
         const delivery = data.delivery ?? {};
         const problems = Object.values(delivery.errors ?? {}).join(" ");
@@ -172,11 +179,16 @@ function FaturasMain() {
 
   return (
     <div className="max-w-6xl mx-auto p-6 sm:p-8 space-y-8 text-white">
-      <div>
-        <h1 className="text-3xl font-bold">Faturas</h1>
-        <p className="text-[var(--color-text-on-dark)] mt-2">
-          Acompanhamento das cobranças geradas. O status é sincronizado automaticamente via Webhook do Asaas.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">Faturas</h1>
+          <p className="text-[var(--color-text-on-dark)] mt-2">
+            Acompanhamento das cobranças geradas. O status é sincronizado automaticamente via Webhook do Asaas.
+          </p>
+        </div>
+        <button type="button" onClick={() => openComposer()} className="rounded-full bg-[var(--color-accent)] text-[var(--color-bg-dark)] px-5 py-2.5 font-semibold">
+          Nova fatura avulsa
+        </button>
       </div>
 
       {cronStatus && (
@@ -198,7 +210,7 @@ function FaturasMain() {
           <h2 id="sem-fatura" className="font-semibold">Clientes sem fatura neste mês</h2>
           <p className="mt-1 text-[var(--color-text-on-dark)]">
             O vencimento cadastrado já passou, e o faturamento automático não emite data passada (o Asaas recusa).
-            Use &quot;Preencher fatura&quot; para gerar com vencimento hoje e confirme em &quot;Gerar e enviar fatura&quot;.
+            Use &quot;Preencher fatura&quot; para abrir o cadastro com vencimento hoje.
           </p>
           <ul className="mt-3 space-y-2">
             {missing.map(m => (
@@ -206,7 +218,7 @@ function FaturasMain() {
                 <span>
                   <strong>{m.name}</strong>, vencia dia {m.due_day}, R$ {m.value.toFixed(2).replace(".", ",")}
                 </span>
-                <button type="button" onClick={() => prefill(m)} aria-label={`Preencher fatura de ${m.name}`} className="text-xs text-[var(--color-accent)] hover:underline">
+                <button type="button" onClick={() => openComposer({ clientId: String(m.client_id), value: String(m.value), dueDate: today })} aria-label={`Preencher fatura de ${m.name}`} className="text-xs text-[var(--color-accent)] hover:underline">
                   Preencher fatura
                 </button>
               </li>
@@ -215,19 +227,35 @@ function FaturasMain() {
         </section>
       )}
 
-      <form id="gerar-fatura" onSubmit={e => { e.preventDefault(); handleCreate(); }} className="grid gap-4 sm:grid-cols-3 p-6 border border-[var(--color-border-dark)] rounded-2xl">
-        <h2 className="text-xl font-semibold sm:col-span-3">Gerar fatura</h2>
-        <label>Cliente
-          <select required value={clientId} onChange={e => { setClientId(e.target.value); const c = clients.find(c => c.id === Number(e.target.value)); setValue(String(c?.monthly_value ?? "")); }} className="block mt-2 w-full bg-[var(--color-bg-dark)] border border-[var(--color-border-dark)] rounded-lg p-2">
-            <option value="">Selecione o cliente</option>
-            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </label>
-        <label>Valor (R$)<input required type="number" min="5" step="0.01" value={value} onChange={e => setValue(e.target.value)} onWheel={e => e.currentTarget.blur()} className="block mt-2 w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg p-2" /></label>
-        <label>Vencimento<input required type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="block mt-2 w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg p-2" /></label>
-        <p className="sm:col-span-3 text-sm text-[var(--color-text-on-dark)]">Gera a cobrança no Asaas e envia por e-mail e WhatsApp conforme o cadastro. Uma fatura já existente para o mesmo cliente e vencimento é reutilizada.</p>
-        <button disabled={busy} className="rounded-full bg-[var(--color-accent)] text-[var(--color-bg-dark)] px-5 py-2 font-semibold">{busy ? "Processando..." : "Gerar e enviar fatura"}</button>
-      </form>
+      {composerOpen && (
+        <DashboardModal
+          as="form"
+          title="Nova fatura avulsa"
+          size="lg"
+          onClose={() => setComposerOpen(false)}
+          onSubmit={e => { e.preventDefault(); handleCreate(); }}
+        >
+          <div className="grid gap-4 sm:grid-cols-3">
+            <label className="sm:col-span-3">Cliente
+              <select required value={clientId} onChange={e => { setClientId(e.target.value); const c = clients.find(c => c.id === Number(e.target.value)); setValue(String(c?.monthly_value ?? "")); }} className="block mt-2 w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg p-2">
+                <option value="">Selecione o cliente</option>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </label>
+            <label className="sm:col-span-1">Valor (R$)
+              <input required type="number" min="5" step="0.01" value={value} onChange={e => setValue(e.target.value)} onWheel={e => e.currentTarget.blur()} className="block mt-2 w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg p-2" />
+            </label>
+            <label className="sm:col-span-2">Vencimento
+              <input required type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="block mt-2 w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg p-2" />
+            </label>
+          </div>
+          <p className="mt-4 text-sm text-[var(--color-text-on-dark)]">Gera a cobrança no Asaas e envia o e-mail e o WhatsApp do cadastro. O mesmo valor e vencimento reaproveita a cobrança que já existe.</p>
+          <ModalActions>
+            <button type="button" onClick={() => setComposerOpen(false)} className="rounded-full px-5 py-2 text-sm text-white/70 hover:bg-white/5">Cancelar</button>
+            <button disabled={busy} className="rounded-full bg-[var(--color-accent)] text-[var(--color-bg-dark)] px-5 py-2 font-semibold">{busy ? "Processando..." : "Gerar e enviar fatura"}</button>
+          </ModalActions>
+        </DashboardModal>
+      )}
       {feedback && <p role="status" className="text-sm">{feedback}</p>}
       <div className="bg-[rgba(255,255,255,0.04)] rounded-2xl border border-[var(--color-border-dark)] overflow-hidden">
         <div className="data-table-wrap">
@@ -260,6 +288,9 @@ function FaturasMain() {
                     <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1">
                       {['PENDING', 'OVERDUE'].includes(inv.status) && (
                         <>
+                          <button disabled={busy} onClick={() => void submit({ action: "resend_email", id: inv.id })} className="text-xs text-[var(--color-accent)] hover:underline">
+                            Reenviar e-mail
+                          </button>
                           <button disabled={busy} onClick={() => void submit({ action: "send", id: inv.id })} className="text-xs text-[var(--color-accent)] hover:underline">
                             Tentar envios pendentes
                           </button>

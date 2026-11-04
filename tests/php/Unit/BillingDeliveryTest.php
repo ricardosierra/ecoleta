@@ -415,6 +415,30 @@ final class BillingDeliveryTest extends TestCase
         self::assertSame(['ecoleva:client:' . $client['id'] . ':due:2026-10-10', 'ecoleva:client:' . $client['id'] . ':due:2026-10-10:v:8000'], $refs);
     }
 
+    public function testReenvioDeEmailNaoDisparaWhatsApp(): void
+    {
+        $client = $this->client();
+        $client['whatsapp'] = '5521999999999';
+        $invoice = ['id' => 7, 'status' => 'PENDING', 'value' => 10, 'due_date' => '2026-11-05', 'invoice_url' => 'https://example.com/invoice', 'pix_qrcode_text' => ''];
+        $whatsapp = 0;
+        $result = billingDeliverInvoice(
+            $this->db->pdo(),
+            $invoice,
+            $client,
+            'resend:1',
+            static fn (): bool => true,
+            static function () use (&$whatsapp): array {
+                $whatsapp++;
+                return [];
+            },
+            ['email']
+        );
+
+        self::assertSame('sent', $result['email']);
+        self::assertSame('skipped', $result['whatsapp']);
+        self::assertSame(0, $whatsapp);
+    }
+
     public function testBuscaDaFaturaDoMesPreferePendenteACanceladaMesmoComOutraData(): void
     {
         $clientId = $this->cycleClient('Busca', 100.0, 5);
