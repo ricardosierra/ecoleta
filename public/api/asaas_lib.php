@@ -18,7 +18,7 @@ function getAsaasApiKey(): string
     return apiSecret('ASAAS_API_KEY');
 }
 
-function asaasRequest(string $endpoint, string $method = 'GET', array $data = []): array
+function asaasRequest(string $endpoint, string $method = 'GET', array $data = [], int $timeout = 30): array
 {
     $apiKey = getAsaasApiKey();
     if (!$apiKey) {
@@ -29,7 +29,7 @@ function asaasRequest(string $endpoint, string $method = 'GET', array $data = []
     
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
     curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         'access_token: ' . $apiKey,

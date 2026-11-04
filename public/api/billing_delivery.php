@@ -41,10 +41,27 @@ function billingIssueInvoice(PDO $db, array $client, float $value, string $dueDa
         // Fatura cancelada não conta: quem cancelou e gera de novo para o mesmo vencimento
         // espera uma cobrança nova. Antes, o cancelamento era devolvido como "fatura já
         // existente", nada era criado nem enviado, e a tela dizia que deu certo.
-        $lookup = $db->prepare("SELECT * FROM invoices WHERE client_id = ? AND due_date = ? AND status <> 'DELETED' ORDER BY id DESC LIMIT 1");
+        $lookup = $db->prepare("SELECT * FROM invoices WHERE client_id = ? AND due_date = ? AND status <> 'DELETED' ORDER BY id DESC");
         $lookup->execute([$client['id'], $dueDate]);
-        if ($existing = $lookup->fetch()) return $existing + ['created' => false];
+        $open = $lookup->fetchAll();
+        foreach ($open as $existing) {
+            // Mesmo vencimento e mesmo valor: é a cobrança que já existe (a do ciclo
+            // ou um retry depois de queda). Valor diferente é fatura avulsa — outra
+            // cobrança, senão o clique em "Gerar e enviar" devolvia a mensal e o
+            // envio caía em "já enviado" sem sair nada.
+            if (abs((float) $existing['value'] - round($value, 2)) < 0.001) {
+                return $existing + ['created' => false];
+            }
+        }
+        // Sem fatura deste valor: a referência estável (sem sufixo) recupera a
+        // cobrança do ciclo se o request morreu depois do Asaas e antes do INSERT.
+        // Avulsa, com outra já aberta na data, ganha sufixo do valor para não
+        // colidir com essa referência nem ser engolida por ela.
+        $cents = (string) (int) round($value * 100);
         $reference = 'ecoleva:client:' . $client['id'] . ':due:' . $dueDate;
+        if ($open !== []) {
+            $reference .= ':v:' . $cents;
+        }
         $found = $request('/payments?externalReference=' . rawurlencode($reference), 'GET', []);
         // A cobrança cancelada pode voltar pela mesma referência; reaproveitá-la
         // ressuscitaria uma fatura morta (e bateria na chave única de asaas_payment_id).
@@ -77,7 +94,11 @@ function billingIssueInvoice(PDO $db, array $client, float $value, string $dueDa
         $stmt->execute([$client['id'], $payment['id'], $payment['value'] ?? $value, $payment['dueDate'] ?? $dueDate, $payment['invoiceUrl'], $payment['status'] ?? 'PENDING']);
         $id = (int) $db->lastInsertId();
         try {
-            $pix = $request('/payments/' . rawurlencode($payment['id']) . '/pixQrCode', 'GET', []);
+            // O Pix do Asaas às vezes demora o timeout inteiro (30s). No botão da
+            // tela isso estourava o limite do PHP antes do e-mail e do WhatsApp.
+            $pix = $request === 'asaasRequest'
+                ? asaasRequest('/payments/' . rawurlencode($payment['id']) . '/pixQrCode', 'GET', [], 8)
+                : $request('/payments/' . rawurlencode($payment['id']) . '/pixQrCode', 'GET', []);
             $update = $db->prepare('UPDATE invoices SET pix_qrcode_text = ? WHERE id = ?');
             $update->execute([$pix['payload'] ?? null, $id]);
         } catch (Throwable $e) {
@@ -94,9 +115,12 @@ function billingDeliverInvoice(PDO $db, array $invoice, array $client, string $e
     if (!in_array($invoice['status'], ['PENDING', 'OVERDUE'], true)) return ['email' => 'skipped', 'whatsapp' => 'skipped', 'errors' => []];
     $mail ??= 'osSendMail';
     $whatsapp ??= 'waRequest';
-    $email = str_starts_with($event, 'reminder:')
-        ? billingReminderEmail($client['name'], $invoice['value'], $invoice['due_date'], (string) ($invoice['pix_qrcode_text'] ?? ''), (string) $invoice['invoice_url'])
-        : billingNewInvoiceEmail($client['name'], $invoice['value'], $invoice['due_date'], (string) ($invoice['pix_qrcode_text'] ?? ''), (string) $invoice['invoice_url']);
+    $overdue = str_starts_with($event, 'reminder:overdue:');
+    $email = $overdue
+        ? billingOverdueEmail($client['name'], $invoice['value'], $invoice['due_date'], (string) ($invoice['pix_qrcode_text'] ?? ''), (string) $invoice['invoice_url'])
+        : (str_starts_with($event, 'reminder:')
+            ? billingReminderEmail($client['name'], $invoice['value'], $invoice['due_date'], (string) ($invoice['pix_qrcode_text'] ?? ''), (string) $invoice['invoice_url'])
+            : billingNewInvoiceEmail($client['name'], $invoice['value'], $invoice['due_date'], (string) ($invoice['pix_qrcode_text'] ?? ''), (string) $invoice['invoice_url']));
     $result = ['email' => 'skipped', 'whatsapp' => 'skipped', 'errors' => []];
     foreach (['email', 'whatsapp'] as $channel) {
         $destination = $channel === 'email' ? trim((string) ($client['email'] ?? '')) : normalizePhone($client['whatsapp'] ?? '');
@@ -134,7 +158,7 @@ function billingDeliverInvoice(PDO $db, array $invoice, array $client, string $e
                     $conversation = waFindConversationByPhone($db, $destination);
                     $open = waWindowIsOpen($conversation['service_window_expires_at'] ?? null);
                     $text = $email['text'];
-                    $payload = billingWhatsAppPayload($destination, $client['name'], $invoice, $text, $open);
+                    $payload = billingWhatsAppPayload($destination, $client['name'], $invoice, $text, $open, $overdue);
                     $response = $whatsapp($payload);
                     $messageId = waExtractSentMessageId($response);
                     if (!$messageId) throw new RuntimeException('WhatsApp não confirmou o recebimento da solicitação.');
@@ -232,7 +256,8 @@ function billingFindMonthInvoice(PDO $db, int $clientId, string $dueDate): ?arra
  * cliente cadastrado no meio do mês se resolvem na execução seguinte, sem que ninguém
  * precise lembrar de nada.
  *
- * Os lembretes (dias 3 e 7) pulam a fatura emitida há menos de `BILLING_REMINDER_MIN_AGE`
+ * O lembrete, dois dias antes do vencimento, e o aviso de atraso, a partir de
+ * dois dias depois, pulam a fatura emitida há menos de `BILLING_REMINDER_MIN_AGE`
  * e a que acabou de ser entregue neste mesmo ciclo: uma fatura nova num dia de lembrete
  * sairia duas vezes, em seguida, e isso vale também entre execuções, quando o cron roda
  * duas vezes no mesmo dia (um disparo manual de teste depois do deploy, mais o agendado).
@@ -275,24 +300,26 @@ function billingRunCycle(PDO $db, DateTimeImmutable $today, ?callable $request =
         }
     }
 
-    if (billingShouldRemind($today)) {
-        $stmt = $db->prepare("SELECT i.*, c.name, c.email, c.whatsapp FROM invoices i JOIN clients c ON c.id = i.client_id WHERE i.status IN ('PENDING', 'OVERDUE') AND c.status = 'active' AND i.due_date BETWEEN ? AND ?");
-        $stmt->execute([$today->format('Y-m-01'), $today->format('Y-m-t')]);
-        foreach ($stmt->fetchAll() as $invoice) {
-            // created_at é gravado pelo MySQL no fuso da sessão, que pode diferir do do PHP em
-            // algumas horas: a margem de BILLING_REMINDER_MIN_AGE absorve isso. Data ilegível
-            // vira idade enorme, e o lembrete sai como sempre saiu.
-            $age = $today->getTimestamp() - (int) strtotime((string) ($invoice['created_at'] ?? ''));
-            if ($age < BILLING_REMINDER_MIN_AGE) continue;
-            // A idade olha a criacao, nao a entrega: com o SMTP fora do ar por dias, a fatura
-            // e velha quando o "Sua Fatura Mensal" finalmente sai, e o lembrete iria atras
-            // dele no mesmo ciclo.
-            if (isset($deliveredNow[(int) $invoice['id']])) continue;
-            $client = ['id' => $invoice['client_id'], 'name' => $invoice['name'], 'email' => $invoice['email'], 'whatsapp' => $invoice['whatsapp']];
-            $delivery = billingDeliverInvoice($db, $invoice, $client, 'reminder:' . $today->format('Y-m-d'), $mail, $whatsapp);
-            if ($delivery['email'] === 'sent' || $delivery['whatsapp'] === 'accepted') $reminders++;
-            if ($delivery['errors']) $errors[] = ['invoice_id' => $invoice['id'], 'delivery' => $delivery];
-        }
+    $firstDueDate = (new DateTimeImmutable($today->format('Y-m-01')))->modify('-' . BILLING_REMINDER_DAYS_BEFORE_DUE . ' days')->format('Y-m-d');
+    $lastDueDate = (new DateTimeImmutable($today->format('Y-m-t')))->modify('+' . BILLING_OVERDUE_NOTICE_DAYS_AFTER_DUE . ' days')->format('Y-m-d');
+    $stmt = $db->prepare("SELECT i.*, c.name, c.email, c.whatsapp FROM invoices i JOIN clients c ON c.id = i.client_id WHERE i.status IN ('PENDING', 'OVERDUE') AND c.status = 'active' AND i.due_date BETWEEN ? AND ?");
+    $stmt->execute([$firstDueDate, $lastDueDate]);
+    foreach ($stmt->fetchAll() as $invoice) {
+        $reminderType = billingReminderEvent($today, (string) $invoice['due_date']);
+        if ($reminderType === null) continue;
+        // created_at é gravado pelo MySQL no fuso da sessão, que pode diferir do do PHP em
+        // algumas horas: a margem de BILLING_REMINDER_MIN_AGE absorve isso. Data ilegível
+        // vira idade enorme, e o lembrete sai como sempre saiu.
+        $age = $today->getTimestamp() - (int) strtotime((string) ($invoice['created_at'] ?? ''));
+        if ($age < BILLING_REMINDER_MIN_AGE) continue;
+        // A idade olha a criacao, nao a entrega: com o SMTP fora do ar por dias, a fatura
+        // e velha quando o "Sua Fatura Mensal" finalmente sai, e o lembrete iria atras
+        // dele no mesmo ciclo.
+        if (isset($deliveredNow[(int) $invoice['id']])) continue;
+        $client = ['id' => $invoice['client_id'], 'name' => $invoice['name'], 'email' => $invoice['email'], 'whatsapp' => $invoice['whatsapp']];
+        $delivery = billingDeliverInvoice($db, $invoice, $client, 'reminder:' . $reminderType . ':' . $invoice['due_date'], $mail, $whatsapp);
+        if ($delivery['email'] === 'sent' || $delivery['whatsapp'] === 'accepted') $reminders++;
+        if ($delivery['errors']) $errors[] = ['invoice_id' => $invoice['id'], 'delivery' => $delivery];
     }
 
     return ['clients' => count($clients), 'generated' => $generated, 'reminders' => $reminders, 'errors' => $errors];
@@ -378,12 +405,16 @@ function billingLastRun(PDO $db): ?array
     ];
 }
 
-function billingWhatsAppPayload(string $to, string $name, array $invoice, string $text, bool $windowOpen): array
+function billingWhatsAppPayload(string $to, string $name, array $invoice, string $text, bool $windowOpen, bool $overdue = false): array
 {
     $payload = ['messaging_product' => 'whatsapp', 'to' => $to];
     if ($windowOpen) return $payload + ['type' => 'text', 'text' => ['preview_url' => false, 'body' => $text]];
-    $template = apiSecret('WHATSAPP_BILLING_TEMPLATE');
-    if ($template === '') throw new RuntimeException('Template de cobrança do WhatsApp não configurado.');
+    $template = apiSecret($overdue ? 'WHATSAPP_BILLING_OVERDUE_TEMPLATE' : 'WHATSAPP_BILLING_TEMPLATE');
+    if ($template === '') {
+        throw new RuntimeException($overdue
+            ? 'Template de aviso de atraso do WhatsApp não configurado.'
+            : 'Template de cobrança do WhatsApp não configurado.');
+    }
     return $payload + ['type' => 'template', 'template' => [
         'name' => $template, 'language' => ['code' => apiSecret('WHATSAPP_BILLING_TEMPLATE_LANG') ?: 'pt_BR'],
         'components' => [['type' => 'body', 'parameters' => array_map(

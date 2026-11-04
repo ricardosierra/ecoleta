@@ -126,7 +126,7 @@ describe("Faturas", () => {
       render(<FaturasPage />);
 
       await user.click(await screen.findByRole("button", { name: "Tentar envios pendentes" }));
-      expect(await screen.findByRole("status")).toHaveTextContent("Fatura registrada e notificações processadas.");
+      expect(await screen.findByRole("status")).toHaveTextContent("Fatura registrada e enviada.");
     });
   });
 });

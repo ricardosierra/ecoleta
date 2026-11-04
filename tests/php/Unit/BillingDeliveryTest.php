@@ -130,20 +130,77 @@ final class BillingDeliveryTest extends TestCase
         self::assertCount(1, array_keys(array_filter($calls, fn (string $c) => str_starts_with($c, 'POST'))));
     }
 
-    public function testNoDia30EmiteOMesSeguinteEEmDiaDeLembreteRelembraOQueJaExistia(): void
+    public function testNoDia30EmiteFaturaEEnviaLembreteEAvisoDeAtraso(): void
     {
         $this->cycleClient('Mensal', 600.0, 5);
-        $calls = []; $sent = [];
+        $calls = []; $sent = []; $texts = [];
+        $mail = function (string $to, string $subject, string $html, string $text) use (&$sent, &$texts): bool {
+            $sent[] = $subject;
+            $texts[] = $text;
+            return true;
+        };
 
-        $this->runCycle('2026-09-30', $this->fakeAsaas($calls), $this->recordingMail($sent));
+        $this->runCycle('2026-09-30', $this->fakeAsaas($calls), $mail);
         $this->stampInvoices('2026-09-30 11:00:00');
-        $reminder = $this->runCycle('2026-10-03', $this->fakeAsaas($calls), $this->recordingMail($sent));
+        $reminder = $this->runCycle('2026-10-03', $this->fakeAsaas($calls), $mail);
+        $this->db->pdo()->exec("UPDATE invoices SET status = 'OVERDUE'");
+        $late = $this->runCycle('2026-10-07', $this->fakeAsaas($calls), $mail);
+        $retry = $this->runCycle('2026-10-08', $this->fakeAsaas($calls), $mail);
 
         $invoices = $this->db->rows('invoices');
         self::assertCount(1, $invoices);
         self::assertSame('2026-10-05', $invoices[0]['due_date']);
         self::assertSame(1, $reminder['reminders']);
-        self::assertSame(['Sua Fatura Mensal - Ecoleva', 'Lembrete de Fatura - Ecoleva'], $sent);
+        self::assertSame(1, $late['reminders']);
+        self::assertSame(0, $retry['reminders']);
+        self::assertSame([
+            'Sua Fatura Mensal - Ecoleva',
+            'Lembrete de Fatura - Ecoleva',
+            'Fatura em Atraso - Ecoleva',
+        ], $sent);
+        self::assertStringContainsString('está em atraso', $texts[2]);
+    }
+
+    public function testLembreteEAtrasoAcompanhamVencimentosForaDoDia5(): void
+    {
+        $this->cycleClient('Mensal dia 15', 600.0, 15);
+        $calls = []; $sent = [];
+
+        $this->runCycle('2026-09-30', $this->fakeAsaas($calls), $this->recordingMail($sent));
+        $this->stampInvoices('2026-09-30 11:00:00');
+        $antes = $this->runCycle('2026-10-13', $this->fakeAsaas($calls), $this->recordingMail($sent));
+        $this->db->pdo()->exec("UPDATE invoices SET status = 'OVERDUE'");
+        $depois = $this->runCycle('2026-10-17', $this->fakeAsaas($calls), $this->recordingMail($sent));
+
+        self::assertSame(1, $antes['reminders']);
+        self::assertSame(1, $depois['reminders']);
+        self::assertSame([
+            'Sua Fatura Mensal - Ecoleva',
+            'Lembrete de Fatura - Ecoleva',
+            'Fatura em Atraso - Ecoleva',
+        ], $sent);
+    }
+
+    public function testAvisoDeAtrasoForaDaJanelaUsaTemplateProprio(): void
+    {
+        putenv('WHATSAPP_BILLING_OVERDUE_TEMPLATE=minha_fatura_atrasada');
+
+        try {
+            $payload = billingWhatsAppPayload(
+                '5521999999999',
+                'Cliente',
+                ['value' => 100, 'due_date' => '2026-10-05', 'invoice_url' => 'https://example.com/invoice'],
+                'Sua fatura está em atraso.',
+                false,
+                true
+            );
+        } finally {
+            putenv('WHATSAPP_BILLING_OVERDUE_TEMPLATE');
+        }
+
+        self::assertSame('template', $payload['type']);
+        self::assertSame('minha_fatura_atrasada', $payload['template']['name']);
+        self::assertSame('pt_BR', $payload['template']['language']['code']);
     }
 
     public function testExecucaoPerdidaNoDia30ERecuperadaNoDiaSeguinte(): void
@@ -335,6 +392,27 @@ final class BillingDeliveryTest extends TestCase
         $second = billingIssueInvoice($this->db->pdo(), $client, 25, '2026-10-10', $request);
 
         self::assertSame('pay_nova', $second['asaas_payment_id']);
+    }
+
+    public function testValorDiferenteNoMesmoVencimentoGeraOutraCobranca(): void
+    {
+        $client = $this->client();
+        $refs = [];
+        $request = function (string $path, string $method, array $body) use (&$refs) {
+            if ($method === 'GET' && str_contains($path, 'pixQrCode')) return ['payload' => 'pix'];
+            if ($method === 'GET') return ['data' => []];
+            $refs[] = (string) ($body['externalReference'] ?? '');
+            return ['id' => 'pay_' . count($refs), 'invoiceUrl' => 'https://example.com/i', 'value' => $body['value'], 'dueDate' => $body['dueDate'], 'status' => 'PENDING'];
+        };
+
+        $mensal = billingIssueInvoice($this->db->pdo(), $client, 25, '2026-10-10', $request);
+        $avulsa = billingIssueInvoice($this->db->pdo(), $client, 80, '2026-10-10', $request);
+
+        self::assertTrue($mensal['created']);
+        self::assertTrue($avulsa['created']);
+        self::assertNotSame($mensal['asaas_payment_id'], $avulsa['asaas_payment_id']);
+        self::assertSame(80.0, (float) $avulsa['value']);
+        self::assertSame(['ecoleva:client:' . $client['id'] . ':due:2026-10-10', 'ecoleva:client:' . $client['id'] . ':due:2026-10-10:v:8000'], $refs);
     }
 
     public function testBuscaDaFaturaDoMesPreferePendenteACanceladaMesmoComOutraData(): void

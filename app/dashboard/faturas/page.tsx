@@ -128,8 +128,17 @@ function FaturasMain() {
       if (body.action === "cancel") {
         setFeedback(data.message || "Fatura cancelada com sucesso.");
       } else {
-        const problems = Object.values(data.delivery?.errors ?? {}).join(" ");
-        setFeedback(problems ? `Fatura registrada. Há falha no envio: ${problems}` : "Fatura registrada e notificações processadas.");
+        const delivery = data.delivery ?? {};
+        const problems = Object.values(delivery.errors ?? {}).join(" ");
+        const states = [delivery.email, delivery.whatsapp];
+        const sent = states.some((s: string) => s === "sent" || s === "accepted");
+        setFeedback(
+          problems
+            ? `Fatura registrada. Há falha no envio: ${problems}`
+            : sent
+              ? "Fatura registrada e enviada."
+              : "Fatura registrada. Nenhum envio saiu nesta tentativa.",
+        );
       }
       const list = await fetch("/api/invoices/index.php");
       const result = await list.json();

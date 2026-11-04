@@ -62,6 +62,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // A emissão fala com Asaas, SMTP e WhatsApp em sequência. O cron (CLI) não
+    // tem teto; o PHP da hospedagem corta o request da tela e a cobrança ficava
+    // gravada sem o e-mail ter saído.
+    ignore_user_abort(true);
+    set_time_limit(120);
     $body = json_decode((string) file_get_contents('php://input'), true);
     if (!is_array($body)) apiJsonResponse(400, ['error' => 'Dados inválidos.']);
     $action = $body['action'] ?? 'create';
@@ -137,7 +142,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         if ($client['status'] !== 'active') apiJsonResponse(400, ['error' => 'Cliente inativo.']);
-        $delivery = billingDeliverInvoice($db, $invoice, $client);
+        // Cobrança reaproveitada (mesmo valor e vencimento) já consumiu o evento
+        // `new` no ciclo automático. Sem um evento novo, "Gerar e enviar"
+        // respondia sucesso e não mandava nada. "Tentar envios pendentes"
+        // continua no evento `new`, para não repetir o que já saiu.
+        $event = ($action === 'create' && empty($invoice['created']))
+            ? 'manual:' . gmdate('YmdHis')
+            : 'new';
+        $delivery = billingDeliverInvoice($db, $invoice, $client, $event);
         apiJsonResponse(200, ['ok' => true, 'invoice' => $invoice, 'delivery' => $delivery]);
     } catch (InvalidArgumentException $e) {
         apiJsonResponse(400, ['error' => $e->getMessage()]);
