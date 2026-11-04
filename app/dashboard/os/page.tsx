@@ -396,8 +396,9 @@ function OSMain() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-6 print:hidden lg:grid-cols-2">
-        {/* Formulário */}
+      <div className={`grid grid-cols-1 gap-6 print:hidden ${activeOS ? "" : ""}`}>
+        {/* Formulário fica só na lista. Com a OS aberta, a tela é o documento. */}
+        {!activeOS && (
         <div className={`${cardClass} p-5 sm:p-6`}>
           <h2 className="mb-4 text-lg font-semibold">Gerar Nova OS</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -444,12 +445,6 @@ function OSMain() {
                 {formError}
               </p>
             )}
-            {formNotice && !formError && (
-              <p role="status" className="rounded-xl border border-[var(--color-accent)]/40 bg-[var(--color-accent-soft)] p-3 text-sm text-[var(--color-accent)]">
-                {formNotice} O documento está nesta página, acima do histórico.
-              </p>
-            )}
-
             <button
               type="submit"
               disabled={creating}
@@ -460,8 +455,9 @@ function OSMain() {
             </button>
           </form>
         </div>
+        )}
 
-        {/* Pré-visualização e Ações */}
+        {/* Documento ocupa a tela inteira. A lista volta pelo botão. */}
         <div id="os-gerada" className="min-w-0 scroll-mt-4">
           {activeOS ? (
             <div className="space-y-4">
@@ -469,11 +465,19 @@ function OSMain() {
                 <h2 className="text-lg font-semibold">
                   OS <span className="font-mono text-[var(--color-accent)]">Nº {osNumber(activeOS.id)}</span>
                 </h2>
-                <button type="button" onClick={handlePrint} className={secondaryButton}>
-                  <PrinterIcon width={16} height={16} />
-                  Imprimir / PDF
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => { setActiveOS(null); setFormNotice(""); }} className={secondaryButton}>
+                    Voltar à lista
+                  </button>
+                  <button type="button" onClick={handlePrint} className={secondaryButton}>
+                    <PrinterIcon width={16} height={16} />
+                    Imprimir / PDF
+                  </button>
+                </div>
               </div>
+              {formNotice && (
+                <p role="status" className="text-sm text-[var(--color-accent)]">{formNotice}</p>
+              )}
 
               {/* Encaminhamento */}
               <div className={`${cardClass} space-y-3 p-4`}>
