@@ -300,6 +300,9 @@ final class WhatsAppBotTest extends TestCase
         self::assertStringContainsString('em aberto', $vistos[0]);
         self::assertStringContainsString('Assistente Ecoleva', $vistos[0]);
         self::assertStringContainsString('Nunca cite Nubank', $vistos[0]);
+        self::assertStringContainsString('HUMANIZAR', $vistos[0]);
+        self::assertStringContainsString('recicláveis', $vistos[0]);
+        self::assertStringContainsString('5521999887766', $vistos[0]);
         self::assertStringNotContainsString(self::PIX, $vistos[0]);
         $textos = $this->textosEnviados();
         self::assertCount(1, $textos);

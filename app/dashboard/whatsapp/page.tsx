@@ -208,6 +208,46 @@ function WhatsAppMain() {
     };
   }, []);
 
+  // Atalho vindo de outra tela (faturas): abre ou cria a conversa desse telefone.
+  useEffect(() => {
+    if (!permitido) return;
+    const params = new URLSearchParams(window.location.search);
+    if (conversationIdFromUrl() !== null) return;
+    const phone = (params.get("phone") ?? "").replace(/\D/g, "");
+    if (phone.length < 8) return;
+    const clientRaw = params.get("client_id") ?? "";
+    const clientId = /^\d+$/.test(clientRaw) ? Number(clientRaw) : undefined;
+    let cancelado = false;
+
+    void (async () => {
+      const res = await apiPostJson("/api/whatsapp/conversations.php", {
+        action: "start",
+        phone,
+        client_id: clientId,
+      });
+      const data = await res.json().catch(() => null);
+      if (cancelado || !res.ok || !data?.ok || !data.conversation) return;
+
+      const nova = data.conversation as WhatsAppConversation;
+      const url = new URL(window.location.href);
+      url.searchParams.delete("phone");
+      url.searchParams.delete("client_id");
+      url.searchParams.set("conversation_id", String(nova.id));
+      window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+      setConversations(prev => [nova, ...prev.filter(c => c.id !== nova.id)]);
+      setActiveId(nova.id);
+      setActiveConversation(nova);
+      setMessages([]);
+      setMessagesStatus("loading");
+      setMessagesError("");
+      setMessagesTruncated(false);
+    })();
+
+    return () => {
+      cancelado = true;
+    };
+  }, [permitido]);
+
   // Carregar lista de conversas
   useEffect(() => {
     if (!permitido) return;

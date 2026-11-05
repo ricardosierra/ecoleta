@@ -2,6 +2,7 @@
 
 import { createContext, FormEvent, useContext, useEffect, useState } from "react";
 import { DashboardHeader } from "@/components/DashboardHeader";
+import { DashboardQuickActions } from "@/components/DashboardQuickActions";
 import { PowerBIViewer } from "@/components/PowerBIViewer";
 import { EyeIcon, EyeOffIcon } from "@/components/icons";
 import { apiFetch, apiPostJson, clearCsrfToken, setCsrfToken } from "@/lib/dashboard-api";
@@ -305,6 +306,7 @@ export function DashboardGate({ children }: { children?: React.ReactNode }) {
           em cima do fundo escuro. */}
       <div className="dashboard-shell flex h-dvh flex-col overflow-hidden bg-[var(--color-bg-dark)] font-sans text-white [color-scheme:dark]">
         <DashboardHeader onLogout={handleLogout} user={user} />
+        <DashboardQuickActions />
         <main className="dashboard-main min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           {children ? children : <PowerBIViewer />}
         </main>

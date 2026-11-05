@@ -36,6 +36,71 @@ function invoicesLogInternalError(Throwable $e): void
     ));
 }
 
+/**
+ * Estado da entrega por canal e fatura.
+ * `uncertain` exige conferência no provedor antes de uma nova tentativa: a chamada
+ * pode ter sido aceita mesmo que o PHP tenha sido interrompido antes de registrar o resultado.
+ *
+ * @return array<int, array{email:string, whatsapp:string}>
+ */
+function invoicesDeliveryStates(PDO $db): array
+{
+    $stmt = $db->query("
+        SELECT a.action, a.description, a.target_login, w.status AS whatsapp_status, w.error_message AS whatsapp_error
+        FROM activity_logs a
+        LEFT JOIN whatsapp_messages w ON w.wa_message_id = a.target_login
+        WHERE a.action IN ('billing_delivery', 'billing_attempt', 'billing_failed')
+          AND a.description LIKE 'invoice:%'
+        ORDER BY a.id
+    ");
+
+    $states = [];
+    foreach ($stmt->fetchAll() as $row) {
+        if (!preg_match('/^invoice:(\\d+):(.+):(email|whatsapp)$/', (string) $row['description'], $match)) {
+            continue;
+        }
+
+        $invoiceId = (int) $match[1];
+        $channel = $match[3];
+        $states[$invoiceId][$channel] ??= [
+            'last_action' => null,
+            'has_success' => false,
+        ];
+        $states[$invoiceId][$channel]['last_action'] = (string) $row['action'];
+
+        if ($row['action'] === 'billing_delivery') {
+            $failed = $channel === 'whatsapp' && strtolower((string) ($row['whatsapp_status'] ?? '')) === 'failed';
+            $states[$invoiceId][$channel]['has_success'] = !$failed;
+            $states[$invoiceId][$channel]['error'] = $failed ? trim((string) ($row['whatsapp_error'] ?? '')) : null;
+        }
+    }
+
+    $result = [];
+    foreach ($states as $invoiceId => $channels) {
+        foreach (['email', 'whatsapp'] as $channel) {
+            $state = $channels[$channel] ?? null;
+            if ($state === null) {
+                $result[$invoiceId][$channel] = 'never_sent';
+            } elseif ($state['last_action'] === 'billing_attempt') {
+                $result[$invoiceId][$channel] = 'uncertain';
+            } elseif ($state['last_action'] === 'billing_failed'
+                || ($channel === 'whatsapp' && empty($state['has_success']) && array_key_exists('error', $state))) {
+                $result[$invoiceId][$channel] = 'failed';
+                $erro = trim((string) ($state['error'] ?? ''));
+                if ($channel === 'whatsapp') {
+                    $result[$invoiceId]['whatsapp_error'] = $erro !== '' ? $erro : null;
+                } else {
+                    $result[$invoiceId]['email_error'] = $erro !== '' ? $erro : null;
+                }
+            } else {
+                $result[$invoiceId][$channel] = $state['has_success'] ? 'sent' : 'never_sent';
+            }
+        }
+    }
+
+    return $result;
+}
+
 startSecureSession();
 apiRequireCsrfToken();
 apiSendJsonHeaders();
@@ -45,7 +110,14 @@ $db = getDbConnection();
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $stmt = $db->query("
-        SELECT i.*, c.name as client_name, c.email as client_email
+        SELECT i.*, c.name as client_name, c.email as client_email, c.due_day, c.monthly_value,
+               c.whatsapp AS client_whatsapp,
+               (
+                   SELECT wc.id FROM whatsapp_conversations wc
+                    WHERE wc.client_id = c.id
+                    ORDER BY (wc.last_message_at IS NULL), wc.last_message_at DESC, wc.id DESC
+                    LIMIT 1
+               ) AS whatsapp_conversation_id
         FROM invoices i
         JOIN clients c ON i.client_id = c.id
         ORDER BY i.due_date DESC
@@ -56,9 +128,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // (o ciclo nao emite data passada) e `today` e a data de Brasilia que a tela sugere
     // como novo vencimento: nada disso e calculado no navegador, que pode estar em outro fuso.
     $today = new DateTimeImmutable('now', new DateTimeZone('America/Sao_Paulo'));
+    $invoices = $stmt->fetchAll();
+    $deliveryStates = invoicesDeliveryStates($db);
+    $origins = billingInvoiceOrigins($db);
+    foreach ($invoices as &$invoice) {
+        $invoice['origin'] = $origins[(int) $invoice['id']] ?? billingInferInvoiceOrigin($invoice);
+        $conversationId = $invoice['whatsapp_conversation_id'] ?? null;
+        $invoice['whatsapp_conversation_id'] = $conversationId === null || $conversationId === ''
+            ? null
+            : (int) $conversationId;
+        $whatsapp = trim((string) ($invoice['client_whatsapp'] ?? ''));
+        $invoice['client_whatsapp'] = $whatsapp === '' ? null : $whatsapp;
+        $invoice['delivery'] = $deliveryStates[(int) $invoice['id']] ?? [
+            'email' => 'never_sent',
+            'whatsapp' => 'never_sent',
+        ];
+    }
+    unset($invoice);
     echo json_encode([
         'ok' => true,
-        'invoices' => $stmt->fetchAll(),
+        'invoices' => $invoices,
         'billing_cron' => billingLastRun($db),
         'billing_missing' => billingClientsWithoutInvoice($db, $today),
         'today' => $today->format('Y-m-d'),
@@ -75,6 +164,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $body = json_decode((string) file_get_contents('php://input'), true);
     if (!is_array($body)) apiJsonResponse(400, ['error' => 'Dados inválidos.']);
     $action = $body['action'] ?? 'create';
+    $channelActions = null;
+    if ($action === 'deliver') {
+        $channelActions = $body['channel_actions'] ?? null;
+        if (!is_array($channelActions) || $channelActions === []) {
+            apiJsonResponse(400, ['error' => 'Escolha ao menos um canal para enviar.']);
+        }
+        foreach ($channelActions as $channel => $mode) {
+            if (!in_array($channel, ['email', 'whatsapp'], true) || !in_array($mode, ['send', 'resend'], true)) {
+                apiJsonResponse(400, ['error' => 'Ação de envio inválida.']);
+            }
+        }
+    }
     try {
         if ($action === 'cancel') {
             require_once __DIR__ . '/../asaas_lib.php';
@@ -118,7 +219,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             apiJsonResponse(200, ['ok' => true, 'message' => 'Fatura cancelada com sucesso.']);
         }
 
-        if ($action === 'send' || $action === 'resend_email' || $action === 'resend') {
+        if ($action === 'send' || $action === 'resend_email' || $action === 'resend' || $action === 'deliver') {
             $stmt = $db->prepare('SELECT * FROM invoices WHERE id = ?');
             $stmt->execute([(int) ($body['id'] ?? 0)]);
             $invoice = $stmt->fetch();
@@ -164,13 +265,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $situacao = ['RECEIVED' => 'paga', 'CONFIRMED' => 'confirmada', 'REFUNDED' => 'estornada', 'CHARGEBACK_REQUESTED' => 'contestada'][$existing['status']] ?? 'encerrada';
                             throw new InvoiceMonthAlreadyExistsException('Já existe uma fatura ' . $situacao . ' deste cliente para este vencimento. Escolha outra data.');
                         }
-                        throw new InvoiceMonthAlreadyExistsException('Já existe uma fatura com este vencimento e valor. Reenvie a fatura existente em vez de criar outra.');
+                        throw new InvoiceMonthAlreadyExistsException('Já existe uma fatura com este vencimento e valor. Use os botões de envio da fatura existente em vez de criar outra.');
                     }
                     if (!$allowDuplicateMonth) {
                         throw new InvoiceMonthAlreadyExistsException('Este cliente já possui uma fatura neste mês. Confirme a criação da fatura avulsa antes de continuar.');
                     }
                 }
-                return billingIssueInvoice($db, $client, (float) ($body['value'] ?? $client['monthly_value']), $dueDate);
+                return billingIssueInvoice($db, $client, (float) ($body['value'] ?? $client['monthly_value']), $dueDate, null, 'manual');
             });
             // Reaproveitada e já quitada (ou estornada): não há o que enviar. Dizer que
             // "as notificações foram processadas" para uma fatura paga engana quem gerou.
@@ -186,7 +287,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // continua no evento `new`, para não repetir o que já saiu.
         // Reenvio do e-mail usa um evento novo e só esse canal: o template sai
         // outra vez sem repetir o WhatsApp, que a Meta cobra fora da janela.
-        if ($action === 'resend_email') {
+        if ($action === 'deliver') {
+            $delivery = ['email' => 'skipped', 'whatsapp' => 'skipped', 'errors' => []];
+            $currentStates = invoicesDeliveryStates($db)[(int) $invoice['id']] ?? [
+                'email' => 'never_sent',
+                'whatsapp' => 'never_sent',
+            ];
+            $effectiveActions = [];
+            foreach ($channelActions as $channel => $requestedMode) {
+                $currentState = $currentStates[$channel] ?? 'never_sent';
+                if ($currentState === 'uncertain') {
+                    $delivery['errors'][$channel] = 'Resultado do envio anterior incerto. Confira o provedor antes de tentar novamente.';
+                    continue;
+                }
+                $currentMode = $currentState === 'sent' ? 'resend' : 'send';
+                if ($requestedMode !== $currentMode) {
+                    $delivery['errors'][$channel] = 'O estado do envio mudou. Atualize a listagem antes de tentar novamente.';
+                    continue;
+                }
+                $effectiveActions[$channel] = $currentMode;
+            }
+
+            foreach (['send', 'resend'] as $mode) {
+                $channels = array_keys(array_filter($effectiveActions, static fn(string $channelMode): bool => $channelMode === $mode));
+                if ($channels === []) continue;
+
+                $event = $mode === 'send' ? 'new' : 'resend:' . gmdate('YmdHis');
+                $part = billingDeliverInvoice($db, $invoice, $client, $event, null, null, $channels);
+                foreach ($channels as $channel) {
+                    $delivery[$channel] = $part[$channel] ?? 'skipped';
+                    if (isset($part['errors'][$channel])) $delivery['errors'][$channel] = $part['errors'][$channel];
+                }
+            }
+        } elseif ($action === 'resend_email') {
             $delivery = billingDeliverInvoice($db, $invoice, $client, 'resend:' . gmdate('YmdHis'), null, null, ['email']);
         } elseif ($action === 'resend') {
             $delivery = billingDeliverInvoice($db, $invoice, $client, 'resend:' . gmdate('YmdHis'), null, null, $channels);
@@ -196,6 +329,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 : 'new';
             $delivery = billingDeliverInvoice($db, $invoice, $client, $event);
         }
+        $delivery['whatsapp_to'] = normalizePhone($client['whatsapp'] ?? '');
         apiJsonResponse(200, ['ok' => true, 'invoice' => $invoice, 'delivery' => $delivery]);
     } catch (InvalidArgumentException $e) {
         apiJsonResponse(400, ['error' => $e->getMessage()]);

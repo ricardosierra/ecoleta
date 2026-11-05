@@ -322,6 +322,30 @@ body {
       justify-content: center;
     }
   }
+
+  /* Linhas mais baixas: a tabela de faturas cabe mais cobranças na tela. */
+  .data-table.data-table-slim th,
+  .data-table.data-table-slim td {
+    padding-top: 0.3rem;
+    padding-bottom: 0.3rem;
+  }
+
+  @media (min-width: 1280px) {
+    .data-table.data-table-slim tbody tr + tr {
+      border-top-color: color-mix(in srgb, var(--color-border-dark) 45%, transparent);
+    }
+  }
+
+  @media (max-width: 1279px) {
+    .data-table.data-table-slim tr {
+      padding-top: 0.45rem;
+      padding-bottom: 0.45rem;
+    }
+
+    .data-table.data-table-slim tr + tr {
+      border-top-color: color-mix(in srgb, var(--color-border-dark) 45%, transparent);
+    }
+  }
 }
 
 /* Na impressão o shell do dashboard não pode limitar a altura nem cortar o

@@ -27,8 +27,66 @@ function billingLocked(PDO $db, string $key, callable $work): mixed
     }
 }
 
+/**
+ * Origem da cobrança: o ciclo grava `monthly`; a tela de fatura avulsa grava `manual`.
+ */
+function billingNormalizeInvoiceOrigin(string $origin): string
+{
+    return $origin === 'manual' ? 'manual' : 'monthly';
+}
+
+/**
+ * Guarda a origem da fatura recém-criada. Falha aqui não desfaz a cobrança.
+ */
+function billingRememberInvoiceOrigin(PDO $db, int $invoiceId, string $origin): void
+{
+    try {
+        $stmt = $db->prepare("INSERT INTO activity_logs (action, description, performed_by_login, ip_address, user_agent) VALUES ('invoice_origin', ?, 'billing', ?, 'EcoletaBilling/1.0')");
+        $stmt->execute(['invoice:' . $invoiceId . ':' . billingNormalizeInvoiceOrigin($origin), apiClientIp()]);
+    } catch (Throwable $e) {
+        error_log('Não consegui registrar a origem da fatura #' . $invoiceId . '.');
+    }
+}
+
+/**
+ * Origem gravada na emissão, por id de fatura.
+ *
+ * @return array<int, string>
+ */
+function billingInvoiceOrigins(PDO $db): array
+{
+    $map = [];
+    $stmt = $db->query("SELECT description FROM activity_logs WHERE action = 'invoice_origin' AND description LIKE 'invoice:%' ORDER BY id");
+    foreach ($stmt->fetchAll() as $row) {
+        if (!preg_match('/^invoice:(\d+):(monthly|manual)$/', (string) $row['description'], $match)) {
+            continue;
+        }
+        $map[(int) $match[1]] = $match[2];
+    }
+
+    return $map;
+}
+
+/**
+ * Faturas anteriores a este registro: mesmo dia e valor do cadastro mensal contam como automáticas.
+ *
+ * @param array<string, mixed> $invoice
+ */
+function billingInferInvoiceOrigin(array $invoice): string
+{
+    $dueDay = (int) substr((string) ($invoice['due_date'] ?? ''), 8, 2);
+    $monthly = (float) ($invoice['monthly_value'] ?? 0);
+    if ($monthly > 0
+        && $dueDay === (int) ($invoice['due_day'] ?? 0)
+        && abs((float) ($invoice['value'] ?? 0) - $monthly) < 0.001) {
+        return 'monthly';
+    }
+
+    return 'manual';
+}
+
 /** Recover an external payment after an interrupted request before creating another. */
-function billingIssueInvoice(PDO $db, array $client, float $value, string $dueDate, ?callable $request = null): array
+function billingIssueInvoice(PDO $db, array $client, float $value, string $dueDate, ?callable $request = null, string $origin = 'monthly'): array
 {
     if (trim((string) ($client['document'] ?? '')) === '') throw new InvalidArgumentException('Preencha o CPF/CNPJ do cliente antes de gerar a fatura.');
     if (empty($client['asaas_customer_id'])) throw new InvalidArgumentException('Cliente não sincronizado com o Asaas.');
@@ -37,7 +95,8 @@ function billingIssueInvoice(PDO $db, array $client, float $value, string $dueDa
     $date = DateTimeImmutable::createFromFormat('!Y-m-d', $dueDate);
     if (!$date || $date->format('Y-m-d') !== $dueDate) throw new InvalidArgumentException('Data de vencimento inválida.');
     $request ??= 'asaasRequest';
-    return billingLocked($db, 'issue:' . $client['id'] . ':' . $dueDate, function () use ($db, $client, $value, $dueDate, $request): array {
+    $origin = billingNormalizeInvoiceOrigin($origin);
+    return billingLocked($db, 'issue:' . $client['id'] . ':' . $dueDate, function () use ($db, $client, $value, $dueDate, $request, $origin): array {
         // Fatura cancelada não conta: quem cancelou e gera de novo para o mesmo vencimento
         // espera uma cobrança nova. Antes, o cancelamento era devolvido como "fatura já
         // existente", nada era criado nem enviado, e a tela dizia que deu certo.
@@ -84,7 +143,7 @@ function billingIssueInvoice(PDO $db, array $client, float $value, string $dueDa
             $payment = $request('/payments', 'POST', [
                 'customer' => $client['asaas_customer_id'], 'billingType' => 'BOLETO',
                 'value' => round($value, 2), 'dueDate' => $dueDate,
-                'description' => 'Fatura Mensal - Ecoleva', 'externalReference' => $reference,
+                'description' => $origin === 'manual' ? 'Cobrança avulsa - Ecoleva' : 'Fatura Mensal - Ecoleva', 'externalReference' => $reference,
             ]);
         }
         if (empty($payment['id']) || empty($payment['invoiceUrl'])) throw new RuntimeException('O Asaas não retornou os dados completos da cobrança.');
@@ -93,6 +152,7 @@ function billingIssueInvoice(PDO $db, array $client, float $value, string $dueDa
         $stmt = $db->prepare('INSERT INTO invoices (client_id, asaas_payment_id, value, due_date, invoice_url, status) VALUES (?, ?, ?, ?, ?, ?)');
         $stmt->execute([$client['id'], $payment['id'], $payment['value'] ?? $value, $payment['dueDate'] ?? $dueDate, $payment['invoiceUrl'], $payment['status'] ?? 'PENDING']);
         $id = (int) $db->lastInsertId();
+        billingRememberInvoiceOrigin($db, $id, $origin);
         try {
             // O Pix do Asaas às vezes demora o timeout inteiro (30s). No botão da
             // tela isso estourava o limite do PHP antes do e-mail e do WhatsApp.
@@ -308,10 +368,13 @@ function billingRunCycle(PDO $db, DateTimeImmutable $today, ?callable $request =
         }
     }
 
-    $firstDueDate = (new DateTimeImmutable($today->format('Y-m-01')))->modify('-' . BILLING_REMINDER_DAYS_BEFORE_DUE . ' days')->format('Y-m-d');
-    $lastDueDate = (new DateTimeImmutable($today->format('Y-m-t')))->modify('+' . BILLING_OVERDUE_NOTICE_DAYS_AFTER_DUE . ' days')->format('Y-m-d');
-    $stmt = $db->prepare("SELECT i.*, c.name, c.email, c.whatsapp FROM invoices i JOIN clients c ON c.id = i.client_id WHERE i.status IN ('PENDING', 'OVERDUE') AND c.status = 'active' AND i.due_date BETWEEN ? AND ?");
-    $stmt->execute([$firstDueDate, $lastDueDate]);
+    // Os lembretes futuros cobrem só os próximos dois dias; o aviso de atraso
+    // precisa continuar alcançando qualquer vencimento antigo, mesmo de meses
+    // anteriores. A data efetiva ainda é filtrada por billingReminderEvent().
+    $upcomingThrough = $today->modify('+' . BILLING_REMINDER_DAYS_BEFORE_DUE . ' days')->format('Y-m-d');
+    $overdueThrough = $today->modify('-' . BILLING_OVERDUE_NOTICE_DAYS_AFTER_DUE . ' days')->format('Y-m-d');
+    $stmt = $db->prepare("SELECT i.*, c.name, c.email, c.whatsapp FROM invoices i JOIN clients c ON c.id = i.client_id WHERE i.status IN ('PENDING', 'OVERDUE') AND c.status = 'active' AND (i.due_date <= ? OR (i.due_date > ? AND i.due_date <= ?))");
+    $stmt->execute([$overdueThrough, $today->format('Y-m-d'), $upcomingThrough]);
     foreach ($stmt->fetchAll() as $invoice) {
         $reminderType = billingReminderEvent($today, (string) $invoice['due_date']);
         if ($reminderType === null) continue;

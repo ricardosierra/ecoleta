@@ -14,7 +14,7 @@ function mockApi(
     if (url.includes("/auth/me.php")) return Response.json(sessionOf("root"));
     if (url.includes("/clients/")) return Response.json({ ok: true, clients: [{ id: 1, name: "Cliente QA", monthly_value: 7.5, status: "active" }] });
     if (init?.method === "POST") { posts.push(JSON.parse(String(init.body))); return Response.json({ ok: true, invoice: { id: 1 }, delivery }); }
-    return Response.json({ ok: true, billing_cron: billingCron, ...listing, invoices: [{ id: 1, client_id: 1, client_name: "Cliente QA", value: "7.50", due_date: "2026-09-10", status: "PENDING", invoice_url: "https://example.com/invoice" }] });
+    return Response.json({ ok: true, billing_cron: billingCron, ...listing, invoices: [{ id: 1, client_id: 1, client_name: "Cliente QA", client_whatsapp: "5521999193898", value: "7.50", due_date: "2026-09-10", created_at: "2026-09-01 14:30:00", status: "PENDING", invoice_url: "https://example.com/invoice", origin: "manual", delivery: { email: "sent", whatsapp: "sent" } }] });
   }));
   return posts;
 }
@@ -23,7 +23,7 @@ describe("Faturas", () => {
   it("preserva o dia e envia os dados da cobrança escolhida", async () => {
     const posts = mockApi(); const user = userEvent.setup(); render(<FaturasPage />);
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
-    expect(await screen.findByText("10/09/2026")).toBeVisible();
+    expect(await screen.findByText("10 de setembro de 2026")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Nova fatura avulsa" }));
     await user.selectOptions(screen.getByLabelText("Cliente"), "1");
     expect(screen.getByLabelText("Valor (R$)")).toHaveValue(7.5);
@@ -35,7 +35,7 @@ describe("Faturas", () => {
   it("gera sem perguntar quando o cliente ainda não tem fatura no mês", async () => {
     const posts = mockApi(); const user = userEvent.setup(); render(<FaturasPage />);
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
-    await screen.findByText("10/09/2026");
+    await screen.findByText("10 de setembro de 2026");
     await user.click(screen.getByRole("button", { name: "Nova fatura avulsa" }));
     await user.selectOptions(screen.getByLabelText("Cliente"), "1");
     await user.type(screen.getByLabelText("Vencimento"), "2026-10-05");
@@ -46,7 +46,7 @@ describe("Faturas", () => {
   });
   it("não cria a mesma fatura duas vezes e orienta a reenviar a existente", async () => {
     const posts = mockApi(); const user = userEvent.setup(); render(<FaturasPage />);
-    await screen.findByText("10/09/2026");
+    await screen.findByText("10 de setembro de 2026");
     await user.click(screen.getByRole("button", { name: "Nova fatura avulsa" }));
     await user.selectOptions(screen.getByLabelText("Cliente"), "1");
     await user.type(screen.getByLabelText("Vencimento"), "2026-09-10");
@@ -57,13 +57,13 @@ describe("Faturas", () => {
   it("pergunta antes de gerar uma segunda fatura no mesmo mês e não gera se a operadora recusa", async () => {
     const posts = mockApi(); const user = userEvent.setup(); render(<FaturasPage />);
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
-    await screen.findByText("10/09/2026");
+    await screen.findByText("10 de setembro de 2026");
     await user.click(screen.getByRole("button", { name: "Nova fatura avulsa" }));
     await user.selectOptions(screen.getByLabelText("Cliente"), "1");
     await user.type(screen.getByLabelText("Vencimento"), "2026-09-20");
     await user.click(screen.getByRole("button", { name: "Gerar e enviar fatura" }));
     expect(confirmSpy).toHaveBeenCalledTimes(1);
-    expect(confirmSpy.mock.calls[0][0]).toMatch(/Cliente QA já tem uma fatura neste mês, com vencimento em 10\/09\/2026 \(R\$ 7,50\)/);
+    expect(confirmSpy.mock.calls[0][0]).toMatch(/Cliente QA já tem uma fatura neste mês, com vencimento em 10 de setembro de 2026 \(R\$ 7,50\)/);
     expect(posts).toEqual([]);
     confirmSpy.mockRestore();
   });
@@ -89,7 +89,7 @@ describe("Faturas", () => {
     render(<FaturasPage />);
     await user.click(await screen.findByRole("button", { name: "Reenviar e-mail" }));
     expect(confirmSpy).toHaveBeenCalledWith(expect.stringMatching(/reenviar.*e-mail/i));
-    await waitFor(() => expect(posts).toEqual([{ action: "resend", id: 1, channels: ["email"] }]));
+    await waitFor(() => expect(posts).toEqual([{ action: "deliver", id: 1, channel_actions: { email: "resend" } }]));
     expect(await screen.findByRole("status")).toHaveTextContent("E-mail reenviado.");
     confirmSpy.mockRestore();
   });
@@ -110,8 +110,8 @@ describe("Faturas", () => {
     render(<FaturasPage />);
     await user.click(await screen.findByRole("button", { name: "Reenviar WhatsApp" }));
     expect(confirmSpy).toHaveBeenCalledWith(expect.stringMatching(/reenviar.*whatsapp/i));
-    await waitFor(() => expect(posts).toEqual([{ action: "resend", id: 1, channels: ["whatsapp"] }]));
-    expect(await screen.findByRole("status")).toHaveTextContent(/WhatsApp.*aceita pela Meta/i);
+    await waitFor(() => expect(posts).toEqual([{ action: "deliver", id: 1, channel_actions: { whatsapp: "resend" } }]));
+    expect(await screen.findByRole("status")).toHaveTextContent(/WhatsApp enviado/);
     confirmSpy.mockRestore();
   });
   it("reenvia e-mail e WhatsApp juntos depois de uma confirmação", async () => {
@@ -121,14 +121,14 @@ describe("Faturas", () => {
     render(<FaturasPage />);
     await user.click(await screen.findByRole("button", { name: "Reenviar e-mail e WhatsApp" }));
     expect(confirmSpy).toHaveBeenCalledWith(expect.stringMatching(/reenviar.*e-mail.*whatsapp/i));
-    await waitFor(() => expect(posts).toEqual([{ action: "resend", id: 1, channels: ["email", "whatsapp"] }]));
-    expect(await screen.findByRole("status")).toHaveTextContent(/e-mail reenviado.*whatsapp.*aceita pela Meta/i);
+    await waitFor(() => expect(posts).toEqual([{ action: "deliver", id: 1, channel_actions: { email: "resend", whatsapp: "resend" } }]));
+    expect(await screen.findByRole("status")).toHaveTextContent(/E-mail reenviado.*WhatsApp enviado/);
     confirmSpy.mockRestore();
   });
   it("não mostra o painel quando todo cliente ativo tem fatura no mês", async () => {
     mockApi(undefined, null, { today: "2026-10-06", billing_missing: [] });
     render(<FaturasPage />);
-    await screen.findByText("10/09/2026");
+    await screen.findByText("10 de setembro de 2026");
     expect(screen.queryByRole("region", { name: "Clientes sem fatura neste mês" })).not.toBeInTheDocument();
   });
   it("mostra falha de entrega mesmo quando a cobrança foi criada", async () => {
@@ -195,8 +195,10 @@ describe("Faturas: tabela e cores de status", () => {
     client_name: `Cliente ${status}`,
     value: "10.00",
     due_date: "2026-09-10",
+    created_at: "2026-09-01 08:15:00",
     status,
     invoice_url: "https://example.com/invoice",
+    origin: status === "PENDING" ? "manual" : "monthly",
   });
 
   /** Devolve as faturas dadas, para a tela mostrar vários selos de uma vez. */
@@ -242,8 +244,42 @@ describe("Faturas: tabela e cores de status", () => {
 
     const linha = (await screen.findByText("Cliente PENDING")).closest("tr")!;
     const rotulos = Array.from(linha.querySelectorAll("td[data-label]")).map(td => td.getAttribute("data-label"));
-    expect(rotulos).toEqual(["Cliente", "Vencimento", "Valor", "Status"]);
+    expect(rotulos).toEqual(["Cliente", "Criada em", "Vencimento", "Valor", "Tipo", "Status"]);
+    expect(linha).toHaveTextContent("1 de setembro de 2026 às 08:15");
+    expect(linha).toHaveTextContent("10 de setembro de 2026");
+    expect(linha).toHaveTextContent("Avulsa");
+    expect(linha.querySelector("[title='Cobrança avulsa']")).not.toBeNull();
     expect(linha.querySelector("td.data-table-actions")).not.toBeNull();
+  });
+
+  it("avisa na linha quando o WhatsApp não chegou", async () => {
+    mockComFaturas([{ ...fatura(1, "PENDING"), delivery: { email: "sent", whatsapp: "failed", whatsapp_error: "Número sem WhatsApp." } }]);
+    render(<FaturasPage />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("WhatsApp não chegou: Número sem WhatsApp.");
+    expect(screen.getByRole("button", { name: "Tentar WhatsApp de novo" })).toBeVisible();
+  });
+
+  it("atalho da conversa só aparece para quem vê o painel de WhatsApp", async () => {
+    mockComFaturas([{ ...fatura(1, "PENDING"), whatsapp_conversation_id: 9, client_whatsapp: "5511999999999" }]);
+    render(<FaturasPage />);
+    const atalho = await screen.findByRole("link", { name: "Abrir conversa no WhatsApp" });
+    expect(atalho).toHaveAttribute("href", "/dashboard/whatsapp?conversation_id=9");
+    expect(atalho).toHaveAttribute("title", "Abrir conversa no WhatsApp");
+  });
+
+  it("filtra por status e ordena pelo cliente", async () => {
+    mockComFaturas([fatura(1, "PENDING"), fatura(2, "RECEIVED")]);
+    const user = userEvent.setup();
+    render(<FaturasPage />);
+    expect(await screen.findByText("Cliente PENDING")).toBeVisible();
+    expect(screen.getByText("Cliente RECEIVED")).toBeVisible();
+    await user.selectOptions(screen.getByRole("combobox", { name: "Status" }), "PENDING");
+    expect(screen.getByText("Cliente PENDING")).toBeVisible();
+    expect(screen.queryByText("Cliente RECEIVED")).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByRole("combobox", { name: "Status" }), "");
+    await user.click(screen.getByRole("button", { name: /Cliente/ }));
+    const nomes = screen.getAllByText(/Cliente /).map(el => el.textContent);
+    expect(nomes[0]).toBe("Cliente PENDING");
   });
 
   it("centraliza a mensagem de tabela vazia como as outras telas", async () => {

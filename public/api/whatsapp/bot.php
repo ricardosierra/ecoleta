@@ -436,7 +436,7 @@ function waBotReplyWithModel(PDO $db, string $from, string $body, string $type, 
         $qualidade = new WaReplyQuality();
         $faturas = waBotClientInvoices($db, $from);
         $nome = $faturas === [] ? '' : trim((string) ($faturas[0]['client_name'] ?? ''));
-        $roteiro = $qualidade->prompt($nome, $faturas);
+        $roteiro = $qualidade->prompt($nome, $faturas, waBotClientExtra($db, $from));
         $gerado = trim((string) $complete($body, $roteiro));
         if ($gerado === '' || mb_strlen($gerado) > 1200) {
             return;
@@ -518,6 +518,88 @@ function waBotClientInvoices(PDO $db, string $from): array
     return $linhas;
 }
 
+/**
+ * Telefones desta cliente no banco e um pedaço curto do que já foi falado.
+ * Não lista telefone de outra cliente.
+ */
+function waBotClientExtra(PDO $db, string $from): string
+{
+    $variantes = waPhoneVariants($from);
+    $blocos = ['Telefone desta conversa: ' . normalizePhone($from) . '.'];
+    if ($variantes === []) {
+        return implode("\n", $blocos);
+    }
+
+    $numeros = [];
+    $clientes = $db->query("SELECT id, name, whatsapp, email FROM clients WHERE whatsapp IS NOT NULL AND whatsapp <> ''");
+    $ids = [];
+    foreach ($clientes ? $clientes->fetchAll() : [] as $linha) {
+        $guardado = normalizePhone((string) $linha['whatsapp']);
+        if (!in_array($guardado, $variantes, true)) {
+            continue;
+        }
+        $ids[] = (int) $linha['id'];
+        if ($guardado !== '') {
+            $numeros['cadastro ' . (string) $linha['name'] . ' ' . $guardado] = true;
+        }
+        $email = trim((string) ($linha['email'] ?? ''));
+        if ($email !== '') {
+            $blocos[] = 'E-mail no cadastro: ' . $email . '.';
+        }
+    }
+
+    if ($ids !== []) {
+        $marcadores = implode(',', array_fill(0, count($ids), '?'));
+        $conversas = $db->prepare("SELECT DISTINCT phone FROM whatsapp_conversations WHERE client_id IN ({$marcadores})");
+        $conversas->execute($ids);
+        foreach ($conversas->fetchAll() as $linha) {
+            $fone = normalizePhone((string) $linha['phone']);
+            if ($fone !== '') {
+                $numeros['conversa ' . $fone] = true;
+            }
+        }
+        $os = $db->prepare("SELECT DISTINCT whatsapp_sent_to FROM service_orders WHERE client_id IN ({$marcadores}) AND whatsapp_sent_to IS NOT NULL AND whatsapp_sent_to <> ''");
+        $os->execute($ids);
+        foreach ($os->fetchAll() as $linha) {
+            $fone = normalizePhone((string) $linha['whatsapp_sent_to']);
+            if ($fone !== '') {
+                $numeros['ordem de serviço ' . $fone] = true;
+            }
+        }
+    }
+
+    if ($numeros === []) {
+        $blocos[] = 'Nenhum outro telefone desta cliente no cadastro.';
+    } else {
+        $blocos[] = 'Números desta cliente no banco:';
+        foreach (array_keys($numeros) as $origem) {
+            $blocos[] = '- ' . $origem;
+        }
+    }
+
+    $conversa = $db->prepare('SELECT id FROM whatsapp_conversations WHERE phone IN (' . implode(',', array_fill(0, count($variantes), '?')) . ') ORDER BY id DESC LIMIT 1');
+    $conversa->execute($variantes);
+    $id = $conversa->fetchColumn();
+    if ($id !== false) {
+        $msgs = $db->prepare("SELECT direction, body FROM whatsapp_messages WHERE conversation_id = ? AND type = 'text' ORDER BY id DESC LIMIT 6");
+        $msgs->execute([(int) $id]);
+        $falas = array_reverse($msgs->fetchAll());
+        $linhas = [];
+        foreach ($falas as $fala) {
+            $corpo = trim((string) $fala['body']);
+            if ($corpo === '' || str_contains($corpo, WA_BOT_SIGNATURE)) {
+                continue;
+            }
+            $linhas[] = ($fala['direction'] === 'incoming' ? 'Cliente' : 'Ecoleva') . ': ' . mb_substr($corpo, 0, 160);
+        }
+        if ($linhas !== []) {
+            $blocos[] = "Últimas falas desta conversa:\n" . implode("\n", $linhas);
+        }
+    }
+
+    return implode("\n", $blocos);
+}
+
 function waBotCompleteRemote(string $pergunta, string $roteiro = ''): string
 {
     $chave = apiSecret('WHATSAPP_REPLY_API_KEY');
@@ -538,10 +620,11 @@ function waBotCompleteRemote(string $pergunta, string $roteiro = ''): string
         $roteiro = (new WaReplyQuality())->prompt('', []);
     }
 
+    // Haiku 4.5 recusa `temperature` (400 "Extra inputs are not permitted") e o
+    // robô engolia o corpo vazio sem responder no WhatsApp.
     $payload = json_encode([
         'model' => $modelo,
         'max_tokens' => 300,
-        'temperature' => 0.2,
         'system' => $roteiro,
         'messages' => [
             ['role' => 'user', 'content' => $pergunta],
@@ -565,12 +648,21 @@ function waBotCompleteRemote(string $pergunta, string $roteiro = ''): string
         CURLOPT_TIMEOUT => 12,
     ]);
     $cru = curl_exec($ch);
+    $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
     if (!is_string($cru) || $cru === '') {
+        error_log('WhatsApp Haiku: resposta vazia (HTTP ' . $http . ').');
+
         return '';
     }
 
     $json = json_decode($cru, true);
+    if ($http !== 200) {
+        $erro = is_array($json) ? (string) ($json['error']['message'] ?? '') : '';
+        error_log('WhatsApp Haiku: HTTP ' . $http . ($erro !== '' ? ' — ' . $erro : ''));
+
+        return '';
+    }
     $texto = '';
     foreach ($json['content'] ?? [] as $bloco) {
         if (is_array($bloco) && ($bloco['type'] ?? '') === 'text' && is_string($bloco['text'] ?? null)) {

@@ -181,6 +181,21 @@ final class BillingDeliveryTest extends TestCase
         ], $sent);
     }
 
+    public function testAvisoDeAtrasoAlcancaFaturasVencidasEmMesesAnteriores(): void
+    {
+        $clientId = $this->cycleClient('Mensal antiga', 600.0, 5);
+        $this->db->seedInvoice($clientId, 'pay_atrasada_antiga', 600.0, '2026-09-05', 'OVERDUE');
+        $this->stampInvoices('2026-09-04 00:00:00');
+        $calls = []; $sent = [];
+
+        $first = $this->runCycle('2026-10-07', $this->fakeAsaas($calls), $this->recordingMail($sent));
+        $second = $this->runCycle('2026-10-08', $this->fakeAsaas($calls), $this->recordingMail($sent));
+
+        self::assertSame(1, $first['reminders']);
+        self::assertSame(0, $second['reminders'], 'o mesmo aviso não deve repetir no dia seguinte');
+        self::assertSame(['Fatura em Atraso - Ecoleva'], $sent);
+    }
+
     public function testAvisoDeAtrasoForaDaJanelaUsaTemplateProprio(): void
     {
         putenv('WHATSAPP_BILLING_OVERDUE_TEMPLATE=minha_fatura_atrasada');
@@ -405,14 +420,17 @@ final class BillingDeliveryTest extends TestCase
             return ['id' => 'pay_' . count($refs), 'invoiceUrl' => 'https://example.com/i', 'value' => $body['value'], 'dueDate' => $body['dueDate'], 'status' => 'PENDING'];
         };
 
-        $mensal = billingIssueInvoice($this->db->pdo(), $client, 25, '2026-10-10', $request);
-        $avulsa = billingIssueInvoice($this->db->pdo(), $client, 80, '2026-10-10', $request);
+        $mensal = billingIssueInvoice($this->db->pdo(), $client, 25, '2026-10-10', $request, 'monthly');
+        $avulsa = billingIssueInvoice($this->db->pdo(), $client, 80, '2026-10-10', $request, 'manual');
 
         self::assertTrue($mensal['created']);
         self::assertTrue($avulsa['created']);
         self::assertNotSame($mensal['asaas_payment_id'], $avulsa['asaas_payment_id']);
         self::assertSame(80.0, (float) $avulsa['value']);
         self::assertSame(['ecoleva:client:' . $client['id'] . ':due:2026-10-10', 'ecoleva:client:' . $client['id'] . ':due:2026-10-10:v:8000'], $refs);
+        $origins = billingInvoiceOrigins($this->db->pdo());
+        self::assertSame('monthly', $origins[(int) $mensal['id']]);
+        self::assertSame('manual', $origins[(int) $avulsa['id']]);
     }
 
     public function testReenvioDeEmailNaoDisparaWhatsApp(): void
