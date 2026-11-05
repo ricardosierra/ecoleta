@@ -38,19 +38,17 @@ final class WaReplyQuality
      */
     public function decide(?string $type, ?string $body): array
     {
-        $vazio = ['lane' => 'skip', 'script' => '', 'reason' => 'sem_texto'];
-
         if (strtolower(trim((string) $type)) !== 'text') {
-            return ['lane' => 'skip', 'script' => '', 'reason' => 'midia'];
+            return ['lane' => 'script', 'script' => 'media', 'reason' => 'midia'];
         }
 
         $body = trim((string) $body);
         if ($body === '' || preg_match('/^\[[^\]]*\]$/u', $body) === 1) {
-            return $vazio;
+            return ['lane' => 'script', 'script' => 'media', 'reason' => 'sem_texto'];
         }
 
         if (mb_strlen($body) > 800) {
-            return ['lane' => 'skip', 'script' => '', 'reason' => 'longa_demais'];
+            return ['lane' => 'script', 'script' => 'long', 'reason' => 'longa_demais'];
         }
 
         $texto = $this->normalize($body);
@@ -60,11 +58,11 @@ final class WaReplyQuality
         }
 
         if (preg_match('/^[\x{1f300}-\x{1faff}\x{2600}-\x{27bf}\s]+$/u', $body) === 1) {
-            return ['lane' => 'skip', 'script' => '', 'reason' => 'emoji'];
+            return ['lane' => 'script', 'script' => 'courtesy', 'reason' => 'emoji'];
         }
 
         if (preg_match(self::ALREADY_PAID, $texto) === 1) {
-            return ['lane' => 'skip', 'script' => '', 'reason' => 'comprovante'];
+            return ['lane' => 'script', 'script' => 'paid', 'reason' => 'comprovante'];
         }
 
         if (preg_match(self::INVOICE, $texto) === 1) {
@@ -88,7 +86,7 @@ final class WaReplyQuality
         }
 
         if (preg_match(self::COURTESY, $texto) === 1) {
-            return ['lane' => 'skip', 'script' => '', 'reason' => 'cortesia'];
+            return ['lane' => 'script', 'script' => 'courtesy', 'reason' => 'cortesia'];
         }
 
         return ['lane' => 'model', 'script' => '', 'reason' => 'duvida'];
@@ -102,6 +100,34 @@ final class WaReplyQuality
 
         if ($kind === 'farewell') {
             return "Combinado. Se precisar da fatura ou de outra orientação, é só chamar.\n\n{$assinatura}";
+        }
+
+        if ($kind === 'courtesy') {
+            return "Certo. Se precisar da fatura ou de outra orientação, é só escrever.\n\n{$assinatura}";
+        }
+
+        if ($kind === 'media') {
+            return "Recebi. Por aqui eu leio texto: escreve o que você precisa, por exemplo *fatura* ou a sua dúvida.\n\n{$assinatura}";
+        }
+
+        if ($kind === 'long') {
+            return "Recebi. Resume em uma frase o que você precisa que eu te respondo por aqui.\n\n{$assinatura}";
+        }
+
+        if ($kind === 'paid') {
+            return "Anotei. A equipe confere o pagamento. Se a cobrança ainda aparecer em aberto, responda *fatura*.\n\n{$assinatura}";
+        }
+
+        if ($kind === 'pix_already') {
+            return "O Pix desta cobrança já foi enviado nesta conversa. Olha as mensagens acima. Se não estiver aí, a equipe reenvia em (21) 99152-9383.\n\n{$assinatura}";
+        }
+
+        if ($kind === 'no_invoice') {
+            return "Não encontrei cobrança em aberto neste número. Se o boleto for de outro telefone, chama a equipe: (21) 99152-9383.\n\n{$assinatura}";
+        }
+
+        if ($kind === 'pix_unavailable') {
+            return "Achei a cobrança, mas o código Pix não saiu agora. A equipe te manda em (21) 99152-9383.\n\n{$assinatura}";
         }
 
         if ($kind === 'about') {

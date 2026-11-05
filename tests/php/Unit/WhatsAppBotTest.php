@@ -218,9 +218,9 @@ final class WhatsAppBotTest extends TestCase
 
         $this->responder('[imagem]', '5521999887766', 'image');
 
-        self::assertSame([], $this->enviados);
+        self::assertCount(1, $this->textosEnviados());
+        self::assertStringNotContainsString(self::PIX, $this->textosEnviados()[0]);
         self::assertSame([], $this->uploads);
-        self::assertSame([], $this->saidasGravadas());
     }
 
     public function testRotuloEntreColchetesMesmoComoTextoNaoDisparaOBot(): void
@@ -229,7 +229,8 @@ final class WhatsAppBotTest extends TestCase
 
         $this->responder('[imagem]', '5521999887766', 'text');
 
-        self::assertSame([], $this->enviados);
+        self::assertCount(1, $this->textosEnviados());
+        self::assertStringNotContainsString(self::PIX, $this->textosEnviados()[0]);
     }
 
     public function testFotoComLegendaTambemNaoDisparaOBot(): void
@@ -238,7 +239,8 @@ final class WhatsAppBotTest extends TestCase
 
         $this->responder('segunda via do boleto', '5521999887766', 'image');
 
-        self::assertSame([], $this->enviados);
+        self::assertCount(1, $this->textosEnviados());
+        self::assertStringNotContainsString(self::PIX, $this->textosEnviados()[0]);
     }
 
     public function testConversaSemIntencaoNaoRecebeFatura(): void
@@ -249,7 +251,10 @@ final class WhatsAppBotTest extends TestCase
             $this->responder($texto);
         }
 
-        self::assertSame([], $this->enviados);
+        self::assertCount(3, $this->textosEnviados());
+        foreach ($this->textosEnviados() as $texto) {
+            self::assertStringNotContainsString(self::PIX, $texto);
+        }
     }
 
     public function testSaudacaoEAjudaNaoMandamPix(): void
@@ -263,7 +268,8 @@ final class WhatsAppBotTest extends TestCase
         self::assertStringNotContainsString(self::PIX, $textos[0]);
 
         $this->responder('ajuda');
-        self::assertCount(1, $this->textosEnviados(), 'a janela de 6 horas vale também para o menu');
+        self::assertCount(2, $this->textosEnviados());
+        self::assertStringNotContainsString(self::PIX, $this->textosEnviados()[1]);
     }
 
     public function testSobreExplicaAEmpresaSemConsultarFatura(): void
@@ -285,7 +291,8 @@ final class WhatsAppBotTest extends TestCase
         $this->fatura($this->cliente());
 
         $this->responder('vocês atendem condomínio no interior?');
-        self::assertSame([], $this->enviados);
+        self::assertCount(1, $this->textosEnviados());
+        self::assertStringNotContainsString(self::PIX, $this->textosEnviados()[0]);
 
         $vistos = [];
         $this->responder('vocês atendem condomínio no interior?', '5521999887766', 'text', [
@@ -305,8 +312,8 @@ final class WhatsAppBotTest extends TestCase
         self::assertStringContainsString('5521999887766', $vistos[0]);
         self::assertStringNotContainsString(self::PIX, $vistos[0]);
         $textos = $this->textosEnviados();
-        self::assertCount(1, $textos);
-        self::assertStringContainsString('todo o Brasil', $textos[0]);
+        self::assertGreaterThanOrEqual(2, count($textos));
+        self::assertStringContainsString('todo o Brasil', $textos[array_key_last($textos)]);
         self::assertStringContainsString(WA_BOT_SIGNATURE, $textos[0]);
         self::assertStringNotContainsString(self::PIX, $textos[0]);
     }
@@ -375,7 +382,11 @@ final class WhatsAppBotTest extends TestCase
         $this->responder('qr code');
         $this->responder('fatura');
 
-        self::assertCount($primeira, $this->enviados, 'o robô respondeu de novo dentro da janela');
+        self::assertCount($primeira + 3, $this->enviados);
+        foreach (array_slice($this->textosEnviados(), $primeira) as $texto) {
+            self::assertStringNotContainsString(self::PIX, $texto);
+            self::assertStringContainsString('já foi enviado', $texto);
+        }
         self::assertSame([], $this->uploads);
     }
 
@@ -447,7 +458,10 @@ final class WhatsAppBotTest extends TestCase
 
         $this->responder('segunda via do boleto');
 
-        self::assertSame([], $this->enviados);
+        $textos = $this->textosEnviados();
+        self::assertCount(1, $textos);
+        self::assertStringNotContainsString(self::PIX, $textos[0]);
+        self::assertStringContainsString('Não encontrei cobrança', $textos[0]);
     }
 
     public function testComVariasFaturasAbertasVaiAMaisAntiga(): void
@@ -518,7 +532,10 @@ final class WhatsAppBotTest extends TestCase
 
         $this->responder('boleto', '5521999887766');
 
-        self::assertSame([], $this->enviados, 'o robô mandou a fatura de um cliente de outro DDD');
+        $textos = $this->textosEnviados();
+        self::assertCount(1, $textos);
+        self::assertStringNotContainsString(self::PIX, $textos[0]);
+        self::assertStringContainsString('Não encontrei cobrança', $textos[0]);
     }
 
     public function testNaoTrocaODonoDaConversa(): void
@@ -546,7 +563,10 @@ final class WhatsAppBotTest extends TestCase
             },
         ]);
 
-        self::assertSame([], $this->enviados);
+        $textos = $this->textosEnviados();
+        self::assertCount(1, $textos);
+        self::assertStringNotContainsString(self::PIX, $textos[0]);
+        self::assertStringContainsString('código Pix não saiu', $textos[0]);
     }
 
     // ── QR Code como imagem ─────────────────────────────────────────────────

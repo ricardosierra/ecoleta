@@ -6,16 +6,14 @@ declare(strict_types=1);
  *
  * A decisão é local, no estilo do atendimento da Banlek: regras primeiro,
  * modelo só no que sobrou. Fatura e Pix continuam determinísticos. Ajuda,
- * saudação e “sobre a empresa” também. Cortesia (“ok”, “obrigado”, emoji)
- * e mídia ficam em silêncio. Texto que nenhuma regra cobre só vai a um
+ * saudação, cortesia, mídia e “sobre a empresa” também recebem resposta:
+ * o cliente não fica sem retorno. Texto que nenhuma regra cobre só vai a um
  * modelo se `WHATSAPP_REPLY_API_KEY` estiver preenchida; sem chave, o
- * painel humano recebe a mensagem e o robô não inventa resposta.
+ * painel humano recebe a mensagem e o robô manda o menu.
  *
- *  - só TEXTO puro entra. Foto, comprovante e o rótulo "[imagem]" do webhook
- *    nunca disparam nada;
- *  - fatura e menu: no máximo uma resposta automática a cada 6 horas;
- *  - pergunta livre (modelo): a trava de 6 horas não vale, senão a segunda
- *    mensagem da conversa fica sem resposta;
+ *  - a trava de 6 horas só impede reenviar o Pix (código e QR). Dúvida,
+ *    saudação, ajuda e o resto respondem sempre;
+ *  - mensagem de outro robô fica sem resposta, para não virar loop;
  *  - a fatura casa o telefone EXATO (com e sem o nono dígito).
  */
 
@@ -61,7 +59,7 @@ function waBotWantsInvoice(?string $type, ?string $body): bool
  * O que fazer com a mensagem recebida.
  *
  * Fatura ganha de ajuda e de “sobre”: “preciso da fatura” não vira texto
- * institucional. Cortesia e mídia devolvem vazio para o robô ficar quieto.
+ * institucional. Cortesia e mídia viram texto de apoio, sem Pix.
  *
  * @return 'invoice'|'help'|'about'|'greeting'|''
  */
@@ -96,9 +94,9 @@ function waBotWantsQrImage(string $body): bool
 /**
  * O robô já respondeu nesta conversa dentro do intervalo?
  *
- * Resposta automática é mensagem NOSSA, sem usuário (`sent_by_user_id` nulo:
- * atendente sempre grava o próprio id) e com a assinatura do robô ou o rótulo da
- * imagem. A consulta é sobre o que já fica gravado, sem tabela nem coluna nova.
+ * Só conta reenvio de Pix: mensagem NOSSA, sem usuário (`sent_by_user_id` nulo)
+ * e com o aviso "Pix Copia e Cola" ou o rótulo da imagem do QR. Saudação, menu
+ * e resposta do modelo não entram nessa conta.
  *
  * Não é atômico: duas mensagens simultâneas podem passar juntas pela checagem
  * antes de a primeira resposta ser gravada. O custo é uma resposta repetida, e
@@ -118,7 +116,7 @@ function waBotRecentlyReplied(PDO $db, int $conversationId, ?string $nowUtc = nu
            AND (body LIKE ? OR body = ?)
          LIMIT 1
     ");
-    $stmt->execute([$conversationId, $desde, '%' . WA_BOT_SIGNATURE . '%', WA_BOT_IMAGE_LABEL]);
+    $stmt->execute([$conversationId, $desde, '%Pix Copia e Cola%', WA_BOT_IMAGE_LABEL]);
 
     return $stmt->fetchColumn() !== false;
 }
@@ -236,19 +234,25 @@ function waAutoReplyWithPix(PDO $db, string $from, string $body, string $type, a
     try {
         $invoice = waBotFindInvoice($db, $from);
         if ($invoice === null) {
-            return; // Não tem fatura em aberto
+            waBotSendScripted($db, $from, 'no_invoice', $deps);
+
+            return;
         }
 
         // O cliente da fatura só entra se a conversa ainda não tiver dono.
         $conversationId = waEnsureConversation($db, $from, ['client_id' => (int) $invoice['client_id']]);
 
         if ($conversationId !== null && waBotRecentlyReplied($db, $conversationId)) {
+            waBotSendScripted($db, $from, 'pix_already', $deps);
+
             return;
         }
 
         $pix = $fetchPix((string) $invoice['asaas_payment_id']);
 
         if (empty($pix['payload'])) {
+            waBotSendScripted($db, $from, 'pix_unavailable', $deps);
+
             return;
         }
 
@@ -343,11 +347,12 @@ function waAutoReplyWithPix(PDO $db, string $from, string $body, string $type, a
 
     } catch (Throwable $e) {
         error_log('Falha ao auto-responder cobrança / Pix: ' . $e->getMessage());
+        waBotSendScripted($db, $from, 'pix_unavailable', $deps);
     }
 }
 
 /**
- * Manda o texto de ajuda, saudação ou apresentação, respeitando a janela de 6 horas.
+ * Manda o texto de ajuda, saudação ou apresentação. Sem a trava do Pix.
  *
  * @param array{send?:callable} $deps
  */
@@ -363,9 +368,6 @@ function waBotSendScripted(PDO $db, string $from, string $intent, array $deps): 
 
     try {
         $conversationId = waEnsureConversation($db, $from);
-        if ($conversationId !== null && waBotRecentlyReplied($db, $conversationId)) {
-            return;
-        }
 
         $texto = waBotScriptedReply($intent);
         $resposta = $send([
@@ -416,6 +418,8 @@ function waBotReplyWithModel(PDO $db, string $from, string $body, string $type, 
     $complete = $deps['complete'] ?? null;
     if ($complete === null) {
         if (apiSecret('WHATSAPP_REPLY_API_KEY') === '') {
+            waBotSendScripted($db, $from, 'help', $deps);
+
             return;
         }
         $complete = 'waBotCompleteRemote';
@@ -437,6 +441,8 @@ function waBotReplyWithModel(PDO $db, string $from, string $body, string $type, 
         $roteiro = $qualidade->prompt($nome, $faturas, waBotClientExtra($db, $from));
         $gerado = trim((string) $complete($body, $roteiro));
         if ($gerado === '' || mb_strlen($gerado) > 1200) {
+            waBotSendScripted($db, $from, 'help', $deps);
+
             return;
         }
         if (!str_contains($gerado, WA_BOT_SIGNATURE)) {
