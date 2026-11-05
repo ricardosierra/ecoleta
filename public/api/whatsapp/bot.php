@@ -13,7 +13,9 @@ declare(strict_types=1);
  *
  *  - só TEXTO puro entra. Foto, comprovante e o rótulo "[imagem]" do webhook
  *    nunca disparam nada;
- *  - no máximo uma resposta automática por conversa a cada 6 horas;
+ *  - fatura e menu: no máximo uma resposta automática a cada 6 horas;
+ *  - pergunta livre (modelo): a trava de 6 horas não vale, senão a segunda
+ *    mensagem da conversa fica sem resposta;
  *  - a fatura casa o telefone EXATO (com e sem o nono dígito).
  */
 
@@ -429,10 +431,6 @@ function waBotReplyWithModel(PDO $db, string $from, string $body, string $type, 
 
     try {
         $conversationId = waEnsureConversation($db, $from);
-        if ($conversationId !== null && waBotRecentlyReplied($db, $conversationId)) {
-            return;
-        }
-
         $qualidade = new WaReplyQuality();
         $faturas = waBotClientInvoices($db, $from);
         $nome = $faturas === [] ? '' : trim((string) ($faturas[0]['client_name'] ?? ''));

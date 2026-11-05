@@ -311,6 +311,21 @@ final class WhatsAppBotTest extends TestCase
         self::assertStringNotContainsString(self::PIX, $textos[0]);
     }
 
+    public function testPerguntaDepoisDaFaturaAindaChamaOModelo(): void
+    {
+        $this->fatura($this->cliente());
+        $this->responder('fatura');
+        $antes = count($this->textosEnviados());
+
+        $this->responder('vocês atendem condomínio no interior?', '5521999887766', 'text', [
+            'complete' => static fn (): string => 'Atendemos empresas em todo o Brasil.',
+        ]);
+
+        $textos = $this->textosEnviados();
+        self::assertCount($antes + 1, $textos);
+        self::assertStringContainsString('todo o Brasil', $textos[$antes]);
+    }
+
     public function testRoboEDespedidaNaoChamamModelo(): void
     {
         $this->fatura($this->cliente());
