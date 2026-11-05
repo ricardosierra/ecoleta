@@ -47,7 +47,7 @@ export function DashboardQuickActions() {
       setMenu({ x: event.clientX, y: event.clientY, mode: "context", actions });
     };
 
-    const onKey = (event: KeyboardEvent) => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         const actions = collectQuickActions(document, document.querySelector("main.dashboard-main"));
