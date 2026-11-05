@@ -63,6 +63,33 @@ function templateOptionValue(template: WhatsAppTemplate, todos: WhatsAppTemplate
   return repetido ? `${template.name}|${template.language}|${template.status ?? ""}` : template.name;
 }
 
+function conversationIdFromUrl(): number | null {
+  const value = new URLSearchParams(window.location.search).get("conversation_id");
+  if (!value || !/^\d+$/.test(value)) return null;
+
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+function updateConversationUrl(id: number | null, replace = false): void {
+  const url = new URL(window.location.href);
+  if (id === null) {
+    url.searchParams.delete("conversation_id");
+  } else {
+    url.searchParams.set("conversation_id", String(id));
+  }
+
+  const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+  const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (nextUrl === currentUrl) return;
+
+  if (replace) {
+    window.history.replaceState(window.history.state, "", nextUrl);
+  } else {
+    window.history.pushState(window.history.state, "", nextUrl);
+  }
+}
+
 function WhatsAppMain() {
   const { user } = useDashboardAuth();
   const permitido = canViewWhatsAppPanel(user);
@@ -140,6 +167,26 @@ function WhatsAppMain() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // A URL compartilhada abre a conversa certa; voltar/avançar no navegador
+  // acompanha as conversas que foram selecionadas nesta sessão.
+  useEffect(() => {
+    const sincronizarConversa = () => {
+      const id = conversationIdFromUrl();
+      if (id === activeId) return;
+
+      setActiveId(id);
+      setActiveConversation(null);
+      setMessages([]);
+      setMessagesStatus(id === null ? "ok" : "loading");
+      setMessagesError("");
+      setMessagesTruncated(false);
+    };
+
+    sincronizarConversa();
+    window.addEventListener("popstate", sincronizarConversa);
+    return () => window.removeEventListener("popstate", sincronizarConversa);
+  }, [activeId]);
 
   // A busca vai para o servidor depois de uma pausa na digitação: a lista é cortada
   // nas conversas mais recentes e só o servidor enxerga as demais.
@@ -244,6 +291,7 @@ function WhatsAppMain() {
   }, [permitido, activeId]);
 
   const abrirConversa = async (conversa: WhatsAppConversation) => {
+    updateConversationUrl(conversa.id);
     setActiveId(conversa.id);
     setActiveConversation(conversa);
     setMessages([]);
@@ -628,6 +676,7 @@ function WhatsAppMain() {
           const semEla = prev.filter(c => c.id !== nova.id);
           return [nova, ...semEla];
         });
+        updateConversationUrl(nova.id);
         setActiveId(nova.id);
         setActiveConversation(nova);
         setMessages([]);
@@ -1509,7 +1558,16 @@ function WindowStrip({ conversation }: { conversation: WhatsAppConversation }) {
 function Bubble({ message }: { message: WhatsAppMessage }) {
   const saindo = message.direction === "outgoing";
   const falhou = (message.status ?? "").toLowerCase() === "failed";
-  const isAudio = (message.type ?? "").toLowerCase() === "audio" || (message.body ?? "").includes("[áudio]");
+  const type = (message.type ?? "").toLowerCase();
+  const isAudio = type === "audio";
+  const isImage = type === "image" || type === "sticker";
+  const isVideo = type === "video" || type === "gif";
+  const isDocument = type === "document";
+  const hasMedia = Boolean(message.media_url);
+  const body = message.body?.trim() ? message.body : "Mensagem recebida.";
+  const mediaPlaceholder = /^\[(imagem|vídeo|gif|áudio|mensagem de voz|documento|figurinha|figurinha animada)(: [^\]]+)?\]$/i.test(body);
+  const showMediaCaption = hasMedia && !mediaPlaceholder && body.trim() !== "";
+  const documentName = mediaPlaceholder ? body.match(/^\[documento: (.+)\]$/i)?.[1] : null;
 
   return (
     <div className={`flex mb-2 ${saindo ? "justify-end" : "justify-start"}`}>
@@ -1526,15 +1584,42 @@ function Bubble({ message }: { message: WhatsAppMessage }) {
           </p>
         )}
 
-        {/* Player de áudio caso a mensagem seja áudio */}
-        {isAudio && message.media_url ? (
+        {hasMedia && isAudio && (
           <div className="py-1">
-            <audio controls src={message.media_url} className="max-w-full h-10" preload="metadata" />
+            <audio controls src={message.media_url ?? undefined} className="max-w-full h-10" preload="metadata" />
           </div>
-        ) : (
-          <p className="whitespace-pre-wrap break-words text-[14.5px] leading-snug">
-            {message.body || `[${message.type ?? "sem conteúdo"}]`}
-          </p>
+        )}
+
+        {hasMedia && isImage && (
+          <a href={message.media_url ?? undefined} target="_blank" rel="noreferrer" className="block max-w-full">
+            {/* Imagens recebidas são entregues pelo endpoint autenticado do painel. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={message.media_url ?? undefined} alt={type === "sticker" ? "Figurinha recebida" : "Imagem recebida"} className="max-h-80 max-w-full rounded-md object-contain" loading="lazy" />
+          </a>
+        )}
+
+        {hasMedia && isVideo && (
+          <video controls playsInline preload="metadata" src={message.media_url ?? undefined} className="max-h-80 max-w-full rounded-md" />
+        )}
+
+        {hasMedia && isDocument && (
+          <a href={message.media_url ?? undefined} download className="block rounded-md border border-[var(--color-wa-time)] bg-[var(--color-wa-in)] px-3 py-2 text-sm font-semibold underline">
+            {documentName ? `Baixar ${documentName}` : "Baixar documento recebido"}
+          </a>
+        )}
+
+        {(!hasMedia || (!isAudio && !isImage && !isVideo && !isDocument)) && (
+          <p className="whitespace-pre-wrap break-words text-[14.5px] leading-snug">{body}</p>
+        )}
+
+        {showMediaCaption && (isAudio || isImage || isVideo || isDocument) && (
+          <p className="whitespace-pre-wrap break-words text-[14.5px] leading-snug mt-1">{body}</p>
+        )}
+
+        {type === "location" && message.location_url && (
+          <a href={message.location_url} target="_blank" rel="noreferrer" className="mt-1 inline-block text-sm font-semibold underline">
+            Abrir localização no mapa
+          </a>
         )}
 
         {falhou && message.error_message && (

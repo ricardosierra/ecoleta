@@ -280,6 +280,7 @@ final class WhatsAppLibTest extends TestCase
     {
         putenv('WHATSAPP_OS_TEMPLATE');
         putenv('WHATSAPP_BILLING_TEMPLATE');
+        putenv('WHATSAPP_BILLING_OVERDUE_TEMPLATE');
 
         self::assertSame([], waConfiguredTemplates());
         self::assertSame([], waKnownTemplates());
@@ -289,15 +290,17 @@ final class WhatsAppLibTest extends TestCase
     {
         putenv('WHATSAPP_OS_TEMPLATE=meu_os');
         putenv('WHATSAPP_BILLING_TEMPLATE=minha_cobranca');
+        putenv('WHATSAPP_BILLING_OVERDUE_TEMPLATE=minha_fatura_atrasada');
 
         try {
             $lista = waConfiguredTemplates();
         } finally {
             putenv('WHATSAPP_OS_TEMPLATE');
             putenv('WHATSAPP_BILLING_TEMPLATE');
+            putenv('WHATSAPP_BILLING_OVERDUE_TEMPLATE');
         }
 
-        self::assertSame(['meu_os', 'minha_cobranca'], array_column($lista, 'name'));
+        self::assertSame(['meu_os', 'minha_cobranca', 'minha_fatura_atrasada'], array_column($lista, 'name'));
         foreach ($lista as $item) {
             self::assertSame('UNVERIFIED', $item['status']);
             self::assertSame('', $item['body_text']);
@@ -305,6 +308,8 @@ final class WhatsAppLibTest extends TestCase
         self::assertSame(['client_name', 'os_number', 'os_link'], $lista[0]['param_kinds']);
         self::assertSame(['client_name', 'amount', 'due_date', 'invoice_link'], $lista[1]['param_kinds']);
         self::assertCount(4, $lista[1]['param_labels']);
+        self::assertSame(['client_name', 'amount', 'due_date', 'invoice_link'], $lista[2]['param_kinds']);
+        self::assertCount(4, $lista[2]['param_labels']);
     }
 
     /** Template que a Meta devolve e o código conhece ganha rótulos; o desconhecido não. */

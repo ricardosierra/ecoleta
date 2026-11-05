@@ -122,12 +122,17 @@ final class BillingLibTest extends TestCase
         }
     }
 
-    public function testDiasDeLembrete(): void
+    public function testAvisosSaoCalculadosEmRelacaoAoVencimento(): void
     {
-        self::assertTrue(billingShouldRemind(new DateTimeImmutable('2026-09-03')));
-        self::assertTrue(billingShouldRemind(new DateTimeImmutable('2026-09-07')));
-        self::assertFalse(billingShouldRemind(new DateTimeImmutable('2026-09-04')));
-        self::assertFalse(billingShouldRemind(new DateTimeImmutable('2026-09-30')));
+        self::assertSame('upcoming', billingReminderEvent(new DateTimeImmutable('2026-10-03'), '2026-10-05'));
+        self::assertSame('upcoming', billingReminderEvent(new DateTimeImmutable('2026-10-13'), '2026-10-15'));
+        self::assertSame('upcoming', billingReminderEvent(new DateTimeImmutable('2026-10-30'), '2026-11-01'));
+        self::assertNull(billingReminderEvent(new DateTimeImmutable('2026-10-02'), '2026-10-05'));
+        self::assertNull(billingReminderEvent(new DateTimeImmutable('2026-10-05'), '2026-10-05'));
+        self::assertSame('overdue', billingReminderEvent(new DateTimeImmutable('2026-10-07'), '2026-10-05'));
+        self::assertSame('overdue', billingReminderEvent(new DateTimeImmutable('2026-10-17'), '2026-10-15'));
+        self::assertNull(billingReminderEvent(new DateTimeImmutable('2026-10-06'), '2026-10-05'));
+        self::assertNull(billingReminderEvent(new DateTimeImmutable('2026-10-03'), 'data inválida'));
     }
 
     public function testVencimentoCaiNoMesSeguinteNoDiaDoCadastro(): void
@@ -183,6 +188,8 @@ final class BillingLibTest extends TestCase
         self::assertStringContainsString('10/10/2026', $email['html']);
         self::assertStringContainsString('00020126580014br.gov.bcb.pix', $email['html']);
         self::assertStringContainsString('Sua Fatura Mensal', $email['html']);
+        self::assertStringContainsString('Avise se recebeu esse aviso.', $email['html']);
+        self::assertStringContainsString('Avise se recebeu esse aviso.', $email['text']);
         self::assertSame('Sua Fatura Mensal - Ecoleva', $email['subject']);
     }
 
@@ -200,6 +207,21 @@ final class BillingLibTest extends TestCase
         self::assertStringContainsString('href="https://www.asaas.com/i/xyz"', $email['html']);
         self::assertStringContainsString('R$ 100,00', $email['html']);
         self::assertSame('Lembrete de Fatura - Ecoleva', $email['subject']);
+    }
+
+    public function testEmailDeAtrasoDizQueAFaturaVenceu(): void
+    {
+        $email = billingOverdueEmail(
+            'Cliente Exemplo',
+            100.0,
+            '2026-10-05',
+            'pix-payload',
+            'https://www.asaas.com/i/xyz'
+        );
+
+        self::assertSame('Fatura em Atraso - Ecoleva', $email['subject']);
+        self::assertStringContainsString('venceu em <strong>05/10/2026</strong>', $email['html']);
+        self::assertStringContainsString('está em atraso', $email['text']);
     }
 
     public function testSemLinkDeFaturaOBotaoDoBoletoNaoAparece(): void

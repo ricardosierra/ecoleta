@@ -2,23 +2,25 @@
 declare(strict_types=1);
 
 /**
- * Resposta automática com fatura e Pix.
+ * Resposta automática do WhatsApp da Ecoleva.
  *
- * Cada resposta é uma mensagem de cobrança com código Pix, mandada para quem
- * escreveu para o número da empresa. Por isso o robô é contido de propósito:
+ * A decisão é local, no estilo do atendimento da Banlek: regras primeiro,
+ * modelo só no que sobrou. Fatura e Pix continuam determinísticos. Ajuda,
+ * saudação e “sobre a empresa” também. Cortesia (“ok”, “obrigado”, emoji)
+ * e mídia ficam em silêncio. Texto que nenhuma regra cobre só vai a um
+ * modelo se `WHATSAPP_REPLY_API_KEY` estiver preenchida; sem chave, o
+ * painel humano recebe a mensagem e o robô não inventa resposta.
  *
- *  - só reage a mensagem de TEXTO com intenção clara de fatura (`waBotWantsInvoice`).
- *    Emoji, "ok", "obrigado", foto de comprovante e o rótulo "[imagem]" que o
- *    webhook grava no lugar da mídia nunca disparam nada;
- *  - responde no máximo uma vez por conversa a cada 6 horas, reconhecendo as
- *    próprias respostas pelo que já fica gravado em `whatsapp_messages`;
- *  - acha o cliente pelo telefone EXATO (com e sem o nono dígito), nunca pelos
- *    últimos dígitos, que casavam DDDs diferentes.
+ *  - só TEXTO puro entra. Foto, comprovante e o rótulo "[imagem]" do webhook
+ *    nunca disparam nada;
+ *  - no máximo uma resposta automática por conversa a cada 6 horas;
+ *  - a fatura casa o telefone EXATO (com e sem o nono dígito).
  */
 
 require_once __DIR__ . '/../asaas_lib.php';
 require_once __DIR__ . '/../whatsapp_lib.php';
 require_once __DIR__ . '/../whatsapp_store.php';
+require_once __DIR__ . '/WaReplyQuality.php';
 
 /** No máximo uma resposta automática por conversa neste intervalo, em segundos. */
 const WA_BOT_REPLY_INTERVAL_SECONDS = 21600;
@@ -33,35 +35,13 @@ const WA_BOT_SIGNATURE = 'Mensagem automática da Ecoleva';
 /** Corpo gravado para a imagem do QR Code (também reconhecido como resposta do robô). */
 const WA_BOT_IMAGE_LABEL = '[imagem QR Code Pix]';
 
-/**
- * Palavras que pedem a fatura, já em minúsculas e sem acento (ver
- * `waBotNormalizeText`). Palavra inteira: "pixel" não é "pix".
- */
-const WA_BOT_INTENT_PATTERN = '/(?<![a-z0-9])(?:faturas?|boletos?|pix|qr(?: ?code)?|segunda via|2 ?a? ?via|pagar|pagamentos?|cobrancas?|vencimentos?)(?![a-z0-9])/';
-
-/**
- * Quem diz que já pagou ou manda comprovante não quer a fatura de novo, mesmo
- * citando "pix" ou "pagamento".
- */
-const WA_BOT_ALREADY_PAID_PATTERN = '/(?<![a-z0-9])(?:comprovantes?|paguei|pagamos|quitei|quitamos|quitad[oa]s?)(?![a-z0-9])/';
-
-/** Pedido explícito da imagem do QR Code. */
+/** Pedido explícito da imagem do QR Code. A intenção de fatura mora em `WaReplyQuality`. */
 const WA_BOT_QR_IMAGE_PATTERN = '/(?<![a-z0-9])qr(?: ?code)?(?![a-z0-9])/';
 
 /** Minúsculas, sem acento e com espaços colapsados: a forma em que as palavras-chave são procuradas. */
 function waBotNormalizeText(string $texto): string
 {
-    $texto = mb_strtolower(trim($texto), 'UTF-8');
-    $texto = strtr($texto, [
-        'á' => 'a', 'à' => 'a', 'â' => 'a', 'ã' => 'a', 'ä' => 'a',
-        'é' => 'e', 'è' => 'e', 'ê' => 'e', 'ë' => 'e',
-        'í' => 'i', 'ì' => 'i', 'î' => 'i', 'ï' => 'i',
-        'ó' => 'o', 'ò' => 'o', 'ô' => 'o', 'õ' => 'o', 'ö' => 'o',
-        'ú' => 'u', 'ù' => 'u', 'û' => 'u', 'ü' => 'u',
-        'ç' => 'c', 'ª' => 'a', 'º' => 'o', '°' => '',
-    ]);
-
-    return preg_replace('/\s+/u', ' ', $texto) ?? $texto;
+    return (new WaReplyQuality())->normalize($texto);
 }
 
 /**
@@ -72,22 +52,37 @@ function waBotNormalizeText(string $texto): string
  */
 function waBotWantsInvoice(?string $type, ?string $body): bool
 {
-    if (strtolower(trim((string) $type)) !== 'text') {
-        return false;
+    return (new WaReplyQuality())->decide($type, $body)['lane'] === 'invoice';
+}
+
+/**
+ * O que fazer com a mensagem recebida.
+ *
+ * Fatura ganha de ajuda e de “sobre”: “preciso da fatura” não vira texto
+ * institucional. Cortesia e mídia devolvem vazio para o robô ficar quieto.
+ *
+ * @return 'invoice'|'help'|'about'|'greeting'|''
+ */
+function waBotClassify(?string $type, ?string $body): string
+{
+    $decisao = (new WaReplyQuality())->decide($type, $body);
+    if ($decisao['lane'] === 'invoice') {
+        return 'invoice';
+    }
+    if ($decisao['lane'] === 'script') {
+        return $decisao['script'];
+    }
+    if ($decisao['lane'] === 'model') {
+        return 'model';
     }
 
-    $body = trim((string) $body);
-    if ($body === '' || preg_match('/^\[[^\]]*\]$/u', $body) === 1) {
-        return false;
-    }
+    return '';
+}
 
-    $texto = waBotNormalizeText($body);
-
-    if (preg_match(WA_BOT_ALREADY_PAID_PATTERN, $texto) === 1) {
-        return false;
-    }
-
-    return preg_match(WA_BOT_INTENT_PATTERN, $texto) === 1;
+/** Texto fixo de ajuda, saudação, apresentação ou despedida. Sempre com a assinatura do robô. */
+function waBotScriptedReply(string $intent): string
+{
+    return (new WaReplyQuality())->script($intent);
 }
 
 /** O cliente pediu a imagem do QR Code, e não só o código copia e cola? */
@@ -208,7 +203,20 @@ function waBotUploadQrImage(string $encodedImage, callable $upload): string
  */
 function waAutoReplyWithPix(PDO $db, string $from, string $body, string $type, array $deps = []): void
 {
-    if (!waBotWantsInvoice($type, $body)) {
+    $intent = waBotClassify($type, $body);
+    if ($intent === '') {
+        return;
+    }
+
+    if ($intent === 'model') {
+        waBotReplyWithModel($db, $from, $body, $type, $deps);
+
+        return;
+    }
+
+    if ($intent !== 'invoice') {
+        waBotSendScripted($db, $from, $intent, $deps);
+
         return;
     }
 
@@ -296,6 +304,8 @@ function waAutoReplyWithPix(PDO $db, string $from, string $body, string $type, a
             "",
             "Pix Copia e Cola:",
             $pix['payload'],
+            "",
+            "Avise se recebeu esse aviso.",
         ];
 
         if (!$pediuQrCode) {
@@ -332,4 +342,241 @@ function waAutoReplyWithPix(PDO $db, string $from, string $body, string $type, a
     } catch (Throwable $e) {
         error_log('Falha ao auto-responder cobrança / Pix: ' . $e->getMessage());
     }
+}
+
+/**
+ * Manda o texto de ajuda, saudação ou apresentação, respeitando a janela de 6 horas.
+ *
+ * @param array{send?:callable} $deps
+ */
+function waBotSendScripted(PDO $db, string $from, string $intent, array $deps): void
+{
+    $send = $deps['send'] ?? null;
+    if ($send === null) {
+        if (!waIsConfigured()) {
+            return;
+        }
+        $send = 'waRequest';
+    }
+
+    try {
+        $conversationId = waEnsureConversation($db, $from);
+        if ($conversationId !== null && waBotRecentlyReplied($db, $conversationId)) {
+            return;
+        }
+
+        $texto = waBotScriptedReply($intent);
+        $resposta = $send([
+            'messaging_product' => 'whatsapp',
+            'to' => $from,
+            'type' => 'text',
+            'text' => ['body' => $texto],
+        ]);
+
+        if ($conversationId !== null) {
+            waRecordMessage($db, $conversationId, [
+                'wa_message_id' => waExtractSentMessageId($resposta),
+                'direction' => 'outgoing',
+                'type' => 'text',
+                'status' => 'accepted',
+                'body' => $texto,
+                'raw_payload' => $resposta,
+            ]);
+        }
+    } catch (Throwable $e) {
+        error_log('Falha ao auto-responder ajuda da Ecoleva: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Pergunta que nenhuma regra cobriu.
+ *
+ * Sem `complete` injetado e sem `WHATSAPP_REPLY_API_KEY`, não responde.
+ * O roteiro vem de `WaReplyQuality`: empresa e faturas desta cliente, sem código Pix.
+ *
+ * @param array{send?:callable,complete?:callable} $deps
+ */
+function waBotReplyWithModel(PDO $db, string $from, string $body, string $type, array $deps): void
+{
+    if (strtolower(trim($type)) !== 'text') {
+        return;
+    }
+
+    $body = trim($body);
+    if ($body === '' || preg_match('/^\[[^\]]*\]$/u', $body) === 1) {
+        return;
+    }
+
+    if (mb_strlen($body) > 500) {
+        return;
+    }
+
+    $complete = $deps['complete'] ?? null;
+    if ($complete === null) {
+        if (apiSecret('WHATSAPP_REPLY_API_KEY') === '') {
+            return;
+        }
+        $complete = 'waBotCompleteRemote';
+    }
+
+    $send = $deps['send'] ?? null;
+    if ($send === null) {
+        if (!waIsConfigured()) {
+            return;
+        }
+        $send = 'waRequest';
+    }
+
+    try {
+        $conversationId = waEnsureConversation($db, $from);
+        if ($conversationId !== null && waBotRecentlyReplied($db, $conversationId)) {
+            return;
+        }
+
+        $qualidade = new WaReplyQuality();
+        $faturas = waBotClientInvoices($db, $from);
+        $nome = $faturas === [] ? '' : trim((string) ($faturas[0]['client_name'] ?? ''));
+        $roteiro = $qualidade->prompt($nome, $faturas);
+        $gerado = trim((string) $complete($body, $roteiro));
+        if ($gerado === '' || mb_strlen($gerado) > 1200) {
+            return;
+        }
+        if (!str_contains($gerado, WA_BOT_SIGNATURE)) {
+            $gerado .= "\n\n_" . WA_BOT_SIGNATURE . '._';
+        }
+
+        $resposta = $send([
+            'messaging_product' => 'whatsapp',
+            'to' => $from,
+            'type' => 'text',
+            'text' => ['body' => $gerado],
+        ]);
+
+        if ($conversationId !== null) {
+            waRecordMessage($db, $conversationId, [
+                'wa_message_id' => waExtractSentMessageId($resposta),
+                'direction' => 'outgoing',
+                'type' => 'text',
+                'status' => 'accepted',
+                'body' => $gerado,
+                'raw_payload' => $resposta,
+            ]);
+        }
+    } catch (Throwable $e) {
+        error_log('Falha ao auto-responder com modelo: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Chamada OpenAI-compatível. Provedor e modelo vêm do env; o padrão é um modelo pequeno.
+ *
+ * Falha fechada: timeout curto, sem repassar o corpo de erro ao cliente.
+ */
+/**
+ * Faturas desta cliente para o prompt: abertas primeiro, depois pagas recentes.
+ * Sem Pix. Quem não está no cadastro volta lista vazia.
+ *
+ * @return list<array<string,mixed>>
+ */
+function waBotClientInvoices(PDO $db, string $from): array
+{
+    $variantes = waPhoneVariants($from);
+    if ($variantes === []) {
+        return [];
+    }
+
+    $clientes = $db->query("SELECT id, name, whatsapp FROM clients WHERE whatsapp IS NOT NULL AND whatsapp <> ''");
+    $ids = [];
+    $nomes = [];
+    foreach ($clientes ? $clientes->fetchAll() : [] as $linha) {
+        if (in_array(normalizePhone((string) $linha['whatsapp']), $variantes, true)) {
+            $ids[] = (int) $linha['id'];
+            $nomes[(int) $linha['id']] = (string) $linha['name'];
+        }
+    }
+    if ($ids === []) {
+        return [];
+    }
+
+    $marcadores = implode(',', array_fill(0, count($ids), '?'));
+    $stmt = $db->prepare("
+        SELECT client_id, value, due_date, status
+          FROM invoices
+         WHERE client_id IN ({$marcadores})
+           AND status IN ('PENDING', 'OVERDUE', 'RECEIVED', 'CONFIRMED')
+         ORDER BY CASE WHEN status IN ('PENDING', 'OVERDUE') THEN 0 ELSE 1 END,
+                  due_date DESC, id DESC
+         LIMIT 12
+    ");
+    $stmt->execute($ids);
+    $linhas = [];
+    foreach ($stmt->fetchAll() as $fatura) {
+        $fatura['client_name'] = $nomes[(int) $fatura['client_id']] ?? '';
+        $linhas[] = $fatura;
+    }
+
+    return $linhas;
+}
+
+function waBotCompleteRemote(string $pergunta, string $roteiro = ''): string
+{
+    $chave = apiSecret('WHATSAPP_REPLY_API_KEY');
+    if ($chave === '') {
+        return '';
+    }
+
+    $url = apiSecret('WHATSAPP_REPLY_API_URL');
+    if ($url === '') {
+        $url = 'https://api.anthropic.com/v1/messages';
+    }
+    $modelo = apiSecret('WHATSAPP_REPLY_MODEL');
+    if ($modelo === '') {
+        $modelo = 'claude-haiku-4-5';
+    }
+
+    if ($roteiro === '') {
+        $roteiro = (new WaReplyQuality())->prompt('', []);
+    }
+
+    $payload = json_encode([
+        'model' => $modelo,
+        'max_tokens' => 300,
+        'temperature' => 0.2,
+        'system' => $roteiro,
+        'messages' => [
+            ['role' => 'user', 'content' => $pergunta],
+        ],
+    ], JSON_UNESCAPED_UNICODE);
+
+    $ch = curl_init($url);
+    if ($ch === false || $payload === false) {
+        return '';
+    }
+
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $payload,
+        CURLOPT_HTTPHEADER => [
+            'content-type: application/json',
+            'x-api-key: ' . $chave,
+            'anthropic-version: 2026-10-21',
+        ],
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 12,
+    ]);
+    $cru = curl_exec($ch);
+    curl_close($ch);
+    if (!is_string($cru) || $cru === '') {
+        return '';
+    }
+
+    $json = json_decode($cru, true);
+    $texto = '';
+    foreach ($json['content'] ?? [] as $bloco) {
+        if (is_array($bloco) && ($bloco['type'] ?? '') === 'text' && is_string($bloco['text'] ?? null)) {
+            $texto .= $bloco['text'];
+        }
+    }
+
+    return trim($texto);
 }

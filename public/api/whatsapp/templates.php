@@ -18,7 +18,7 @@ apiRequireCsrfToken();
 apiSendJsonHeaders();
 
 $db = getDbConnection();
-$actor = waRequirePanelAccess($db);
+$actor = waRequirePanelAccess();
 
 $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
 

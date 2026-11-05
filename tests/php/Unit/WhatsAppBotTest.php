@@ -245,11 +245,104 @@ final class WhatsAppBotTest extends TestCase
     {
         $this->fatura($this->cliente());
 
-        foreach (['ok', 'obrigado', '👍', 'bom dia'] as $texto) {
+        foreach (['ok', 'obrigado', '👍'] as $texto) {
             $this->responder($texto);
         }
 
         self::assertSame([], $this->enviados);
+    }
+
+    public function testSaudacaoEAjudaNaoMandamPix(): void
+    {
+        $this->fatura($this->cliente());
+
+        $this->responder('Bom dia');
+        $textos = $this->textosEnviados();
+        self::assertCount(1, $textos);
+        self::assertStringContainsString('fatura', $textos[0]);
+        self::assertStringNotContainsString(self::PIX, $textos[0]);
+
+        $this->responder('ajuda');
+        self::assertCount(1, $this->textosEnviados(), 'a janela de 6 horas vale também para o menu');
+    }
+
+    public function testSobreExplicaAEmpresaSemConsultarFatura(): void
+    {
+        $this->fatura($this->cliente());
+
+        $this->responder('o que vocês fazem?');
+
+        $textos = $this->textosEnviados();
+        self::assertCount(1, $textos);
+        self::assertStringContainsString('Ecoleva', $textos[0]);
+        self::assertStringContainsString('Econformidade', $textos[0]);
+        self::assertStringNotContainsString(self::PIX, $textos[0]);
+        self::assertSame([], $this->uploads);
+    }
+
+    public function testPerguntaSoltaSoRespondeSeHouverModelo(): void
+    {
+        $this->fatura($this->cliente());
+
+        $this->responder('vocês atendem condomínio no interior?');
+        self::assertSame([], $this->enviados);
+
+        $vistos = [];
+        $this->responder('vocês atendem condomínio no interior?', '5521999887766', 'text', [
+            'complete' => static function (string $pergunta, string $roteiro) use (&$vistos): string {
+                $vistos[] = $roteiro;
+
+                return 'Atendemos empresas em todo o Brasil. ' . $pergunta;
+            },
+        ]);
+        self::assertNotSame([], $vistos);
+        self::assertStringContainsString('Heineken', $vistos[0]);
+        self::assertStringContainsString('em aberto', $vistos[0]);
+        self::assertStringContainsString('Assistente Ecoleva', $vistos[0]);
+        self::assertStringContainsString('Nunca cite Nubank', $vistos[0]);
+        self::assertStringNotContainsString(self::PIX, $vistos[0]);
+        $textos = $this->textosEnviados();
+        self::assertCount(1, $textos);
+        self::assertStringContainsString('todo o Brasil', $textos[0]);
+        self::assertStringContainsString(WA_BOT_SIGNATURE, $textos[0]);
+        self::assertStringNotContainsString(self::PIX, $textos[0]);
+    }
+
+    public function testRoboEDespedidaNaoChamamModelo(): void
+    {
+        $this->fatura($this->cliente());
+        $chamadas = 0;
+        $extra = [
+            'complete' => static function () use (&$chamadas): string {
+                $chamadas++;
+
+                return 'não deveria';
+            },
+        ];
+
+        $this->responder('Olá! Mensagem automática. Agradecemos o seu contato. Escolha uma das opções abaixo.', '5521999887766', 'text', $extra);
+        $this->responder('tchau', '5521999887766', 'text', $extra);
+
+        self::assertSame(0, $chamadas);
+        $textos = $this->textosEnviados();
+        self::assertCount(1, $textos);
+        self::assertStringContainsString('Combinado', $textos[0]);
+        self::assertStringNotContainsString(self::PIX, $textos[0]);
+    }
+
+    public function testPromptListaFaturaPagaEEmAberto(): void
+    {
+        $cliente = $this->cliente();
+        $this->fatura($cliente, 'RECEIVED', '2026-08-10', 'pay_paga');
+        $this->fatura($cliente, 'OVERDUE', '2026-09-10', 'pay_venceu');
+
+        $linhas = waBotClientInvoices($this->db->pdo(), '5521999887766');
+        $texto = (new WaReplyQuality())->prompt('Heineken', $linhas);
+
+        self::assertStringContainsString('paga', $texto);
+        self::assertStringContainsString('vencida', $texto);
+        self::assertStringContainsString('120,50', $texto);
+        self::assertStringNotContainsString('pay_paga', $texto);
     }
 
     public function testNoMaximoUmaRespostaAutomaticaPorJanelaDeSeisHoras(): void

@@ -22,7 +22,7 @@ apiRequireCsrfToken();
 apiSendJsonHeaders();
 
 $db = getDbConnection();
-$actor = waRequirePanelAccess($db);
+$actor = waRequirePanelAccess();
 
 $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
 
@@ -154,7 +154,7 @@ const WA_MESSAGE_PAGE_SIZE = 500;
 
 $stmt = $db->prepare('
     SELECT id, wa_message_id, direction, type, status, body, error_message,
-           message_at, sent_by_user_id, service_order_id
+           raw_payload, message_at, sent_by_user_id, service_order_id
       FROM whatsapp_messages
      WHERE conversation_id = ?
      ORDER BY message_at DESC, id DESC
@@ -168,15 +168,60 @@ $linhas = array_reverse(array_slice($linhas, 0, WA_MESSAGE_PAGE_SIZE));
 
 $mensagens = [];
 foreach ($linhas as $linha) {
+    $body = $linha['body'];
+    $payload = null;
+    if ($linha['direction'] === 'incoming' && is_string($linha['raw_payload'] ?? null)) {
+        $payload = json_decode($linha['raw_payload'], true);
+        if (is_array($payload)) {
+            $body = waExtractIncomingMessageBody($payload) ?? $body;
+        }
+    }
+
+    $type = strtolower((string) ($linha['type'] ?? ''));
+    $mediaKey = $type === 'gif' ? 'gif' : $type;
+    if ($type === 'gif' && is_array($payload) && !is_array($payload['gif'] ?? null) && is_array($payload['video'] ?? null)) {
+        $mediaKey = 'video';
+    }
+    $mediaPayload = is_array($payload) && is_array($payload[$mediaKey] ?? null) ? $payload[$mediaKey] : [];
+    $mediaUrl = null;
+    $locationUrl = null;
+    if (
+        $linha['direction'] === 'incoming'
+        && is_array($payload)
+        && in_array($mediaKey, ['image', 'audio', 'video', 'document', 'sticker', 'gif'], true)
+        && waMessageScalarText($mediaPayload['id'] ?? null) !== null
+    ) {
+        $mediaUrl = '/api/whatsapp/media.php?message_id=' . (int) $linha['id'];
+    }
+    $locationPayload = is_array($payload)
+        ? ($payload['location'] ?? $payload['live_location'] ?? null)
+        : null;
+    if ($linha['direction'] === 'incoming' && in_array($type, ['location', 'live_location'], true) && is_array($locationPayload)) {
+        $location = $locationPayload;
+        $latitude = $location['latitude'] ?? null;
+        $longitude = $location['longitude'] ?? null;
+        if (
+            is_numeric($latitude)
+            && is_numeric($longitude)
+            && (float) $latitude >= -90 && (float) $latitude <= 90
+            && (float) $longitude >= -180 && (float) $longitude <= 180
+        ) {
+            $locationUrl = 'https://www.google.com/maps/search/?api=1&query='
+                . rawurlencode((string) $latitude . ',' . (string) $longitude);
+        }
+    }
+
     $mensagens[] = [
         'id' => (int) $linha['id'],
         'direction' => (string) $linha['direction'],
         'type' => $linha['type'],
         'status' => $linha['status'],
-        'body' => $linha['body'],
+        'body' => $body,
         'error_message' => $linha['error_message'],
         'message_at' => waToIso($linha['message_at']),
         'service_order_id' => $linha['service_order_id'] === null ? null : (int) $linha['service_order_id'],
+        'media_url' => $mediaUrl,
+        'location_url' => $locationUrl,
     ];
 }
 

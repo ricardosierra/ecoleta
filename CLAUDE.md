@@ -42,11 +42,9 @@ a mensagem de WhatsApp e as datas do dashboard. Os dois entregam o mesmo
 documento ao cliente — mexeu em um, olhe o outro.
 
 O painel de WhatsApp (`/dashboard/whatsapp`) está liberado para contas de papel
-`master` (a cliente) e para `root` com e-mail na lista de
+`master` (a cliente) e `root`, nos dois lados:
 `apiRoleCanViewWhatsAppPanel()` (authz.php) / `canViewWhatsAppPanel()` (authz.ts).
-A lista de e-mails root está no código nos dois lados de propósito: um valor de env
-não atravessa para o navegador, e sem a regra no cliente o menu desenharia um link
-que a API recusa.
+O navegador controla o menu e o servidor continua conferindo o papel real da conta.
 
 ## Estrutura
 
@@ -240,9 +238,10 @@ diretório antes do primeiro upload.
   lê isso e avisa quando o cron nunca rodou ou parou há mais de 36 horas
   (`lib/billing-status.ts`). É o único sinal de que o agendamento do servidor
   existe. O passo a passo do agendamento está em `docs/deploy.md`.
-- **Lembrete não vai junto com a fatura nova.** Nos dias 3 e 7 o lembrete pula
-  fatura emitida há menos de 20 horas (`BILLING_REMINDER_MIN_AGE`), inclusive
-  entre duas execuções do cron no mesmo dia.
+- **Régua de avisos relativa ao vencimento.** O lembrete sai dois dias antes; o aviso
+  explícito de atraso começa dois dias depois. Cada etapa é idempotente por fatura,
+  vencimento e canal; o lembrete não vai junto com a fatura nova (idade mínima de
+  20 horas). Fora da janela do WhatsApp, atraso usa `WHATSAPP_BILLING_OVERDUE_TEMPLATE`.
 - **Valor mínimo de R$ 5,00.** O Asaas não cobra menos; `BILLING_MIN_VALUE`
   (PHP) e `MIN_MONTHLY_VALUE` em `components/ClienteForm.tsx` são espelhos.
   Cadastro e edição barram antes, em vez de a fatura falhar todo dia.

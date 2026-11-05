@@ -401,6 +401,103 @@ final class BillingEndpointsTest extends TestCase
         self::assertSame(403, $res->status, $res->body);
     }
 
+    public function testReenvioDeCanaisNaoCriaOutraFaturaNoAsaas(): void
+    {
+        $clientId = $this->db->seedClient('Cliente Reenvio');
+        $invoiceId = $this->db->seedInvoice($clientId, 'pay_reenvio');
+
+        // Sem contatos cadastrados, o envio é recusado antes de falar com os
+        // provedores. O endpoint ainda prova a seleção de canal e não cria invoice.
+        $res = Endpoint::call('invoices/index.php', [
+            'method' => 'POST',
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'body' => ['action' => 'resend', 'id' => $invoiceId, 'channels' => ['email']],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(200, $res->status, $res->body);
+        self::assertSame('skipped', $res->json()['delivery']['email'] ?? null);
+        self::assertSame('skipped', $res->json()['delivery']['whatsapp'] ?? null);
+        self::assertArrayHasKey('email', $res->json()['delivery']['errors'] ?? []);
+        self::assertSame(1, $this->db->count('invoices'));
+    }
+
+    public function testReenvioPrecisaInformarUmOuMaisCanaisValidos(): void
+    {
+        $clientId = $this->db->seedClient('Cliente Reenvio');
+        $invoiceId = $this->db->seedInvoice($clientId, 'pay_reenvio');
+
+        $res = Endpoint::call('invoices/index.php', [
+            'method' => 'POST',
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'body' => ['action' => 'resend', 'id' => $invoiceId, 'channels' => ['asaas']],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(400, $res->status, $res->body);
+        self::assertSame(1, $this->db->count('invoices'));
+    }
+
+    public function testReenvioRecusaUmCanalQueNaoSejaTexto(): void
+    {
+        $clientId = $this->db->seedClient('Cliente Reenvio');
+        $invoiceId = $this->db->seedInvoice($clientId, 'pay_reenvio');
+
+        $res = Endpoint::call('invoices/index.php', [
+            'method' => 'POST',
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'body' => ['action' => 'resend', 'id' => $invoiceId, 'channels' => [['email']]],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(400, $res->status, $res->body);
+        self::assertSame(1, $this->db->count('invoices'));
+    }
+
+    public function testCriarOutraFaturaNoMesmoMesExigeConfirmacaoExplicita(): void
+    {
+        $clientId = $this->db->seedClient('Cliente Mensal', 100.0, 10, 'active', null, 'cus_x', 'a@b.com', '11144477735');
+        $this->db->seedInvoice($clientId, 'pay_mes', 100.0, '2099-01-10');
+
+        $res = Endpoint::call('invoices/index.php', [
+            'method' => 'POST',
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'body' => ['action' => 'create', 'client_id' => $clientId, 'value' => 25, 'due_date' => '2099-01-20'],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(409, $res->status, $res->body);
+        self::assertSame(1, $this->db->count('invoices'));
+    }
+
+    public function testMesmoVencimentoEValorNaoPodeSerDuplicadoNemComConfirmacaoDoMes(): void
+    {
+        $clientId = $this->db->seedClient('Cliente Mensal', 100.0, 10, 'active', null, 'cus_x', 'a@b.com', '11144477735');
+        $this->db->seedInvoice($clientId, 'pay_mes', 100.0, '2099-01-10');
+
+        $res = Endpoint::call('invoices/index.php', [
+            'method' => 'POST',
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+            'body' => [
+                'action' => 'create',
+                'client_id' => $clientId,
+                'value' => 100,
+                'due_date' => '2099-01-10',
+                'allow_duplicate_month' => true,
+            ],
+            'env' => ['MAIL_TRANSPORT' => 'log'],
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(409, $res->status, $res->body);
+        self::assertSame(1, $this->db->count('invoices'));
+    }
+
     public function testCancelarFaturaInexistenteRetorna404(): void
     {
         $res = Endpoint::call('invoices/index.php', [

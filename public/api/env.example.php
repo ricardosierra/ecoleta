@@ -97,3 +97,11 @@ define('WHATSAPP_APP_SECRET', '');
 // Template da fatura: cliente, valor, vencimento e link.
 define('WHATSAPP_BILLING_TEMPLATE', '');
 define('WHATSAPP_BILLING_TEMPLATE_LANG', 'pt_BR');
+// Template aprovado para aviso de fatura em atraso (mesmos parâmetros da fatura).
+define('WHATSAPP_BILLING_OVERDUE_TEMPLATE', '');
+
+// Resposta livre do robô (o que ajuda/sobre/fatura não cobrem). Vazio = silêncio
+// e a mensagem fica para o painel. Padrão: Claude Haiku na API de mensagens.
+define('WHATSAPP_REPLY_API_KEY', '');
+define('WHATSAPP_REPLY_API_URL', '');
+define('WHATSAPP_REPLY_MODEL', '');

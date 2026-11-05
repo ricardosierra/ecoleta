@@ -376,6 +376,46 @@ final class WhatsAppStoreTest extends TestCase
         self::assertSame('outgoing', $c['last_message_direction']);
     }
 
+    public function testExtraiTodosOsTiposDeMensagemSemTextoGenericoDeFalha(): void
+    {
+        $casos = [
+            [['type' => 'text', 'text' => ['body' => 'olá']], 'olá'],
+            [['type' => 'button', 'button' => ['text' => 'Confirmar']], 'Confirmar'],
+            [['type' => 'reaction', 'reaction' => ['emoji' => '👍']], 'Reação: 👍'],
+            [['type' => 'reaction', 'reaction' => ['emoji' => '']], 'Reação removida.'],
+            [['type' => 'request_welcome'], 'A pessoa abriu a conversa por um link ou anúncio.'],
+            [['type' => 'revoke', 'revoke' => ['original_message_id' => 'wamid.1']], 'O contato apagou uma mensagem.'],
+            [
+                ['type' => 'edit', 'edit' => ['message' => ['type' => 'text', 'text' => ['body' => 'texto novo']]]],
+                'Mensagem editada: texto novo',
+            ],
+            [
+                ['type' => 'poll', 'poll' => ['title' => 'Horário', 'options' => [['option_name' => 'Manhã'], ['option_name' => 'Tarde']]]],
+                "Enquete: Horário\n• Manhã\n• Tarde",
+            ],
+            [['type' => 'poll_update', 'poll_update' => ['votes' => [['option_name' => 'Manhã']]]], "Voto em enquete\n• Manhã"],
+            [['type' => 'group_invite', 'group_invite' => ['group_subject' => 'Coleta']], 'Convite para o grupo Coleta.'],
+            [['type' => 'pin'], 'Uma mensagem foi fixada na conversa.'],
+            [['type' => 'ephemeral', 'ephemeral' => ['expiration' => 86400]], 'Mensagens temporárias ativadas (24 horas).'],
+            [['type' => 'video', 'video' => ['id' => '1', 'gif' => true]], '[GIF]'],
+            [['type' => 'sticker', 'sticker' => ['id' => '1', 'animated' => true]], '[figurinha animada]'],
+            [
+                ['type' => 'system', 'system' => ['type' => 'customer_changed_number', 'wa_id' => '5511999999999']],
+                'O contato trocou o número do WhatsApp. Novo número: 5511999999999.',
+            ],
+            [['type' => 'unsupported', 'unsupported' => ['type' => 'view_once']], 'Mídia de visualização única. O arquivo não pode ser aberto de novo.'],
+            [['type' => 'unsupported'], 'Mensagem recebida.'],
+            [['type' => 'address', 'address' => ['street' => 'Rua A']], "Endereço:\naddress.street: Rua A"],
+            [[], 'Mensagem recebida.'],
+        ];
+
+        foreach ($casos as [$mensagem, $esperado]) {
+            $corpo = waExtractIncomingMessageBody($mensagem);
+            self::assertSame($esperado, $corpo);
+            self::assertStringNotContainsString('não suportad', mb_strtolower((string) $corpo));
+        }
+    }
+
     /** Fundir um par que outra requisição já fundiu não pode quebrar nem apagar a que sobrou. */
     public function testFusaoDeParJaFundidoNaoFazNada(): void
     {

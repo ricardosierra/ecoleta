@@ -7,15 +7,11 @@ use PHPUnit\Framework\TestCase;
 /**
  * O painel de conversas e quem pode abri-lo.
  *
- * Conversa de cliente é o material mais sensível do dashboard. O corte não é o
- * de sempre ("é admin?"): exige `root` E estar na lista de
- * `API_WHATSAPP_PANEL_EMAILS`. Estes casos travam as duas condições, porque
- * afrouxar qualquer uma delas é uma linha de código.
+ * Conversa de cliente é o material mais sensível do dashboard. O acesso é
+ * restrito a contas `master` e `root`; contas `user` não podem abrir os endpoints.
  */
 final class WhatsAppPanelTest extends TestCase
 {
-    private const EMAIL_PERMITIDO = 'sierra.csi@gmail.com';
-
     private TestDatabase $db;
 
     protected function setUp(): void
@@ -82,25 +78,25 @@ final class WhatsAppPanelTest extends TestCase
         self::assertNotSame(403, $res->status, $res->body);
     }
 
-    /** Ser root não basta: o e-mail precisa estar na lista. */
+    /** Qualquer conta root tem acesso, independentemente do e-mail cadastrado. */
     #[DataProvider('endpointsDoPainel')]
-    public function testRootForaDaListaNaoEntra(string $script): void
+    public function testRootEntraComEmailNaoListado(string $script): void
     {
         $id = $this->db->seedUser('outro', 'senha-root-1234', 'root', 'outro.root@exemplo.com');
 
         $res = $this->chamar($script, ['user_id' => $id, 'role' => 'root', 'login' => 'outro']);
 
-        self::assertSame(403, $res->status, $res->body);
+        self::assertNotSame(403, $res->status, $res->body);
     }
 
     /**
-     * O e-mail vale é o GRAVADO na conta. Uma sessão que se diga da conta certa
-     * mas aponte para um id sem esse e-mail não entra.
+     * Papel enviado pela sessão nunca eleva uma conta `user` a `root`.
      */
     #[DataProvider('endpointsDoPainel')]
-    public function testEmailVemDoBancoENaoDaSessao(string $script): void
+    public function testPapelVemDoBancoENaoDaSessao(string $script): void
     {
-        $id = $this->db->seedUser('impostor', 'senha-root-1234', 'root', 'impostor@exemplo.com');
+        $grupoId = $this->db->seedGroup('Coleta');
+        $id = $this->db->seedUser('impostor', 'senha-user-123', 'user', 'user@exemplo.com', $grupoId);
 
         $res = Endpoint::call($script, [
             'method' => 'GET',
@@ -109,7 +105,7 @@ final class WhatsAppPanelTest extends TestCase
                 'user_id' => $id,
                 'role' => 'root',
                 'login' => 'impostor',
-                'email' => self::EMAIL_PERMITIDO,
+                'email' => 'root@exemplo.com',
             ],
         ]);
 
@@ -120,9 +116,9 @@ final class WhatsAppPanelTest extends TestCase
 
     private function sessaoPermitida(): array
     {
-        $id = $this->db->seedUser('sierra', 'senha-root-1234', 'root', self::EMAIL_PERMITIDO);
+        $id = $this->db->seedUser('admin', 'senha-root-1234', 'root', 'admin@exemplo.com');
 
-        return ['user_id' => $id, 'role' => 'root', 'login' => 'sierra'];
+        return ['user_id' => $id, 'role' => 'root', 'login' => 'admin'];
     }
 
     public function testListagemDeConversas(): void

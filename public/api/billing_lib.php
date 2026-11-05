@@ -23,8 +23,11 @@ require_once __DIR__ . '/security.php';
 /** Dia a partir do qual a emissão do mês seguinte fica aberta. */
 const BILLING_ISSUE_DAY = 30;
 
-/** Dias em que o que continua pendente é relembrado. */
-const BILLING_REMINDER_DAYS = [3, 7];
+/** O lembrete comum sai dois dias antes do vencimento. */
+const BILLING_REMINDER_DAYS_BEFORE_DUE = 2;
+
+/** O aviso de atraso começa dois dias depois do vencimento. */
+const BILLING_OVERDUE_NOTICE_DAYS_AFTER_DUE = 2;
 
 /** Idade mínima, em segundos, de uma fatura para receber lembrete: quem acabou de receber a fatura não precisa ser lembrado dela. */
 const BILLING_REMINDER_MIN_AGE = 20 * 3600;
@@ -48,10 +51,27 @@ function billingNextCycleIsOpen(DateTimeInterface $today): bool
     return (int) $today->format('d') >= $issueDay;
 }
 
-/** Hoje é dia de lembrete? */
-function billingShouldRemind(DateTimeInterface $today): bool
+/**
+ * Tipo de aviso devido hoje (ou ainda pendente de envio), relativo ao vencimento.
+ *
+ * A janela anterior ao vencimento termina na própria data, que continua sendo
+ * o último dia para pagar sem atraso. Depois de dois dias vencida, a fatura passa
+ * a receber o aviso explícito de atraso. Retornar o tipo em vez de apenas um bool
+ * mantém o texto e a chave idempotente de cada aviso separados.
+ */
+function billingReminderEvent(DateTimeInterface $today, string $dueDateIso): ?string
 {
-    return in_array((int) $today->format('d'), BILLING_REMINDER_DAYS, true);
+    $dueDate = DateTimeImmutable::createFromFormat('!Y-m-d', $dueDateIso);
+    if (!$dueDate || $dueDate->format('Y-m-d') !== $dueDateIso) return null;
+
+    $todayIso = $today->format('Y-m-d');
+    $upcomingFrom = $dueDate->modify('-' . BILLING_REMINDER_DAYS_BEFORE_DUE . ' days')->format('Y-m-d');
+    if ($todayIso >= $upcomingFrom && $todayIso < $dueDateIso) return 'upcoming';
+
+    $overdueFrom = $dueDate->modify('+' . BILLING_OVERDUE_NOTICE_DAYS_AFTER_DUE . ' days')->format('Y-m-d');
+    if ($todayIso >= $overdueFrom) return 'overdue';
+
+    return null;
 }
 
 /**
@@ -214,6 +234,8 @@ HTML;
 
       <p style="font-size:15px;color:#333333;line-height:1.6;margin-bottom:24px;">{$aberturaHtml}</p>
 
+      <p style="font-size:15px;color:#333333;line-height:1.6;margin-bottom:24px;"><strong>Avise se recebeu esse aviso.</strong></p>
+
       <p style="font-size:13px;color:#B91C1C;background:#FEF2F2;border-left:4px solid #EF4444;padding:12px;border-radius:0 4px 4px 0;margin-bottom:32px;line-height:1.5;">
         <strong>⚠️ Atenção:</strong> O pagamento após o dia {$vencimento} acarretará na cobrança de juros e multa.
       </p>
@@ -248,6 +270,8 @@ function billingInvoiceEmailText(
         sprintf('Olá, %s.', $clientName),
         '',
         sprintf('%s Valor: R$ %s. Vencimento: %s.', $abertura, $valorFormatado, $vencimentoFormatado),
+        '',
+        'Avise se recebeu esse aviso.',
     ];
 
     if ($pixPayload !== '') {
@@ -311,11 +335,16 @@ function billingNewInvoiceEmail(
 }
 
 /**
- * O e-mail de lembrete de uma cobrança que continua pendente.
+ * Constrói uma mensagem para a fatura em aberto com o título e a abertura escolhidos.
  *
  * @return array{subject:string,html:string,text:string}
  */
-function billingReminderEmail(
+function billingFollowUpEmail(
+    string $subject,
+    string $title,
+    string $color,
+    string $openingHtml,
+    string $openingText,
     string $clientName,
     $value,
     string $dueDateIso,
@@ -326,22 +355,18 @@ function billingReminderEmail(
     $vencimento = billingDate($dueDateIso);
 
     return [
-        'subject' => 'Lembrete de Fatura - Ecoleva',
+        'subject' => $subject,
         'html' => billingInvoiceEmailHtml(
-            'Lembrete de Vencimento',
-            '#D32F2F',
-            sprintf(
-                'Este é um lembrete de que sua fatura no valor de <strong>R$ %s</strong> com vencimento em <strong>%s</strong> está pendente.',
-                billingEsc($valor),
-                billingEsc($vencimento)
-            ),
+            $title,
+            $color,
+            sprintf($openingHtml, billingEsc($valor), billingEsc($vencimento)),
             $clientName,
             $vencimento,
             $pixPayload,
             $faturaUrl
         ),
         'text' => billingInvoiceEmailText(
-            'Sua fatura continua pendente.',
+            sprintf($openingText, $vencimento),
             $clientName,
             $valor,
             $vencimento,
@@ -349,4 +374,48 @@ function billingReminderEmail(
             $faturaUrl
         ),
     ];
+}
+
+/** O lembrete comum de uma cobrança que vence nos próximos dias. */
+function billingReminderEmail(
+    string $clientName,
+    $value,
+    string $dueDateIso,
+    string $pixPayload,
+    string $faturaUrl
+): array {
+    return billingFollowUpEmail(
+        'Lembrete de Fatura - Ecoleva',
+        'Lembrete de Vencimento',
+        '#D32F2F',
+        'Este é um lembrete de que sua fatura no valor de <strong>R$ %s</strong> com vencimento em <strong>%s</strong> está pendente.',
+        'Sua fatura continua pendente.',
+        $clientName,
+        $value,
+        $dueDateIso,
+        $pixPayload,
+        $faturaUrl
+    );
+}
+
+/** O aviso específico para uma fatura que já venceu e segue em aberto. */
+function billingOverdueEmail(
+    string $clientName,
+    $value,
+    string $dueDateIso,
+    string $pixPayload,
+    string $faturaUrl
+): array {
+    return billingFollowUpEmail(
+        'Fatura em Atraso - Ecoleva',
+        'Fatura em Atraso',
+        '#B91C1C',
+        'Sua fatura no valor de <strong>R$ %s</strong> venceu em <strong>%s</strong> e continua em aberto. Regularize o pagamento pelo Pix ou boleto abaixo.',
+        'Sua fatura está em atraso. Regularize o pagamento pelo Pix ou boleto.',
+        $clientName,
+        $value,
+        $dueDateIso,
+        $pixPayload,
+        $faturaUrl
+    );
 }

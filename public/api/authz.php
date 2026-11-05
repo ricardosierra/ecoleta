@@ -208,37 +208,12 @@ function apiRoleRequiresGroup($role): bool
     return apiNormalizeRole($role) === API_ROLE_USER;
 }
 
-/**
- * Contas que enxergam o painel de conversas do WhatsApp.
- *
- * A lista é curta e fica no código, e não no env, porque a mesma regra precisa
- * existir no cliente (`lib/authz.ts`) para o menu não desenhar um link que a
- * API vai recusar — e um valor de ambiente não atravessa para o navegador. Não
- * é segredo: é o endereço de uma pessoa, e quem decide continua sendo o
- * servidor, que confere o e-mail gravado na conta e não o que o navegador diz.
- *
- * Comparação em caixa baixa: e-mail não diferencia maiúscula de minúscula na
- * parte do domínio, e o cadastro pode ter entrado de qualquer jeito.
- */
-const API_WHATSAPP_PANEL_EMAILS = ['sierra.csi@gmail.com'];
-
-/**
- * Painel de WhatsApp: liberado para `master` (cliente) e `root` na lista.
- */
-function apiRoleCanViewWhatsAppPanel(?string $role, ?string $email): bool
+/** Painel de WhatsApp: liberado para contas `master` e `root`. */
+function apiRoleCanViewWhatsAppPanel(?string $role): bool
 {
     $role = apiNormalizeRole($role);
-    if ($role === API_ROLE_MASTER) {
-        return true;
-    }
 
-    if ($role !== API_ROLE_ROOT) {
-        return false;
-    }
-
-    $email = strtolower(trim((string) $email));
-
-    return $email !== '' && in_array($email, API_WHATSAPP_PANEL_EMAILS, true);
+    return $role === API_ROLE_MASTER || $role === API_ROLE_ROOT;
 }
 
 /** Administradores veem o histórico de qualquer conta; os demais, só o próprio. */

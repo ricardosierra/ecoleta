@@ -16,6 +16,11 @@ require_once __DIR__ . '/../billing_delivery.php';
 /** O que a tela mostra quando a falha é nossa e não da integração. */
 const INVOICES_GENERIC_ERROR = 'Não foi possível concluir a operação agora. Tente novamente em instantes.';
 
+/** A proteção mensal detectou uma cobrança existente sem confirmação da operadora. */
+final class InvoiceMonthAlreadyExistsException extends RuntimeException
+{
+}
+
 /**
  * Registra uma falha interna sem o texto dela: a mensagem de um erro de banco
  * pode carregar dado pessoal. Classe, código e local bastam para achar a causa.
@@ -113,12 +118,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             apiJsonResponse(200, ['ok' => true, 'message' => 'Fatura cancelada com sucesso.']);
         }
 
-        if ($action === 'send' || $action === 'resend_email') {
+        if ($action === 'send' || $action === 'resend_email' || $action === 'resend') {
             $stmt = $db->prepare('SELECT * FROM invoices WHERE id = ?');
             $stmt->execute([(int) ($body['id'] ?? 0)]);
             $invoice = $stmt->fetch();
             if (!$invoice) apiJsonResponse(404, ['error' => 'Fatura não encontrada.']);
             $clientId = $invoice['client_id'];
+            if ($action === 'resend') {
+                $channels = $body['channels'] ?? null;
+                $invalidChannels = !is_array($channels) || !array_is_list($channels) || $channels === [];
+                if (!$invalidChannels) {
+                    foreach ($channels as $channel) {
+                        if (!is_string($channel) || !in_array($channel, ['email', 'whatsapp'], true)) {
+                            $invalidChannels = true;
+                            break;
+                        }
+                    }
+                    if (!$invalidChannels && count(array_unique($channels)) !== count($channels)) $invalidChannels = true;
+                }
+                if ($invalidChannels) {
+                    apiJsonResponse(400, ['error' => 'Escolha e-mail, WhatsApp ou os dois canais para reenviar.']);
+                }
+            }
         } elseif ($action === 'create') {
             $clientId = (int) ($body['client_id'] ?? 0);
         } else {
@@ -133,7 +154,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($dueDate < (new DateTimeImmutable('now', new DateTimeZone('America/Sao_Paulo')))->format('Y-m-d')) {
                 apiJsonResponse(400, ['error' => 'O vencimento deve ser hoje ou uma data futura.']);
             }
-            $invoice = billingIssueInvoice($db, $client, (float) ($body['value'] ?? $client['monthly_value']), $dueDate);
+            $allowDuplicateMonth = ($body['allow_duplicate_month'] ?? false) === true;
+            $invoice = billingLocked($db, 'month:' . $clientId . ':' . substr($dueDate, 0, 7), function () use ($db, $client, $clientId, $dueDate, $body, $allowDuplicateMonth): array {
+                $existing = billingFindMonthInvoice($db, $clientId, $dueDate);
+                if ($existing !== null && $existing['status'] !== 'DELETED') {
+                    $requestedValue = round((float) ($body['value'] ?? $client['monthly_value']), 2);
+                    if ($existing['due_date'] === $dueDate && abs((float) $existing['value'] - $requestedValue) < 0.001) {
+                        if (!in_array($existing['status'], ['PENDING', 'OVERDUE'], true)) {
+                            $situacao = ['RECEIVED' => 'paga', 'CONFIRMED' => 'confirmada', 'REFUNDED' => 'estornada', 'CHARGEBACK_REQUESTED' => 'contestada'][$existing['status']] ?? 'encerrada';
+                            throw new InvoiceMonthAlreadyExistsException('Já existe uma fatura ' . $situacao . ' deste cliente para este vencimento. Escolha outra data.');
+                        }
+                        throw new InvoiceMonthAlreadyExistsException('Já existe uma fatura com este vencimento e valor. Reenvie a fatura existente em vez de criar outra.');
+                    }
+                    if (!$allowDuplicateMonth) {
+                        throw new InvoiceMonthAlreadyExistsException('Este cliente já possui uma fatura neste mês. Confirme a criação da fatura avulsa antes de continuar.');
+                    }
+                }
+                return billingIssueInvoice($db, $client, (float) ($body['value'] ?? $client['monthly_value']), $dueDate);
+            });
             // Reaproveitada e já quitada (ou estornada): não há o que enviar. Dizer que
             // "as notificações foram processadas" para uma fatura paga engana quem gerou.
             if (!$invoice['created'] && !in_array($invoice['status'], ['PENDING', 'OVERDUE'], true)) {
@@ -150,6 +188,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // outra vez sem repetir o WhatsApp, que a Meta cobra fora da janela.
         if ($action === 'resend_email') {
             $delivery = billingDeliverInvoice($db, $invoice, $client, 'resend:' . gmdate('YmdHis'), null, null, ['email']);
+        } elseif ($action === 'resend') {
+            $delivery = billingDeliverInvoice($db, $invoice, $client, 'resend:' . gmdate('YmdHis'), null, null, $channels);
         } else {
             $event = ($action === 'create' && empty($invoice['created']))
                 ? 'manual:' . gmdate('YmdHis')
@@ -166,6 +206,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // guarda a classe e o SQLSTATE, sem a mensagem.
         invoicesLogInternalError($e);
         apiJsonResponse(500, ['error' => INVOICES_GENERIC_ERROR]);
+    } catch (InvoiceMonthAlreadyExistsException $e) {
+        apiJsonResponse(409, ['error' => $e->getMessage()]);
     } catch (RuntimeException $e) {
         // Falha da integração (Asaas recusou, sem chave, fora do ar, cobrança em
         // processamento): essa mensagem é a explicação útil e segue para a tela.

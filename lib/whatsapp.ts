@@ -42,6 +42,7 @@ export type WhatsAppMessage = {
   message_at: string | null;
   service_order_id?: number | null;
   media_url?: string | null;
+  location_url?: string | null;
 };
 
 export type WhatsAppClientOption = {

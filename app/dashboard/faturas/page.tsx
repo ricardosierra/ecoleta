@@ -79,6 +79,7 @@ function FaturasMain() {
   const [missing, setMissing] = useState<MissingClient[]>([]);
   const [today, setToday] = useState("");
   const [composerOpen, setComposerOpen] = useState(false);
+  const [composerError, setComposerError] = useState("");
 
   /** Aplica a listagem da API: as faturas, o faturamento automático e quem ficou sem fatura. */
   function applyListing(data: {
@@ -95,6 +96,7 @@ function FaturasMain() {
 
   /** Leva o cliente sem fatura para o formulário, com vencimento hoje (data de Brasília, vinda da API). */
   function openComposer(prefill?: { clientId: string; value: string; dueDate: string }) {
+    setComposerError("");
     setClientId(prefill?.clientId ?? "");
     setValue(prefill?.value ?? "");
     setDueDate(prefill?.dueDate ?? today);
@@ -108,18 +110,34 @@ function FaturasMain() {
    */
   function handleCreate() {
     const id = Number(clientId);
+    const sameInvoice = invoices.find(
+      inv => Number(inv.client_id) === id && inv.status !== "DELETED" && inv.due_date === dueDate && Math.abs(Number(inv.value) - Number(value)) < 0.001,
+    );
+    if (sameInvoice) {
+      setComposerError("Já existe uma fatura com este vencimento e valor. Feche este formulário e reenvie a fatura existente pela linha abaixo.");
+      return;
+    }
     const existing = invoices.find(
       inv => Number(inv.client_id) === id && inv.status !== "DELETED" && inv.due_date.slice(0, 7) === dueDate.slice(0, 7),
     );
+    let allowDuplicateMonth = false;
     if (existing) {
       const valor = `R$ ${Number(existing.value).toFixed(2).replace(".", ",")}`;
       const ok = window.confirm(
         `${existing.client_name} já tem uma fatura neste mês, com vencimento em ${formatOsDate(existing.due_date)} (${valor}). Gerar outra mesmo assim?`,
       );
       if (!ok) return;
+      allowDuplicateMonth = true;
     }
     setComposerOpen(false);
-    void submit({ action: "create", client_id: id, value: Number(value), due_date: dueDate });
+    void submit({ action: "create", client_id: id, value: Number(value), due_date: dueDate, ...(allowDuplicateMonth ? { allow_duplicate_month: true } : {}) });
+  }
+
+  /** Confirma cada canal e só então reenvia a fatura que já existe. */
+  async function handleResend(invoiceId: number, channels: ("email" | "whatsapp")[]) {
+    const canal = channels.length === 2 ? "e-mail e WhatsApp" : channels[0] === "email" ? "e-mail" : "WhatsApp";
+    if (!window.confirm(`Confirma reenviar a fatura por ${canal}? Nenhuma nova cobrança será criada.`)) return;
+    await submit({ action: "resend", id: invoiceId, channels });
   }
 
   async function submit(body: Record<string, unknown>) {
@@ -134,6 +152,16 @@ function FaturasMain() {
         const delivery = data.delivery ?? {};
         const problem = delivery.errors?.email;
         setFeedback(problem ? `O e-mail não saiu: ${problem}` : delivery.email === "sent" ? "E-mail reenviado." : "O e-mail não saiu nesta tentativa.");
+      } else if (body.action === "resend") {
+        const delivery = data.delivery ?? {};
+        const errors = delivery.errors ?? {};
+        const channels = body.channels as ("email" | "whatsapp")[];
+        const results = channels.map(channel => {
+          if (errors[channel]) return `${channel === "email" ? "Falha no e-mail" : "Falha no WhatsApp"}: ${errors[channel]}`;
+          if (channel === "email") return delivery.email === "sent" ? "E-mail reenviado." : "E-mail já processado.";
+          return delivery.whatsapp === "accepted" ? "WhatsApp: solicitação aceita pela Meta." : "WhatsApp já processado.";
+        });
+        setFeedback(results.join(" "));
       } else {
         const delivery = data.delivery ?? {};
         const problems = Object.values(delivery.errors ?? {}).join(" ");
@@ -249,7 +277,8 @@ function FaturasMain() {
               <input required type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="block mt-2 w-full bg-black/20 border border-[var(--color-border-dark)] rounded-lg p-2" />
             </label>
           </div>
-          <p className="mt-4 text-sm text-[var(--color-text-on-dark)]">Gera a cobrança no Asaas e envia o e-mail e o WhatsApp do cadastro. O mesmo valor e vencimento reaproveita a cobrança que já existe.</p>
+          {composerError && <p role="alert" className="mt-4 text-sm text-red-300">{composerError}</p>}
+          <p className="mt-4 text-sm text-[var(--color-text-on-dark)]">Gera a cobrança no Asaas e envia o e-mail e o WhatsApp do cadastro. Uma segunda fatura no mesmo mês pede confirmação; o mesmo vencimento e valor só podem ser reenviados.</p>
           <ModalActions>
             <button type="button" onClick={() => setComposerOpen(false)} className="rounded-full px-5 py-2 text-sm text-white/70 hover:bg-white/5">Cancelar</button>
             <button disabled={busy} className="rounded-full bg-[var(--color-accent)] text-[var(--color-bg-dark)] px-5 py-2 font-semibold">{busy ? "Processando..." : "Gerar e enviar fatura"}</button>
@@ -288,8 +317,14 @@ function FaturasMain() {
                     <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1">
                       {['PENDING', 'OVERDUE'].includes(inv.status) && (
                         <>
-                          <button disabled={busy} onClick={() => void submit({ action: "resend_email", id: inv.id })} className="text-xs text-[var(--color-accent)] hover:underline">
+                          <button disabled={busy} onClick={() => void handleResend(inv.id, ["email"])} className="text-xs text-[var(--color-accent)] hover:underline">
                             Reenviar e-mail
+                          </button>
+                          <button disabled={busy} onClick={() => void handleResend(inv.id, ["whatsapp"])} className="text-xs text-[var(--color-accent)] hover:underline">
+                            Reenviar WhatsApp
+                          </button>
+                          <button disabled={busy} onClick={() => void handleResend(inv.id, ["email", "whatsapp"])} className="text-xs text-[var(--color-accent)] hover:underline">
+                            Reenviar e-mail e WhatsApp
                           </button>
                           <button disabled={busy} onClick={() => void submit({ action: "send", id: inv.id })} className="text-xs text-[var(--color-accent)] hover:underline">
                             Tentar envios pendentes

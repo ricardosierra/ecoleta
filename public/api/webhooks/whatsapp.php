@@ -90,50 +90,10 @@ if (!is_array($evento) || !is_array($evento['entry'] ?? null)) {
     waWebhookRespond(200, 'ignored');
 }
 
-/** Texto exibível de uma mensagem — mídia vira rótulo, como no painel da Banlek. */
+/** Compatibilidade do webhook com o extrator compartilhado pelo histórico. */
 function waExtractBody(array $mensagem): ?string
 {
-    $tipo = (string) ($mensagem['type'] ?? '');
-
-    if (isset($mensagem['text']['body'])) {
-        return (string) $mensagem['text']['body'];
-    }
-
-    // Legenda de mídia é o que a pessoa realmente escreveu; vale mais que o rótulo.
-    foreach (['image', 'video', 'document', 'audio'] as $midia) {
-        $legenda = trim((string) ($mensagem[$midia]['caption'] ?? ''));
-        if ($legenda !== '') {
-            return $legenda;
-        }
-    }
-
-    if (isset($mensagem['button']['text'])) {
-        return (string) $mensagem['button']['text'];
-    }
-
-    if (isset($mensagem['interactive']['button_reply']['title'])) {
-        return (string) $mensagem['interactive']['button_reply']['title'];
-    }
-
-    if (isset($mensagem['interactive']['list_reply']['title'])) {
-        return (string) $mensagem['interactive']['list_reply']['title'];
-    }
-
-    if (isset($mensagem['reaction']['emoji'])) {
-        return (string) $mensagem['reaction']['emoji'];
-    }
-
-    return match ($tipo) {
-        'image' => '[imagem]',
-        'video' => '[vídeo]',
-        'audio' => '[áudio]',
-        'document' => '[documento]',
-        'sticker' => '[figurinha]',
-        'location' => '[localização]',
-        'contacts' => '[contato]',
-        'unsupported' => '[mensagem não suportada]',
-        default => null,
-    };
+    return waExtractIncomingMessageBody($mensagem);
 }
 
 /** Nome de perfil e wa_id do contato que mandou a mensagem. */

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import WhatsAppPage from "@/app/dashboard/whatsapp/page";
 import { installApiMock, sessionOf, type ApiRoutes } from "../support/api-mock";
 
@@ -8,7 +8,7 @@ const ME = "/api/auth/me.php";
 const CONVERSATIONS = "/api/whatsapp/conversations.php";
 const MESSAGES = "/api/whatsapp/messages.php";
 
-const PERMITIDO = sessionOf("root", { email: "sierra.csi@gmail.com" });
+const PERMITIDO = sessionOf("root", { email: "root@ecolevaeco.com" });
 
 /** Janela ainda aberta, montada relativa a agora para não vencer com o tempo. */
 const janelaAberta = {
@@ -66,12 +66,16 @@ function montar(rotas: ApiRoutes = {}, sessao = PERMITIDO) {
   });
 }
 
+beforeEach(() => {
+  window.history.replaceState(null, "", "/dashboard/whatsapp");
+});
+
 describe("/dashboard/whatsapp — acesso", () => {
-  it("nega para root que não está na lista", async () => {
+  it("autoriza conta com papel root", async () => {
     montar({}, sessionOf("root", { email: "outro@exemplo.com" }));
     render(<WhatsAppPage />);
 
-    expect(await screen.findByText("Acesso negado.")).toBeVisible();
+    expect(await screen.findByText("Heineken")).toBeVisible();
   });
 
   it("autoriza conta com papel master", async () => {
@@ -81,15 +85,15 @@ describe("/dashboard/whatsapp — acesso", () => {
     expect(await screen.findByText("Heineken")).toBeVisible();
   });
 
-  it("nega para user mesmo com o e-mail da lista", async () => {
-    montar({}, sessionOf("user", { email: "sierra.csi@gmail.com" }));
+  it("nega para user", async () => {
+    montar({}, sessionOf("user", { email: "user@ecolevaeco.com" }));
     render(<WhatsAppPage />);
 
     expect(await screen.findByText("Acesso negado.")).toBeVisible();
   });
 
   it("não chama a API de conversas quando o acesso é negado", async () => {
-    const api = montar({}, sessionOf("user", { email: "sierra.csi@gmail.com" }));
+    const api = montar({}, sessionOf("user", { email: "user@ecolevaeco.com" }));
     render(<WhatsAppPage />);
 
     await screen.findByText("Acesso negado.");

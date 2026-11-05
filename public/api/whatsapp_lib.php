@@ -435,6 +435,15 @@ function waKnownTemplates(): array
         ];
     }
 
+    $atraso = apiSecret('WHATSAPP_BILLING_OVERDUE_TEMPLATE');
+    if ($atraso !== '') {
+        $conhecidos[$atraso] = [
+            'labels' => ['Nome do Cliente', 'Valor (R$)', 'Vencimento', 'Link da Fatura'],
+            'kinds' => ['client_name', 'amount', 'due_date', 'invoice_link'],
+            'language' => apiSecret('WHATSAPP_BILLING_TEMPLATE_LANG') ?: 'pt_BR',
+        ];
+    }
+
     return $conhecidos;
 }
 

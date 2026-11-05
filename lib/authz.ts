@@ -28,8 +28,6 @@ export const ROLE_LABELS: Record<DashboardRole, string> = {
 export type Actor = {
   id?: number | null;
   role?: string | null;
-  /** Só o painel de WhatsApp olha para isto — ver `canViewWhatsAppPanel`. */
-  email?: string | null;
 } | null | undefined;
 
 /** O mínimo que uma decisão de permissão precisa saber sobre o alvo. */
@@ -94,31 +92,9 @@ export function canManageGroups(actor: Actor): boolean {
   return isAdmin(actor);
 }
 
-/**
- * Contas que enxergam o painel de conversas do WhatsApp.
- *
- * Espelha `API_WHATSAPP_PANEL_EMAILS` em `public/api/authz.php`, que é o lado
- * que decide. A lista está no código, e não no env, justamente porque precisa
- * existir dos dois lados: sem ela aqui, o menu desenharia um link que a API
- * recusa. Não é segredo — é o endereço de uma pessoa.
- */
-export const WHATSAPP_PANEL_EMAILS: readonly string[] = ["sierra.csi@gmail.com"];
-
-/**
- * Painel de WhatsApp: liberado para `master` (cliente) e `root` na lista.
- */
+/** Painel de WhatsApp: liberado para contas `master` e `root`. */
 export function canViewWhatsAppPanel(actor: Actor): boolean {
-  if (isMaster(actor)) {
-    return true;
-  }
-
-  if (!isRoot(actor)) {
-    return false;
-  }
-
-  const email = (actor?.email ?? "").trim().toLowerCase();
-
-  return email !== "" && WHATSAPP_PANEL_EMAILS.includes(email);
+  return isMaster(actor) || isRoot(actor);
 }
 
 /** Seletor de grupos no topo do painel — só quem enxerga mais de um grupo. */

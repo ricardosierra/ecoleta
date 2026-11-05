@@ -104,6 +104,7 @@ describe("dashboardNavLinks", () => {
       { href: "/dashboard/faturas", label: "Faturas" },
       { href: "/dashboard/os", label: "OS Eletrônica" },
       { href: "/dashboard/configuracoes", label: "Configurações" },
+      { href: "/dashboard/whatsapp", label: "WhatsApp" },
     ]);
     expect(dashboardNavLinks({ role: "master" })).toEqual([
       { href: "/dashboard", label: "Painel" },
@@ -320,18 +321,12 @@ describe("canViewWhatsAppPanel", () => {
   // Mesma tabela de casos de AuthzTest::acessosAoPainelDeWhatsApp() no PHP.
   // Os dois lados precisam concordar: divergir aqui desenha um link de menu que
   // a API recusa, ou esconde uma tela que a conta pode abrir.
-  const casos: [string, { role: string | null; email: string | null }, boolean][] = [
-    ["root na lista", { role: "root", email: "sierra.csi@gmail.com" }, true],
-    ["root na lista em caixa alta", { role: "root", email: "Sierra.CSI@Gmail.com" }, true],
-    ["root na lista com espaço", { role: "root", email: "  sierra.csi@gmail.com  " }, true],
-    ["root fora da lista", { role: "root", email: "outro@exemplo.com" }, false],
-    ["root sem e-mail", { role: "root", email: null }, false],
-    ["root com e-mail vazio", { role: "root", email: "" }, false],
-    ["master liberado", { role: "master", email: "cliente@exemplo.com" }, true],
-    ["master sem e-mail", { role: "master", email: null }, true],
-    ["user na lista", { role: "user", email: "sierra.csi@gmail.com" }, false],
-    ["papel desconhecido", { role: "superadmin", email: "sierra.csi@gmail.com" }, false],
-    ["papel com caixa trocada", { role: "Root", email: "sierra.csi@gmail.com" }, false],
+  const casos: [string, { role: string | null }, boolean][] = [
+    ["root", { role: "root" }, true],
+    ["master", { role: "master" }, true],
+    ["user", { role: "user" }, false],
+    ["papel desconhecido", { role: "superadmin" }, false],
+    ["papel com caixa trocada", { role: "Root" }, false],
   ];
 
   it.each(casos)("%s", (_nome, ator, esperado) => {
@@ -345,20 +340,15 @@ describe("canViewWhatsAppPanel", () => {
 });
 
 describe("dashboardNavLinks — WhatsApp", () => {
-  it("mostra o link para root autorizado e para master", () => {
-    const rootPermitido = dashboardNavLinks({ role: "root", email: "sierra.csi@gmail.com" });
+  it("mostra o link para root e para master", () => {
+    const rootPermitido = dashboardNavLinks({ role: "root" });
     expect(rootPermitido.some(l => l.href === "/dashboard/whatsapp")).toBe(true);
 
-    const masterPermitido = dashboardNavLinks({ role: "master", email: "cliente@exemplo.com" });
+    const masterPermitido = dashboardNavLinks({ role: "master" });
     expect(masterPermitido.some(l => l.href === "/dashboard/whatsapp")).toBe(true);
   });
 
-  it("esconde o link de outro root e de user", () => {
-    for (const ator of [
-      { role: "root", email: "outro@exemplo.com" },
-      { role: "user", email: "sierra.csi@gmail.com" },
-    ]) {
-      expect(dashboardNavLinks(ator).some(l => l.href === "/dashboard/whatsapp")).toBe(false);
-    }
+  it("esconde o link de user", () => {
+    expect(dashboardNavLinks({ role: "user" }).some(l => l.href === "/dashboard/whatsapp")).toBe(false);
   });
 });

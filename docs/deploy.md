@@ -226,8 +226,10 @@ dia, não duplica nem esquece nada.
   dia 30 (ou do último dia do mês, em fevereiro). Nunca emite data passada.
 - Uma fatura do cliente naquele mês, de qualquer data e de qualquer status
   (inclusive cancelada), conta como a do mês: nada é emitido em duplicidade.
-- Nos dias 3 e 7 reenvia o lembrete do que continua pendente ou vencido. A fatura
-  emitida há menos de 20 horas não recebe lembrete.
+- Dois dias antes do vencimento, envia um lembrete; a partir de dois dias depois,
+  envia um aviso específico de atraso para a fatura que continua em aberto. Cada
+  etapa é registrada uma vez por fatura, vencimento e canal. Uma fatura recém-emitida
+  não recebe lembrete antes de completar 20 horas.
 - Grava o registro da execução (`billing_cron_run` em `activity_logs`). A tela de
   Faturas mostra o aviso "Faturamento automático" acima do formulário e avisa quando
   o cron nunca rodou ou parou há mais de 36 horas.
@@ -302,10 +304,10 @@ cliente de teste com e-mail ou telefone de gente real. Depois de agendar, abra
 
 - **Migration 019 aplicada antes do deploy dos arquivos** (a regra de sempre: migrations
   primeiro). Ela alarga `activity_logs.target_login`, que guarda o id da mensagem do WhatsApp.
-- **`WHATSAPP_BILLING_TEMPLATE` configurado e aprovado na Meta.** Fora da janela de 24 horas o
-  WhatsApp só entrega template; sem ele o canal do WhatsApp falha e o e-mail segue. A falha se
-  repete a cada execução até o vencimento do cliente, então o cron responde 502 e o workflow do
-  GitHub fica vermelho todo dia, o que esconde erro de verdade. Parâmetros do corpo, nesta ordem:
+- **`WHATSAPP_BILLING_TEMPLATE` e `WHATSAPP_BILLING_OVERDUE_TEMPLATE` configurados e aprovados na Meta.**
+  Fora da janela de 24 horas o WhatsApp só entrega template; sem um deles o canal falha e o
+  e-mail segue. O cron responde 502 enquanto a entrega do WhatsApp falhar. Parâmetros do corpo,
+  nesta ordem:
   cliente, valor, vencimento e link.
 - **Vencimento já passado.** O ciclo nunca emite data passada (o Asaas recusa). Se o primeiro
   disparo acontecer depois do dia de vencimento de um cliente, ele não recebe fatura do mês, e a

@@ -29,7 +29,7 @@ describe("Faturas", () => {
     expect(screen.getByLabelText("Valor (R$)")).toHaveValue(7.5);
     await user.type(screen.getByLabelText("Vencimento"), "2026-09-12");
     await user.click(screen.getByRole("button", { name: "Gerar e enviar fatura" }));
-    await waitFor(() => expect(posts).toEqual([{ action: "create", client_id: 1, value: 7.5, due_date: "2026-09-12" }]));
+    await waitFor(() => expect(posts).toEqual([{ action: "create", client_id: 1, value: 7.5, due_date: "2026-09-12", allow_duplicate_month: true }]));
     confirmSpy.mockRestore();
   });
   it("gera sem perguntar quando o cliente ainda não tem fatura no mês", async () => {
@@ -43,6 +43,16 @@ describe("Faturas", () => {
     await waitFor(() => expect(posts).toEqual([{ action: "create", client_id: 1, value: 7.5, due_date: "2026-10-05" }]));
     expect(confirmSpy).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
+  });
+  it("não cria a mesma fatura duas vezes e orienta a reenviar a existente", async () => {
+    const posts = mockApi(); const user = userEvent.setup(); render(<FaturasPage />);
+    await screen.findByText("10/09/2026");
+    await user.click(screen.getByRole("button", { name: "Nova fatura avulsa" }));
+    await user.selectOptions(screen.getByLabelText("Cliente"), "1");
+    await user.type(screen.getByLabelText("Vencimento"), "2026-09-10");
+    await user.click(screen.getByRole("button", { name: "Gerar e enviar fatura" }));
+    expect(posts).toEqual([]);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/já existe uma fatura com este vencimento e valor.*reenvie/i);
   });
   it("pergunta antes de gerar uma segunda fatura no mesmo mês e não gera se a operadora recusa", async () => {
     const posts = mockApi(); const user = userEvent.setup(); render(<FaturasPage />);
@@ -75,10 +85,45 @@ describe("Faturas", () => {
   it("reenvia só o e-mail da linha, sem gerar outra cobrança", async () => {
     const posts = mockApi();
     const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<FaturasPage />);
     await user.click(await screen.findByRole("button", { name: "Reenviar e-mail" }));
-    await waitFor(() => expect(posts).toEqual([{ action: "resend_email", id: 1 }]));
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringMatching(/reenviar.*e-mail/i));
+    await waitFor(() => expect(posts).toEqual([{ action: "resend", id: 1, channels: ["email"] }]));
     expect(await screen.findByRole("status")).toHaveTextContent("E-mail reenviado.");
+    confirmSpy.mockRestore();
+  });
+  it("não reenvia o e-mail quando a operadora cancela a confirmação", async () => {
+    const posts = mockApi();
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<FaturasPage />);
+    await user.click(await screen.findByRole("button", { name: "Reenviar e-mail" }));
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(posts).toEqual([]);
+    confirmSpy.mockRestore();
+  });
+  it("reenvia o WhatsApp da fatura após confirmação sem criar nova cobrança", async () => {
+    const posts = mockApi();
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<FaturasPage />);
+    await user.click(await screen.findByRole("button", { name: "Reenviar WhatsApp" }));
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringMatching(/reenviar.*whatsapp/i));
+    await waitFor(() => expect(posts).toEqual([{ action: "resend", id: 1, channels: ["whatsapp"] }]));
+    expect(await screen.findByRole("status")).toHaveTextContent(/WhatsApp.*aceita pela Meta/i);
+    confirmSpy.mockRestore();
+  });
+  it("reenvia e-mail e WhatsApp juntos depois de uma confirmação", async () => {
+    const posts = mockApi();
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<FaturasPage />);
+    await user.click(await screen.findByRole("button", { name: "Reenviar e-mail e WhatsApp" }));
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringMatching(/reenviar.*e-mail.*whatsapp/i));
+    await waitFor(() => expect(posts).toEqual([{ action: "resend", id: 1, channels: ["email", "whatsapp"] }]));
+    expect(await screen.findByRole("status")).toHaveTextContent(/e-mail reenviado.*whatsapp.*aceita pela Meta/i);
+    confirmSpy.mockRestore();
   });
   it("não mostra o painel quando todo cliente ativo tem fatura no mês", async () => {
     mockApi(undefined, null, { today: "2026-10-06", billing_missing: [] });

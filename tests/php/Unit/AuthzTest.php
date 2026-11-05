@@ -436,26 +436,20 @@ final class AuthzTest extends TestCase
      * mesma tabela de propósito.
      */
     #[DataProvider('acessosAoPainelDeWhatsApp')]
-    public function testAcessoAoPainelDeWhatsApp(?string $role, ?string $email, bool $esperado): void
+    public function testAcessoAoPainelDeWhatsApp(?string $role, bool $esperado): void
     {
-        self::assertSame($esperado, apiRoleCanViewWhatsAppPanel($role, $email));
+        self::assertSame($esperado, apiRoleCanViewWhatsAppPanel($role));
     }
 
     public static function acessosAoPainelDeWhatsApp(): array
     {
         return [
-            'root na lista' => ['root', 'sierra.csi@gmail.com', true],
-            'root na lista em caixa alta' => ['root', 'Sierra.CSI@Gmail.com', true],
-            'root na lista com espaço' => ['root', '  sierra.csi@gmail.com  ', true],
-            'root fora da lista' => ['root', 'outro@exemplo.com', false],
-            'root sem e-mail' => ['root', null, false],
-            'root com e-mail vazio' => ['root', '', false],
-            'master liberado' => ['master', 'cliente@exemplo.com', true],
-            'master sem e-mail' => ['master', null, true],
-            'user na lista' => ['user', 'sierra.csi@gmail.com', false],
-            'sem papel' => [null, 'sierra.csi@gmail.com', false],
-            'papel desconhecido' => ['superadmin', 'sierra.csi@gmail.com', false],
-            'papel com caixa trocada' => ['Root', 'sierra.csi@gmail.com', false],
+            'root' => ['root', true],
+            'master' => ['master', true],
+            'user' => ['user', false],
+            'sem papel' => [null, false],
+            'papel desconhecido' => ['superadmin', false],
+            'papel com caixa trocada' => ['Root', false],
         ];
     }
 

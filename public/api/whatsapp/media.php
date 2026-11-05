@@ -1,9 +1,7 @@
 <?php
 declare(strict_types=1);
 
-/**
- * Envio de mídia (imagens, documentos e áudios) para a Meta WhatsApp Cloud API.
- */
+/** Envio de anexos e entrega autenticada de mídias recebidas do WhatsApp. */
 
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../authz.php';
@@ -11,15 +9,161 @@ require_once __DIR__ . '/../whatsapp_store.php';
 require_once __DIR__ . '/../whatsapp_lib.php';
 
 startSecureSession();
-apiRequireCsrfToken();
+// O GET abaixo só devolve mídia de uma mensagem já armazenada. Escritas
+// continuam protegidas pelo token CSRF.
+$method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+if ($method !== 'GET') {
+    apiRequireCsrfToken();
+}
 apiSendJsonHeaders();
 
 $db = getDbConnection();
-$actor = waRequirePanelAccess($db);
+$actor = waRequirePanelAccess();
 
-$method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+/** Faz GET autenticado na Graph API, limitando o tamanho da resposta. */
+function waMediaGet(string $url, string $token, int $maxBytes): array
+{
+    $body = '';
+    $tooLarge = false;
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => false,
+        CURLOPT_HTTPGET => true,
+        CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $token],
+        CURLOPT_CONNECTTIMEOUT => 10,
+        CURLOPT_TIMEOUT => 45,
+        CURLOPT_FOLLOWLOCATION => false,
+        CURLOPT_WRITEFUNCTION => static function ($handle, string $chunk) use (&$body, &$tooLarge, $maxBytes): int {
+            if (strlen($body) + strlen($chunk) > $maxBytes) {
+                $tooLarge = true;
+                return 0;
+            }
+            $body .= $chunk;
+            return strlen($chunk);
+        },
+    ]);
+
+    $ok = curl_exec($ch);
+    $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $contentType = (string) curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+    curl_close($ch);
+
+    return [
+        'ok' => $ok !== false,
+        'status' => $status,
+        'content_type' => $contentType,
+        'body' => $body,
+        'too_large' => $tooLarge,
+    ];
+}
+
+/** Entrega ao painel uma mídia recebida, sem expor o token permanente da Meta. */
+function waServeIncomingMedia(PDO $db, int $messageId): never
+{
+    if ($messageId <= 0) {
+        apiJsonResponse(400, ['error' => 'Mensagem inválida.']);
+    }
+
+    $stmt = $db->prepare('SELECT direction, type, raw_payload FROM whatsapp_messages WHERE id = ? LIMIT 1');
+    $stmt->execute([$messageId]);
+    $message = $stmt->fetch();
+    if (!is_array($message) || $message['direction'] !== 'incoming') {
+        apiJsonResponse(404, ['error' => 'Mídia não encontrada.']);
+    }
+
+    $type = strtolower((string) ($message['type'] ?? ''));
+    $mediaKey = $type;
+    if ($type === 'gif') {
+        $mediaKey = 'gif';
+    }
+    if (!in_array($type, ['image', 'audio', 'video', 'document', 'sticker', 'gif'], true)) {
+        apiJsonResponse(404, ['error' => 'Mídia não encontrada.']);
+    }
+
+    $payload = json_decode((string) ($message['raw_payload'] ?? ''), true);
+    if ($type === 'gif' && is_array($payload) && !is_array($payload['gif'] ?? null) && is_array($payload['video'] ?? null)) {
+        $mediaKey = 'video';
+    }
+    $media = is_array($payload) && is_array($payload[$mediaKey] ?? null) ? $payload[$mediaKey] : [];
+    $mediaId = waMessageScalarText($media['id'] ?? null);
+    if ($mediaId === null) {
+        apiJsonResponse(404, ['error' => 'Mídia não encontrada.']);
+    }
+
+    $token = apiSecret('WHATSAPP_ACCESS_TOKEN');
+    if ($token === '') {
+        apiJsonResponse(503, ['error' => 'A mídia do WhatsApp não está configurada neste servidor.']);
+    }
+
+    $metaUrl = sprintf(
+        'https://graph.facebook.com/%s/%s',
+        WHATSAPP_API_VERSION,
+        rawurlencode($mediaId)
+    );
+    $metadataResponse = waMediaGet($metaUrl, $token, 1024 * 1024);
+    $metadata = json_decode((string) $metadataResponse['body'], true);
+    if (
+        !$metadataResponse['ok']
+        || $metadataResponse['status'] !== 200
+        || !is_array($metadata)
+        || !is_string($metadata['url'] ?? null)
+    ) {
+        apiJsonResponse(502, ['error' => 'Não foi possível obter a mídia recebida do WhatsApp.']);
+    }
+
+    $mediaUrl = (string) $metadata['url'];
+    $urlParts = parse_url($mediaUrl);
+    if (!is_array($urlParts)) {
+        apiJsonResponse(502, ['error' => 'O WhatsApp retornou uma origem de mídia inválida.']);
+    }
+    $host = strtolower((string) ($urlParts['host'] ?? ''));
+    $trustedHost = $host === 'lookaside.fbsbx.com'
+        || str_ends_with($host, '.fbsbx.com')
+        || str_ends_with($host, '.fbcdn.net');
+    if (($urlParts['scheme'] ?? '') !== 'https' || !$trustedHost) {
+        apiJsonResponse(502, ['error' => 'O WhatsApp retornou uma origem de mídia inválida.']);
+    }
+
+    $download = waMediaGet($mediaUrl, $token, 32 * 1024 * 1024);
+    if (!$download['ok'] || $download['status'] !== 200 || $download['too_large']) {
+        apiJsonResponse(502, ['error' => 'Não foi possível baixar a mídia recebida do WhatsApp.']);
+    }
+
+    $mime = strtolower(trim(explode(';', (string) ($metadata['mime_type'] ?? $download['content_type']))[0]));
+    if (preg_match('/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/', $mime) !== 1) {
+        $mime = 'application/octet-stream';
+    }
+
+    $mimeOk = match ($type) {
+        'image', 'sticker' => str_starts_with($mime, 'image/'),
+        'audio' => str_starts_with($mime, 'audio/'),
+        'video' => str_starts_with($mime, 'video/'),
+        'gif' => str_starts_with($mime, 'video/') || $mime === 'image/gif',
+        default => true,
+    };
+    if (!$mimeOk) {
+        apiJsonResponse(502, ['error' => 'O WhatsApp retornou um formato de mídia inesperado.']);
+    }
+
+    if (!headers_sent()) {
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: ' . ($type === 'document' ? 'attachment' : 'inline') . '; filename="arquivo"');
+        header('Content-Length: ' . strlen($download['body']));
+        header('Cache-Control: private, no-store');
+        header('X-Content-Type-Options: nosniff');
+    }
+
+    echo $download['body'];
+    exit;
+}
+
+if ($method === 'GET') {
+    session_write_close();
+    waServeIncomingMedia($db, (int) ($_GET['message_id'] ?? 0));
+}
+
 if ($method !== 'POST') {
-    apiJsonResponse(405, ['error' => 'Método não permitido.'], ['Allow: POST']);
+    apiJsonResponse(405, ['error' => 'Método não permitido.'], ['Allow: GET, POST']);
 }
 
 // Suporta tanto multipart/form-data quanto JSON com base64

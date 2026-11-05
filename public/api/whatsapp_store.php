@@ -28,25 +28,20 @@ const WA_SERVICE_WINDOW_SECONDS = 86400;
  * Exige uma sessão que possa ler o painel de conversas.
  *
  * A regra pura mora em `apiRoleCanViewWhatsAppPanel()` (authz.php, espelhada em
- * `lib/authz.ts`). O que acontece aqui é o que só o servidor pode fazer: buscar
- * o e-mail GRAVADO na conta, em vez de acreditar no que o navegador mandou.
+ * `lib/authz.ts`). `apiRequireAuthenticated()` confere no banco o papel real da
+ * conta, sem confiar no papel enviado pela sessão.
  *
- * @return array{id:int,role:string,login:string,email:?string}
+ * @return array{id:int,role:string,login:string,force_password_change:bool}
  */
-function waRequirePanelAccess(PDO $db): array
+function waRequirePanelAccess(): array
 {
     $actor = apiRequireAuthenticated();
 
-    $stmt = $db->prepare('SELECT email FROM users WHERE id = ? LIMIT 1');
-    $stmt->execute([$actor['id']]);
-    $email = $stmt->fetchColumn();
-    $email = is_string($email) && $email !== '' ? $email : null;
-
-    if (!apiRoleCanViewWhatsAppPanel($actor['role'], $email)) {
+    if (!apiRoleCanViewWhatsAppPanel($actor['role'])) {
         apiJsonResponse(403, ['error' => API_ACCESS_DENIED]);
     }
 
-    return $actor + ['email' => $email];
+    return $actor;
 }
 
 /** Instante atual em UTC, no formato das colunas DATETIME. */
@@ -119,6 +114,615 @@ function waWindowState(?string $expiresAtUtc, ?string $nowUtc = null): array
         'expires_at' => waToIso($expiresAtUtc),
         'minutes_left' => waWindowMinutesLeft($expiresAtUtc, $nowUtc),
     ];
+}
+
+/**
+ * Converte o conteúdo de uma mensagem recebida pela Cloud API em texto útil
+ * para o histórico. O payload original continua guardado separadamente; aqui
+ * ficam apenas os campos que uma pessoa reconhece na conversa.
+ */
+function waExtractIncomingMessageBody(array $message): ?string
+{
+    $type = strtolower(trim((string) ($message['type'] ?? '')));
+    $body = null;
+
+    if (is_array($message['text'] ?? null)) {
+        $body = waMessageScalarText($message['text']['body'] ?? null);
+    }
+
+    if ($body === null) {
+        foreach (['image', 'video', 'document', 'audio'] as $mediaType) {
+            $media = $message[$mediaType] ?? null;
+            if (is_array($media)) {
+                $body = waMessageScalarText($media['caption'] ?? null);
+                if ($body !== null) {
+                    break;
+                }
+            }
+        }
+    }
+
+    if ($body === null && is_array($message['button'] ?? null)) {
+        $body = waMessageScalarText($message['button']['text'] ?? null)
+            ?? waMessageScalarText($message['button']['payload'] ?? null);
+    }
+
+    if ($body === null && $type === 'interactive' && is_array($message['interactive'] ?? null)) {
+        $interactive = $message['interactive'];
+
+        foreach (['button_reply', 'list_reply'] as $replyType) {
+            $reply = $interactive[$replyType] ?? null;
+            if (!is_array($reply)) {
+                continue;
+            }
+
+            $body = waMessageScalarText($reply['title'] ?? null)
+                ?? waMessageScalarText($reply['description'] ?? null)
+                ?? waMessageScalarText($reply['id'] ?? null);
+            if ($body !== null) {
+                break;
+            }
+        }
+
+        if ($body === null && is_array($interactive['nfm_reply'] ?? null)) {
+            $reply = $interactive['nfm_reply'];
+            $replyText = waMessageScalarText($reply['body'] ?? null);
+            $responseJson = waMessageScalarText($reply['response_json'] ?? null);
+            $response = $responseJson !== null ? json_decode($responseJson, true) : null;
+            $responseLines = is_array($response) ? waMessageValueLines($response) : [];
+
+            if ($responseLines !== []) {
+                $body = ($replyText !== null && strcasecmp($replyText, 'sent') !== 0 ? $replyText . "\n" : '')
+                    . implode("\n", $responseLines);
+            } else {
+                $body = $replyText;
+            }
+        }
+
+        if ($body === null && is_array($interactive['call_permission_reply'] ?? null)) {
+            $accepted = strtolower((string) ($interactive['call_permission_reply']['response'] ?? '')) === 'accept';
+            $expiration = waMessageScalarText($interactive['call_permission_reply']['expiration_timestamp'] ?? null);
+            $permanent = ($interactive['call_permission_reply']['is_permanent'] ?? false) === true;
+            $body = $accepted
+                ? 'Permissão para ligação aceita' . ($permanent ? ' sem prazo.' : '.')
+                : 'Permissão para ligação recusada.';
+            if ($accepted && !$permanent && $expiration !== null && ctype_digit($expiration)) {
+                $body .= ' Válida até ' . gmdate('d/m/Y H:i', (int) $expiration) . ' UTC.';
+            }
+        }
+
+        if ($body === null) {
+            $interactiveLines = waMessageValueLines($interactive, '', 0, true);
+            if ($interactiveLines !== []) {
+                $body = "Resposta interativa:\n" . implode("\n", $interactiveLines);
+            }
+        }
+    }
+
+    if ($body === null && is_array($message['reaction'] ?? null)) {
+        $emoji = waMessageScalarText($message['reaction']['emoji'] ?? null);
+        $body = $emoji !== null ? 'Reação: ' . $emoji : 'Reação removida.';
+    }
+
+    if ($body === null && in_array($type, ['location', 'live_location'], true) && is_array($message['location'] ?? $message['live_location'] ?? null)) {
+        $location = is_array($message['location'] ?? null) ? $message['location'] : $message['live_location'];
+        $parts = [$type === 'live_location' ? 'Localização ao vivo' : 'Localização enviada'];
+        $name = waMessageScalarText($location['name'] ?? null);
+        $address = waMessageScalarText($location['address'] ?? null);
+        $latitude = waMessageScalarText($location['latitude'] ?? null);
+        $longitude = waMessageScalarText($location['longitude'] ?? null);
+        $url = waMessageScalarText($location['url'] ?? null);
+
+        if ($name !== null) {
+            $parts[] = $name;
+        }
+        if ($address !== null) {
+            $parts[] = $address;
+        }
+        if ($latitude !== null && $longitude !== null) {
+            $parts[] = 'Coordenadas: ' . $latitude . ', ' . $longitude;
+        }
+        if ($url !== null && str_starts_with(strtolower($url), 'https://')) {
+            $parts[] = 'Mapa: ' . $url;
+        }
+
+        $body = implode("\n", $parts);
+    }
+
+    if ($body === null && $type === 'contacts' && is_array($message['contacts'] ?? null)) {
+        $contacts = [];
+        foreach ($message['contacts'] as $contact) {
+            if (!is_array($contact)) {
+                continue;
+            }
+
+            $name = is_array($contact['name'] ?? null)
+                ? waMessageScalarText($contact['name']['formatted_name'] ?? null)
+                : null;
+            if ($name === null && is_array($contact['name'] ?? null)) {
+                $name = trim(implode(' ', array_filter([
+                    waMessageScalarText($contact['name']['first_name'] ?? null),
+                    waMessageScalarText($contact['name']['middle_name'] ?? null),
+                    waMessageScalarText($contact['name']['last_name'] ?? null),
+                ])));
+                $name = $name !== '' ? $name : null;
+            }
+            $lines = [$name !== null ? 'Contato: ' . $name : 'Contato compartilhado'];
+
+            foreach ($contact['phones'] ?? [] as $phone) {
+                if (!is_array($phone)) {
+                    continue;
+                }
+                $number = waMessageScalarText($phone['phone'] ?? null)
+                    ?? waMessageScalarText($phone['wa_id'] ?? null);
+                if ($number !== null) {
+                    $lines[] = 'Telefone: ' . $number;
+                }
+            }
+
+            foreach ($contact['emails'] ?? [] as $email) {
+                if (is_array($email) && ($address = waMessageScalarText($email['email'] ?? null)) !== null) {
+                    $lines[] = 'E-mail: ' . $address;
+                }
+            }
+
+            foreach ($contact['urls'] ?? [] as $url) {
+                if (is_array($url) && ($address = waMessageScalarText($url['url'] ?? null)) !== null) {
+                    $lines[] = 'Site: ' . $address;
+                }
+            }
+
+            if (is_array($contact['org'] ?? null)) {
+                $company = waMessageScalarText($contact['org']['company'] ?? null);
+                if ($company !== null) {
+                    $lines[] = 'Empresa: ' . $company;
+                }
+                foreach (['department' => 'Setor', 'title' => 'Cargo'] as $field => $label) {
+                    $value = waMessageScalarText($contact['org'][$field] ?? null);
+                    if ($value !== null) {
+                        $lines[] = $label . ': ' . $value;
+                    }
+                }
+            }
+
+            foreach ($contact['addresses'] ?? [] as $address) {
+                if (!is_array($address)) {
+                    continue;
+                }
+                $addressParts = array_filter([
+                    waMessageScalarText($address['street'] ?? null),
+                    waMessageScalarText($address['city'] ?? null),
+                    waMessageScalarText($address['state'] ?? null),
+                    waMessageScalarText($address['zip'] ?? null),
+                    waMessageScalarText($address['country'] ?? null),
+                ]);
+                if ($addressParts !== []) {
+                    $lines[] = 'Endereço: ' . implode(', ', $addressParts);
+                }
+            }
+
+            $birthday = waMessageScalarText($contact['birthday'] ?? null);
+            if ($birthday !== null) {
+                $lines[] = 'Aniversário: ' . $birthday;
+            }
+
+            $contacts[] = implode("\n", $lines);
+        }
+
+        if ($contacts !== []) {
+            $body = implode("\n\n", $contacts);
+        }
+    }
+
+    if ($body === null && $type === 'order' && is_array($message['order'] ?? null)) {
+        $order = $message['order'];
+        $lines = ['Pedido recebido'];
+        $orderText = waMessageScalarText($order['text'] ?? null);
+        if ($orderText !== null) {
+            $lines[] = $orderText;
+        }
+
+        foreach ($order['product_items'] ?? [] as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $product = waMessageScalarText($item['product_retailer_id'] ?? null) ?? 'Produto';
+            $quantity = waMessageScalarText($item['quantity'] ?? null);
+            $price = waMessageScalarText($item['item_price'] ?? null);
+            $currency = waMessageScalarText($item['currency'] ?? null);
+            $line = $product;
+            if ($quantity !== null) {
+                $line .= ' — quantidade: ' . $quantity;
+            }
+            if ($price !== null) {
+                $line .= ' — valor unitário: ' . $price . ($currency !== null ? ' ' . $currency : '');
+            }
+            $lines[] = $line;
+        }
+
+        $body = implode("\n", $lines);
+    }
+
+    if ($body === null && $type === 'system' && is_array($message['system'] ?? null)) {
+        $system = $message['system'];
+        $systemType = strtolower(trim((string) ($system['type'] ?? '')));
+        $systemLabels = [
+            'customer_changed_number' => 'O contato trocou o número do WhatsApp.',
+            'customer_identity_changed' => 'A identidade do contato foi atualizada no WhatsApp.',
+            'user_changed_user_id' => 'O identificador do contato foi atualizado no WhatsApp.',
+            'user_changed_number' => 'O contato trocou o número do WhatsApp.',
+            'group_create' => 'Um grupo foi criado.',
+            'group_change_subject' => 'O nome do grupo foi alterado.',
+            'group_change_icon' => 'A imagem do grupo foi alterada.',
+            'group_change_description' => 'A descrição do grupo foi alterada.',
+            'group_participant_add' => 'Alguém entrou no grupo.',
+            'group_participant_remove' => 'Alguém saiu do grupo.',
+            'group_participant_leave' => 'Alguém saiu do grupo.',
+            'group_participant_invite' => 'Alguém foi convidado para o grupo.',
+            'group_participant_promote' => 'Alguém virou administrador do grupo.',
+            'group_participant_demote' => 'Alguém deixou de ser administrador do grupo.',
+        ];
+        $body = $systemLabels[$systemType]
+            ?? waMessageScalarText($system['body'] ?? null)
+            ?? 'Aviso do WhatsApp.';
+        $newWaId = waMessageScalarText($system['wa_id'] ?? null) ?? waMessageScalarText($system['new_wa_id'] ?? null);
+        if ($newWaId !== null && !str_contains((string) $body, $newWaId)) {
+            $body = rtrim((string) $body, '.') . '. Novo número: ' . $newWaId . '.';
+        }
+    }
+
+    if ($body === null && $type === 'request_welcome') {
+        $body = 'A pessoa abriu a conversa por um link ou anúncio.';
+    }
+
+    if ($body === null && $type === 'edit' && is_array($message['edit'] ?? null)) {
+        $edited = is_array($message['edit']['message'] ?? null) ? $message['edit']['message'] : [];
+        $editedBody = $edited !== [] ? waExtractIncomingMessageBody($edited) : null;
+        $body = $editedBody !== null
+            ? 'Mensagem editada: ' . $editedBody
+            : 'O contato editou uma mensagem.';
+    }
+
+    if ($body === null && $type === 'revoke') {
+        $body = 'O contato apagou uma mensagem.';
+    }
+
+    if ($body === null && in_array($type, ['poll', 'poll_creation'], true)) {
+        $poll = is_array($message['poll'] ?? null)
+            ? $message['poll']
+            : (is_array($message['poll_creation'] ?? null) ? $message['poll_creation'] : []);
+        $title = waMessageScalarText($poll['title'] ?? null)
+            ?? waMessageScalarText($poll['name'] ?? null)
+            ?? waMessageScalarText($poll['question'] ?? null);
+        $lines = [$title !== null ? 'Enquete: ' . $title : 'Enquete recebida'];
+        foreach ($poll['options'] ?? [] as $option) {
+            $label = is_array($option)
+                ? (waMessageScalarText($option['option_name'] ?? null) ?? waMessageScalarText($option['name'] ?? null) ?? waMessageScalarText($option['text'] ?? null))
+                : waMessageScalarText($option);
+            if ($label !== null) {
+                $lines[] = '• ' . $label;
+            }
+        }
+        $body = implode("\n", $lines);
+    }
+
+    if ($body === null && in_array($type, ['poll_update', 'poll_vote'], true)) {
+        $update = is_array($message['poll_update'] ?? null)
+            ? $message['poll_update']
+            : (is_array($message['poll_vote'] ?? null) ? $message['poll_vote'] : []);
+        $lines = ['Voto em enquete'];
+        foreach (['votes', 'selected_options', 'options'] as $listKey) {
+            foreach ($update[$listKey] ?? [] as $vote) {
+                $label = is_array($vote)
+                    ? (waMessageScalarText($vote['option_name'] ?? null) ?? waMessageScalarText($vote['name'] ?? null) ?? waMessageScalarText($vote['text'] ?? null))
+                    : waMessageScalarText($vote);
+                if ($label !== null) {
+                    $lines[] = '• ' . $label;
+                }
+            }
+        }
+        $body = implode("\n", array_values(array_unique($lines)));
+    }
+
+    if ($body === null && in_array($type, ['group_invite', 'groups_invite'], true)) {
+        $invite = is_array($message['group_invite'] ?? null) ? $message['group_invite'] : [];
+        $subject = waMessageScalarText($invite['group_subject'] ?? null)
+            ?? waMessageScalarText($invite['subject'] ?? null)
+            ?? waMessageScalarText($invite['name'] ?? null);
+        $body = $subject !== null ? 'Convite para o grupo ' . $subject . '.' : 'Convite para um grupo.';
+    }
+
+    if ($body === null && $type === 'pin') {
+        $body = 'Uma mensagem foi fixada na conversa.';
+    }
+
+    if ($body === null && in_array($type, ['keep_in_chat', 'keep'], true)) {
+        $body = 'Uma mensagem foi salva na conversa.';
+    }
+
+    if ($body === null && $type === 'ephemeral') {
+        $seconds = is_array($message['ephemeral'] ?? null)
+            ? waMessageScalarText($message['ephemeral']['expiration'] ?? null)
+            : null;
+        $body = $seconds !== null && ctype_digit($seconds)
+            ? 'Mensagens temporárias ativadas (' . waEphemeralDurationLabel((int) $seconds) . ').'
+            : 'Mensagens temporárias foram ativadas nesta conversa.';
+    }
+
+    if ($body === null && in_array($type, ['template', 'hsm'], true)) {
+        $template = is_array($message['template'] ?? null)
+            ? $message['template']
+            : (is_array($message['hsm'] ?? null) ? $message['hsm'] : []);
+        $name = waMessageScalarText($template['name'] ?? null);
+        $lines = [];
+        foreach ($template['components'] ?? [] as $component) {
+            if (!is_array($component)) {
+                continue;
+            }
+            $text = waMessageScalarText($component['text'] ?? null);
+            if ($text !== null) {
+                $lines[] = $text;
+            }
+            foreach ($component['parameters'] ?? [] as $parameter) {
+                if (!is_array($parameter)) {
+                    continue;
+                }
+                $paramText = waMessageScalarText($parameter['text'] ?? null);
+                if ($paramText !== null) {
+                    $lines[] = $paramText;
+                }
+            }
+        }
+        $body = $lines !== []
+            ? implode("\n", $lines)
+            : ($name !== null ? 'Mensagem de template: ' . $name . '.' : 'Mensagem de template.');
+    }
+
+    if ($body === null && in_array($type, ['product', 'catalog', 'product_list'], true)) {
+        $product = is_array($message[$type] ?? null) ? $message[$type] : [];
+        $title = waMessageScalarText($product['title'] ?? null)
+            ?? waMessageScalarText($product['name'] ?? null)
+            ?? waMessageScalarText($product['product_retailer_id'] ?? null);
+        $labels = [
+            'product' => 'Produto',
+            'catalog' => 'Catálogo',
+            'product_list' => 'Lista de produtos',
+        ];
+        $body = $title !== null ? $labels[$type] . ': ' . $title : $labels[$type] . ' recebido.';
+    }
+
+    if ($body === null) {
+        $gif = is_array($message['video'] ?? null) && ($message['video']['gif'] ?? false);
+        $body = match ($type) {
+            'image' => '[imagem]',
+            'video' => $gif ? '[GIF]' : '[vídeo]',
+            'gif' => '[GIF]',
+            'audio' => is_array($message['audio'] ?? null) && ($message['audio']['voice'] ?? false)
+                ? '[mensagem de voz]'
+                : '[áudio]',
+            'document' => is_array($message['document'] ?? null)
+                ? '[documento' . (($filename = waMessageScalarText($message['document']['filename'] ?? null)) !== null ? ': ' . $filename : '') . ']'
+                : '[documento]',
+            'sticker' => is_array($message['sticker'] ?? null) && ($message['sticker']['animated'] ?? false)
+                ? '[figurinha animada]'
+                : '[figurinha]',
+            'location', 'live_location' => '[localização]',
+            'contacts' => '[contato]',
+            'unsupported', 'unknown', 'errors' => waUnsupportedMessageBody($message),
+            default => $type !== '' ? waUnknownMessageBody($message, $type) : null,
+        };
+    }
+
+    if ($body === null && is_array($message['errors'] ?? null) && $message['errors'] !== []) {
+        $body = waUnsupportedMessageBody($message);
+    }
+
+    $referral = is_array($message['referral'] ?? null) ? $message['referral'] : [];
+    if ($referral !== []) {
+        $origin = [];
+        $source = waMessageScalarText($referral['source_type'] ?? null);
+        $headline = waMessageScalarText($referral['headline'] ?? null);
+        if ($source !== null) {
+            $origin[] = $source === 'ad' ? 'anúncio' : $source;
+        }
+        if ($headline !== null) {
+            $origin[] = $headline;
+        }
+        if ($origin !== []) {
+            $body = trim((string) $body . "\nOrigem: " . implode(' — ', $origin));
+        }
+    }
+
+    if ($body === null || trim($body) === '') {
+        $body = 'Mensagem recebida.';
+    }
+
+    return mb_substr(trim($body), 0, 12000);
+}
+
+/** Duração de mensagem temporária em linguagem corrente. */
+function waEphemeralDurationLabel(int $seconds): string
+{
+    if ($seconds % 86400 === 0 && $seconds >= 86400) {
+        $days = intdiv($seconds, 86400);
+
+        return $days === 1 ? '24 horas' : $days . ' dias';
+    }
+    if ($seconds % 3600 === 0 && $seconds >= 3600) {
+        $hours = intdiv($seconds, 3600);
+
+        return $hours === 1 ? '1 hora' : $hours . ' horas';
+    }
+
+    return $seconds . ' segundos';
+}
+
+/** Texto curto sem coerção de objetos nem espaços vazios. */
+function waMessageScalarText($value): ?string
+{
+    if (!is_string($value) && !is_int($value) && !is_float($value)) {
+        return null;
+    }
+
+    $text = trim((string) $value);
+    return $text !== '' ? $text : null;
+}
+
+/** Devolve linhas legíveis de uma resposta de Flow, limitada em profundidade. */
+function waMessageValueLines(array $value, string $prefix = '', int $depth = 0, bool $skipMetadata = false): array
+{
+    if ($depth > 6) {
+        return [];
+    }
+
+    $lines = [];
+    foreach (array_slice($value, 0, 100, true) as $key => $item) {
+        $metadataKey = strtolower((string) $key);
+        if (
+            $skipMetadata
+            && (
+                in_array($metadataKey, [
+                    'id', 'from', 'to', 'wa_id', 'timestamp', 'context', 'sha256',
+                    'mime_type', 'media_id', 'file_id', 'identity', 'signature',
+                ], true)
+                || preg_match('/(?:url|uri|token|secret|hash)$/', $metadataKey) === 1
+            )
+        ) {
+            continue;
+        }
+
+        $label = $prefix !== '' ? $prefix . '.' . (string) $key : (string) $key;
+        if (is_array($item)) {
+            $lines = array_merge($lines, waMessageValueLines($item, $label, $depth + 1, $skipMetadata));
+        } elseif (is_string($item) || is_int($item) || is_float($item)) {
+            $text = trim((string) $item);
+            if ($text !== '') {
+                $lines[] = $label . ': ' . $text;
+            }
+        }
+    }
+
+    return $lines;
+}
+
+/** Fallback legível para tipos novos, sem devolver identificadores ou URLs de mídia. */
+function waUnknownMessageBody(array $message, string $type): string
+{
+    $visible = $message;
+    foreach (['from', 'id', 'timestamp', 'type', 'context', 'errors', 'referral', 'identity', 'unsupported'] as $key) {
+        unset($visible[$key]);
+    }
+
+    $lines = waMessageValueLines($visible, '', 0, true);
+    $label = waMessageTypeLabel($type);
+    if ($lines === []) {
+        return $label . '.';
+    }
+
+    return $label . ":\n" . implode("\n", $lines);
+}
+
+/** Nome em português de um tipo da Cloud API, inclusive os que ainda não têm renderer próprio. */
+function waMessageTypeLabel(string $type): string
+{
+    $labels = [
+        'text' => 'Texto',
+        'image' => 'Imagem',
+        'video' => 'Vídeo',
+        'gif' => 'GIF',
+        'audio' => 'Áudio',
+        'document' => 'Documento',
+        'sticker' => 'Figurinha',
+        'location' => 'Localização',
+        'live_location' => 'Localização ao vivo',
+        'contacts' => 'Contato',
+        'button' => 'Botão',
+        'interactive' => 'Resposta interativa',
+        'reaction' => 'Reação',
+        'order' => 'Pedido',
+        'system' => 'Aviso do WhatsApp',
+        'request_welcome' => 'Abertura de conversa',
+        'edit' => 'Mensagem editada',
+        'revoke' => 'Mensagem apagada',
+        'poll' => 'Enquete',
+        'poll_creation' => 'Enquete',
+        'poll_update' => 'Voto em enquete',
+        'poll_vote' => 'Voto em enquete',
+        'group_invite' => 'Convite de grupo',
+        'groups_invite' => 'Convite de grupo',
+        'pin' => 'Mensagem fixada',
+        'keep_in_chat' => 'Mensagem salva',
+        'keep' => 'Mensagem salva',
+        'ephemeral' => 'Mensagem temporária',
+        'template' => 'Template',
+        'hsm' => 'Template',
+        'product' => 'Produto',
+        'catalog' => 'Catálogo',
+        'product_list' => 'Lista de produtos',
+        'unsupported' => 'Mensagem recebida',
+        'unknown' => 'Mensagem recebida',
+        'errors' => 'Mensagem recebida',
+        'referral' => 'Origem da conversa',
+        'address' => 'Endereço',
+        'payment' => 'Pagamento',
+        'call' => 'Ligação',
+        'voice_call' => 'Ligação de voz',
+        'video_call' => 'Ligação de vídeo',
+    ];
+
+    return $labels[$type] ?? ('Mensagem (' . $type . ')');
+}
+
+/** A Cloud API informa o subtipo quando consegue identificar a mensagem, mas não o conteúdo. */
+function waUnsupportedMessageBody(array $message): string
+{
+    $unsupported = is_array($message['unsupported'] ?? null) ? $message['unsupported'] : [];
+    $subtype = strtolower(trim((string) ($unsupported['type'] ?? '')));
+    $labels = [
+        'edit' => 'O contato editou uma mensagem. O texto novo não veio neste evento.',
+        'revoke' => 'O contato apagou uma mensagem.',
+        'poll_creation' => 'O contato criou uma enquete. As opções não vieram neste evento.',
+        'poll_update' => 'O contato votou numa enquete. O voto não veio neste evento.',
+        'pin' => 'Uma mensagem foi fixada na conversa.',
+        'unpin' => 'Uma mensagem deixou de ficar fixada.',
+        'keep_in_chat' => 'Uma mensagem foi salva na conversa.',
+        'group_invite' => 'Convite para um grupo. O link não veio neste evento.',
+        'gif' => 'GIF recebido. O arquivo não veio neste evento.',
+        'media_placeholder' => 'Mídia recebida, ainda indisponível para download.',
+        'sticker' => 'Figurinha recebida. O arquivo não veio neste evento.',
+        'image' => 'Imagem recebida. O arquivo não veio neste evento.',
+        'video' => 'Vídeo recebido. O arquivo não veio neste evento.',
+        'audio' => 'Áudio recebido. O arquivo não veio neste evento.',
+        'document' => 'Documento recebido. O arquivo não veio neste evento.',
+        'location' => 'Localização recebida. As coordenadas não vieram neste evento.',
+        'contact' => 'Contato compartilhado. Os dados não vieram neste evento.',
+        'contacts' => 'Contato compartilhado. Os dados não vieram neste evento.',
+        'ephemeral' => 'Mensagem temporária. O conteúdo já não está disponível.',
+        'view_once' => 'Mídia de visualização única. O arquivo não pode ser aberto de novo.',
+        'lto' => 'Oferta por tempo limitado. O conteúdo não veio neste evento.',
+        'call' => 'Ligação. Os detalhes não vieram neste evento.',
+        'payment' => 'Pagamento. Os detalhes não vieram neste evento.',
+        'order' => 'Pedido. Os itens não vieram neste evento.',
+    ];
+
+    if (isset($labels[$subtype])) {
+        return $labels[$subtype];
+    }
+
+    $error = is_array($message['errors'][0] ?? null) ? $message['errors'][0] : [];
+    $title = waMessageScalarText($error['title'] ?? null);
+    $details = is_array($error['error_data'] ?? null)
+        ? waMessageScalarText($error['error_data']['details'] ?? null)
+        : null;
+    $hint = $details ?? $title;
+    if ($hint !== null) {
+        return 'Mensagem recebida. ' . $hint;
+    }
+    if ($subtype !== '') {
+        return waMessageTypeLabel($subtype) . '.';
+    }
+
+    return 'Mensagem recebida.';
 }
 
 /**
