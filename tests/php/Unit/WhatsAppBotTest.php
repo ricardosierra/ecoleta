@@ -199,12 +199,11 @@ final class WhatsAppBotTest extends TestCase
         $this->responder('Boa tarde, preciso da segunda via do boleto');
 
         $textos = $this->textosEnviados();
-        self::assertCount(2, $textos);
-        self::assertStringContainsString('Pix Copia e Cola:', $textos[0]);
-        self::assertStringContainsString(self::PIX, $textos[0]);
-        self::assertSame(self::PIX, $textos[1]);
+        self::assertCount(1, $textos);
+        self::assertSame(self::PIX, $textos[0]);
+        self::assertSame('R$ 120,50 · vence em 10/10/2099', $this->enviados[0]['image']['caption']);
         self::assertCount(1, $this->uploads);
-        self::assertCount(3, $this->saidasGravadas());
+        self::assertCount(2, $this->saidasGravadas());
     }
 
     /**
@@ -441,9 +440,8 @@ final class WhatsAppBotTest extends TestCase
 
         $this->responder('segunda via do boleto');
 
-        $textos = $this->textosEnviados();
-        self::assertCount(2, $textos);
-        self::assertStringContainsString('venceu em *10/08/2026*', $textos[0]);
+        self::assertSame([self::PIX], $this->textosEnviados());
+        self::assertSame('R$ 120,50 · venceu em 10/08/2026', $this->enviados[0]['image']['caption']);
     }
 
     public function testFaturaPagaOuCanceladaNaoRecebe(): void
@@ -485,10 +483,8 @@ final class WhatsAppBotTest extends TestCase
 
         $this->responder('boleto');
 
-        $texto = $this->textosEnviados()[0];
-        self::assertStringStartsWith('Olá, Heineken Brasil.', $texto);
-        self::assertStringContainsString('R$ 120,50', $texto);
-        self::assertStringContainsString('vence em *10/10/2099*', $texto);
+        self::assertSame([self::PIX], $this->textosEnviados());
+        self::assertSame('R$ 120,50 · vence em 10/10/2099', $this->enviados[0]['image']['caption']);
     }
 
     /** O cadastro pode ter máscara ou DDI solto: o que vale é o número normalizado. */
@@ -579,9 +575,9 @@ final class WhatsAppBotTest extends TestCase
         self::assertTrue($this->uploads[0]['existia']);
 
         $tipos = array_column($this->enviados, 'type');
-        self::assertSame(['image', 'text', 'text'], $tipos);
+        self::assertSame(['image', 'text'], $tipos);
         self::assertSame('media-123', $this->enviados[0]['image']['id']);
-        self::assertCount(3, $this->saidasGravadas());
+        self::assertCount(2, $this->saidasGravadas());
         // Pedido de QR já entregue: o aviso não repete a dica de como pedir.
         self::assertStringNotContainsString('basta responder', $this->textosEnviados()[0]);
     }
@@ -616,9 +612,7 @@ final class WhatsAppBotTest extends TestCase
             },
         ]);
 
-        $textos = $this->textosEnviados();
-        self::assertCount(2, $textos);
-        self::assertSame(self::PIX, $textos[1]);
+        self::assertSame([self::PIX], $this->textosEnviados());
     }
 
     public function testBase64InvalidoNaoQuebraNemSobeLixo(): void
@@ -630,6 +624,6 @@ final class WhatsAppBotTest extends TestCase
         ]);
 
         self::assertSame([], $this->uploads);
-        self::assertCount(2, $this->textosEnviados());
+        self::assertSame([self::PIX], $this->textosEnviados());
     }
 }

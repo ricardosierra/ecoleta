@@ -265,11 +265,17 @@ function waAutoReplyWithPix(PDO $db, string $from, string $body, string $type, a
             }
         };
 
-        // A imagem do QR vai junto com o código. Se o upload falhar, o Pix
-        // copia e cola ainda sai.
+        // Só o QR e o código. O valor fica na legenda da imagem, sem texto extra.
+        $valor = number_format((float) ($invoice['value'] ?? 0), 2, ',', '.');
+        $vencimento = (string) $invoice['due_date'];
+        $venc = date('d/m/Y', strtotime($vencimento));
+        $hoje = (new DateTimeImmutable('now', new DateTimeZone('America/Sao_Paulo')))->format('Y-m-d');
+        $vencida = $invoice['status'] === 'OVERDUE' || $vencimento < $hoje;
+        $legenda = $vencida
+            ? "R$ {$valor} · venceu em {$venc}"
+            : "R$ {$valor} · vence em {$venc}";
+
         if (!empty($pix['encodedImage'])) {
-            // A imagem é um bônus: se falhar, o texto com o Pix copia e cola
-            // (que é o que paga a fatura) ainda precisa chegar.
             try {
                 $mediaId = waBotUploadQrImage((string) $pix['encodedImage'], $upload);
 
@@ -279,7 +285,7 @@ function waAutoReplyWithPix(PDO $db, string $from, string $body, string $type, a
                     'type' => 'image',
                     'image' => [
                         'id' => $mediaId,
-                        'caption' => 'Aqui está a imagem do QR Code para o pagamento da sua fatura!',
+                        'caption' => $legenda,
                     ],
                 ], 'image', WA_BOT_IMAGE_LABEL);
             } catch (Throwable $e) {
@@ -287,46 +293,13 @@ function waAutoReplyWithPix(PDO $db, string $from, string $body, string $type, a
             }
         }
 
-        // Mensagem de cobrança com dados da fatura e instrução do Pix Copia e Cola direto
-        $valor = number_format((float) ($invoice['value'] ?? 0), 2, ',', '.');
-        $vencimento = (string) $invoice['due_date'];
-        $venc = date('d/m/Y', strtotime($vencimento));
-        $hoje = (new DateTimeImmutable('now', new DateTimeZone('America/Sao_Paulo')))->format('Y-m-d');
-        $vencida = $invoice['status'] === 'OVERDUE' || $vencimento < $hoje;
-        $nome = trim((string) ($invoice['client_name'] ?? ''));
-
-        $linhas = [
-            $nome !== '' ? "Olá, {$nome}." : "Olá.",
-            "",
-            $vencida
-                ? "Sua fatura da Ecoleva no valor de *R$ {$valor}* venceu em *{$venc}*."
-                : "Sua fatura da Ecoleva no valor de *R$ {$valor}* vence em *{$venc}*.",
-            "",
-            "Pix Copia e Cola:",
-            $pix['payload'],
-            "",
-            "Avise se recebeu esse aviso.",
-        ];
-
-        $avisoTexto = implode("\n", $linhas);
-
         $enviar([
             'messaging_product' => 'whatsapp',
             'to' => $from,
             'type' => 'text',
             'text' => [
-                'body' => $avisoTexto
-            ]
-        ], 'text', $avisoTexto);
-
-        // Mensagem com o código Pix puro para o cliente copiar com um toque no celular
-        $enviar([
-            'messaging_product' => 'whatsapp',
-            'to' => $from,
-            'type' => 'text',
-            'text' => [
-                'body' => $pix['payload']
-            ]
+                'body' => $pix['payload'],
+            ],
         ], 'text', (string) $pix['payload']);
 
     } catch (Throwable $e) {
