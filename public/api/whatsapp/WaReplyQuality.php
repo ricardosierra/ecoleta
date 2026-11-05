@@ -12,11 +12,13 @@ declare(strict_types=1);
  */
 final class WaReplyQuality
 {
-    private const INVOICE = '/(?<![a-z0-9])(?:faturas?|boletos?|pix|qr(?: ?code)?|segunda via|2 ?a? ?via|pagar|pagamentos?|cobrancas?|vencimentos?)(?![a-z0-9])/';
+    private const INVOICE = '/(?<![a-z0-9])(?:faturas?|boletos?|pix|qr(?: ?code)?|segunda via|2 ?a? ?via|pagar|pagamentos?|cobrancas?|vencimentos?|devendo|quanto devo|saldo)(?![a-z0-9])/';
 
     private const ALREADY_PAID = '/(?<![a-z0-9])(?:comprovantes?|paguei|pagamos|quitei|quitamos|quitad[oa]s?)(?![a-z0-9])/';
 
     private const HELP = '/(?<![a-z0-9])(?:ajuda|ajudar|menu|opcoes|duvidas?|suporte|atendimento)(?![a-z0-9])/';
+
+    private const ATTENDANT = '/(?<![a-z0-9])(?:atendente|falar com (?:uma )?(?:pessoa|gente|humano)|quero (?:uma )?pessoa)(?![a-z0-9])/';
 
     private const ABOUT = '/(?<![a-z0-9])(?:sobre|quem (?:e|sao|somos)|ecoleva|econformidade|empresa|servicos|o que (?:voces |vcs )?(?:fazem|faz))(?![a-z0-9])/';
 
@@ -69,6 +71,10 @@ final class WaReplyQuality
             return ['lane' => 'invoice', 'script' => '', 'reason' => 'fatura'];
         }
 
+        if (preg_match(self::ATTENDANT, $texto) === 1) {
+            return ['lane' => 'script', 'script' => 'attendant', 'reason' => 'atendente'];
+        }
+
         if (preg_match(self::HELP, $texto) === 1) {
             return ['lane' => 'script', 'script' => 'help', 'reason' => 'ajuda'];
         }
@@ -95,7 +101,7 @@ final class WaReplyQuality
     /** Texto pronto, sem modelo. */
     public function script(string $kind): string
     {
-        $contato = "Equipe: (21) 99152-9383\nhttps://www.ecolevaeco.com";
+        $site = 'https://www.ecolevaeco.com';
 
         if ($kind === 'farewell') {
             return "Combinado. Se precisar da fatura ou de outra orientação, é só chamar.";
@@ -114,19 +120,19 @@ final class WaReplyQuality
         }
 
         if ($kind === 'paid') {
-            return "Anotei. A equipe confere o pagamento. Se a cobrança ainda aparecer em aberto, responda *fatura*.";
-        }
-
-        if ($kind === 'pix_already') {
-            return "O Pix desta cobrança já foi enviado nesta conversa. Olha as mensagens acima. Se não estiver aí, a equipe reenvia em (21) 99152-9383.";
+            return "Anotei. Se a cobrança ainda aparecer em aberto, responda *fatura* que eu mando o Pix de novo.";
         }
 
         if ($kind === 'no_invoice') {
-            return "Não encontrei cobrança em aberto neste número. Se o boleto for de outro telefone, chama a equipe: (21) 99152-9383.";
+            return "Não encontrei cobrança em aberto neste número.";
         }
 
         if ($kind === 'pix_unavailable') {
-            return "Achei a cobrança, mas o código Pix não saiu agora. A equipe te manda em (21) 99152-9383.";
+            return "Achei a cobrança, mas o código Pix não saiu agora. Pede de novo daqui a pouco que eu tento outra vez.";
+        }
+
+        if ($kind === 'attendant') {
+            return "Pode escrever aqui o que precisa. Uma pessoa da equipe vê esta conversa e responde neste mesmo WhatsApp.";
         }
 
         if ($kind === 'about') {
@@ -138,7 +144,7 @@ final class WaReplyQuality
                 'A *Econformidade* é o braço tecnológico: automação, indicadores e organização dos dados ambientais.',
                 '',
                 'CNPJ 57.772.812/0001-72',
-                $contato,
+                $site,
                 '',
                 'Para a cobrança em aberto, responda *fatura* ou *pix*.',
             ]);
@@ -155,8 +161,8 @@ final class WaReplyQuality
             '• *sobre* — o que a Ecoleva faz',
             '• *ajuda* — este menu de novo',
             '',
-            'O que não estiver aqui segue para a equipe.',
-            $contato,
+            'O que não estiver aqui, é só escrever a dúvida.',
+            $site,
         ]);
     }
 
@@ -362,6 +368,8 @@ SAÍDA
 Responda só o texto que a cliente vai ler no WhatsApp.
 Em português, no máximo 700 caracteres, sem título, sem lista de regras e sem comentário interno.
 Não assine a mensagem. Não escreva "mensagem automática".
+Não mande a cliente falar com outro número nem "chamar a equipe", a menos que ela peça um atendente ou você não tenha como resolver.
+Se ela perguntar quanto deve ou pedir o Pix, use só o valor da lista. O código Pix sai pelo sistema quando ela pede; não diga para olhar mensagens antigas.
 PROMPT;
     }
 

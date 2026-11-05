@@ -11,8 +11,9 @@ declare(strict_types=1);
  * modelo se `WHATSAPP_REPLY_API_KEY` estiver preenchida; sem chave, o
  * painel humano recebe a mensagem e o robô manda o menu.
  *
- *  - a trava de 6 horas só impede reenviar o Pix (código e QR). Dúvida,
- *    saudação, ajuda e o resto respondem sempre;
+ *  - pedido de Pix ou de quanto está devendo reenvia o código, mesmo que
+ *    ele já tenha saído nesta conversa;
+ *  - o número da equipe só entra quando a pessoa pede um atendente;
  *  - mensagem de outro robô fica sem resposta, para não virar loop;
  *  - a fatura casa o telefone EXATO (com e sem o nono dígito).
  */
@@ -242,12 +243,6 @@ function waAutoReplyWithPix(PDO $db, string $from, string $body, string $type, a
         // O cliente da fatura só entra se a conversa ainda não tiver dono.
         $conversationId = waEnsureConversation($db, $from, ['client_id' => (int) $invoice['client_id']]);
 
-        if ($conversationId !== null && waBotRecentlyReplied($db, $conversationId)) {
-            waBotSendScripted($db, $from, 'pix_already', $deps);
-
-            return;
-        }
-
         $pix = $fetchPix((string) $invoice['asaas_payment_id']);
 
         if (empty($pix['payload'])) {
@@ -270,10 +265,9 @@ function waAutoReplyWithPix(PDO $db, string $from, string $body, string $type, a
             }
         };
 
-        // QR Code impresso/imagem: apenas se o cliente pedir explicitamente
-        $pediuQrCode = waBotWantsQrImage($body);
-
-        if ($pediuQrCode && !empty($pix['encodedImage'])) {
+        // A imagem do QR vai junto com o código. Se o upload falhar, o Pix
+        // copia e cola ainda sai.
+        if (!empty($pix['encodedImage'])) {
             // A imagem é um bônus: se falhar, o texto com o Pix copia e cola
             // (que é o que paga a fatura) ainda precisa chegar.
             try {
@@ -313,14 +307,6 @@ function waAutoReplyWithPix(PDO $db, string $from, string $body, string $type, a
             "",
             "Avise se recebeu esse aviso.",
         ];
-
-        if (!$pediuQrCode) {
-            $linhas[] = "";
-            $linhas[] = "_(Caso prefira a imagem do QR Code para escanear, basta responder *QR Code*.)_";
-        }
-
-        $linhas[] = "";
-        $linhas[] = "Caso precise, envie WhatsApp para (21) 99152-9383.";
 
         $avisoTexto = implode("\n", $linhas);
 

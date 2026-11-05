@@ -203,9 +203,8 @@ final class WhatsAppBotTest extends TestCase
         self::assertStringContainsString('Pix Copia e Cola:', $textos[0]);
         self::assertStringContainsString(self::PIX, $textos[0]);
         self::assertSame(self::PIX, $textos[1]);
-        // Sem pedir QR, não sobe imagem.
-        self::assertSame([], $this->uploads);
-        self::assertCount(2, $this->saidasGravadas());
+        self::assertCount(1, $this->uploads);
+        self::assertCount(3, $this->saidasGravadas());
     }
 
     /**
@@ -370,7 +369,7 @@ final class WhatsAppBotTest extends TestCase
         self::assertStringNotContainsString('pay_paga', $texto);
     }
 
-    public function testNoMaximoUmaRespostaAutomaticaPorJanelaDeSeisHoras(): void
+    public function testPedidoDePixReenviaOCodigo(): void
     {
         $this->fatura($this->cliente());
 
@@ -379,15 +378,12 @@ final class WhatsAppBotTest extends TestCase
         self::assertGreaterThan(0, $primeira);
 
         $this->responder('pix');
-        $this->responder('qr code');
-        $this->responder('fatura');
 
-        self::assertCount($primeira + 3, $this->enviados);
-        foreach (array_slice($this->textosEnviados(), $primeira) as $texto) {
-            self::assertStringNotContainsString(self::PIX, $texto);
-            self::assertStringContainsString('já foi enviado', $texto);
-        }
-        self::assertSame([], $this->uploads);
+        $textos = $this->textosEnviados();
+        self::assertGreaterThan($primeira, count($this->enviados));
+        self::assertStringContainsString(self::PIX, $textos[array_key_last($textos)]);
+        self::assertStringNotContainsString('99152', implode("\n", $textos));
+        self::assertStringNotContainsString('já foi enviado', implode("\n", $textos));
     }
 
     public function testRespondeDeNovoDepoisDaJanelaDeSeisHoras(): void
@@ -566,7 +562,8 @@ final class WhatsAppBotTest extends TestCase
         $textos = $this->textosEnviados();
         self::assertCount(1, $textos);
         self::assertStringNotContainsString(self::PIX, $textos[0]);
-        self::assertStringContainsString('código Pix não saiu', $textos[0]);
+        self::assertStringContainsString('Pede de novo', $textos[0]);
+        self::assertStringNotContainsString('99152', $textos[0]);
     }
 
     // ── QR Code como imagem ─────────────────────────────────────────────────
