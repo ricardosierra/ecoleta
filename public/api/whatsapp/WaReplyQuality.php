@@ -95,39 +95,38 @@ final class WaReplyQuality
     /** Texto pronto, sem modelo. */
     public function script(string $kind): string
     {
-        $assinatura = '_Mensagem automática da Ecoleva._';
         $contato = "Equipe: (21) 99152-9383\nhttps://www.ecolevaeco.com";
 
         if ($kind === 'farewell') {
-            return "Combinado. Se precisar da fatura ou de outra orientação, é só chamar.\n\n{$assinatura}";
+            return "Combinado. Se precisar da fatura ou de outra orientação, é só chamar.";
         }
 
         if ($kind === 'courtesy') {
-            return "Certo. Se precisar da fatura ou de outra orientação, é só escrever.\n\n{$assinatura}";
+            return "Certo. Se precisar da fatura ou de outra orientação, é só escrever.";
         }
 
         if ($kind === 'media') {
-            return "Recebi. Por aqui eu leio texto: escreve o que você precisa, por exemplo *fatura* ou a sua dúvida.\n\n{$assinatura}";
+            return "Recebi. Por aqui eu leio texto: escreve o que você precisa, por exemplo *fatura* ou a sua dúvida.";
         }
 
         if ($kind === 'long') {
-            return "Recebi. Resume em uma frase o que você precisa que eu te respondo por aqui.\n\n{$assinatura}";
+            return "Recebi. Resume em uma frase o que você precisa que eu te respondo por aqui.";
         }
 
         if ($kind === 'paid') {
-            return "Anotei. A equipe confere o pagamento. Se a cobrança ainda aparecer em aberto, responda *fatura*.\n\n{$assinatura}";
+            return "Anotei. A equipe confere o pagamento. Se a cobrança ainda aparecer em aberto, responda *fatura*.";
         }
 
         if ($kind === 'pix_already') {
-            return "O Pix desta cobrança já foi enviado nesta conversa. Olha as mensagens acima. Se não estiver aí, a equipe reenvia em (21) 99152-9383.\n\n{$assinatura}";
+            return "O Pix desta cobrança já foi enviado nesta conversa. Olha as mensagens acima. Se não estiver aí, a equipe reenvia em (21) 99152-9383.";
         }
 
         if ($kind === 'no_invoice') {
-            return "Não encontrei cobrança em aberto neste número. Se o boleto for de outro telefone, chama a equipe: (21) 99152-9383.\n\n{$assinatura}";
+            return "Não encontrei cobrança em aberto neste número. Se o boleto for de outro telefone, chama a equipe: (21) 99152-9383.";
         }
 
         if ($kind === 'pix_unavailable') {
-            return "Achei a cobrança, mas o código Pix não saiu agora. A equipe te manda em (21) 99152-9383.\n\n{$assinatura}";
+            return "Achei a cobrança, mas o código Pix não saiu agora. A equipe te manda em (21) 99152-9383.";
         }
 
         if ($kind === 'about') {
@@ -142,8 +141,6 @@ final class WaReplyQuality
                 $contato,
                 '',
                 'Para a cobrança em aberto, responda *fatura* ou *pix*.',
-                '',
-                $assinatura,
             ]);
         }
 
@@ -160,8 +157,6 @@ final class WaReplyQuality
             '',
             'O que não estiver aqui segue para a equipe.',
             $contato,
-            '',
-            $assinatura,
         ]);
     }
 
@@ -366,6 +361,7 @@ SAÍDA
 
 Responda só o texto que a cliente vai ler no WhatsApp.
 Em português, no máximo 700 caracteres, sem título, sem lista de regras e sem comentário interno.
+Não assine a mensagem. Não escreva "mensagem automática".
 PROMPT;
     }
 

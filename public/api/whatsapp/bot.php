@@ -321,8 +321,6 @@ function waAutoReplyWithPix(PDO $db, string $from, string $body, string $type, a
 
         $linhas[] = "";
         $linhas[] = "Caso precise, envie WhatsApp para (21) 99152-9383.";
-        $linhas[] = "";
-        $linhas[] = '_' . WA_BOT_SIGNATURE . '._';
 
         $avisoTexto = implode("\n", $linhas);
 
@@ -445,10 +443,6 @@ function waBotReplyWithModel(PDO $db, string $from, string $body, string $type, 
 
             return;
         }
-        if (!str_contains($gerado, WA_BOT_SIGNATURE)) {
-            $gerado .= "\n\n_" . WA_BOT_SIGNATURE . '._';
-        }
-
         $resposta = $send([
             'messaging_product' => 'whatsapp',
             'to' => $from,

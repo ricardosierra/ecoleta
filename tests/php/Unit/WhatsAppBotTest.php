@@ -314,7 +314,7 @@ final class WhatsAppBotTest extends TestCase
         $textos = $this->textosEnviados();
         self::assertGreaterThanOrEqual(2, count($textos));
         self::assertStringContainsString('todo o Brasil', $textos[array_key_last($textos)]);
-        self::assertStringContainsString(WA_BOT_SIGNATURE, $textos[0]);
+        self::assertStringNotContainsString(WA_BOT_SIGNATURE, $textos[array_key_last($textos)]);
         self::assertStringNotContainsString(self::PIX, $textos[0]);
     }
 
