@@ -62,7 +62,7 @@ REQUIRED_SCHEMA_VERSION="${REQUIRED_SCHEMA_VERSION:-?}"
 # logo depois do envio — o banco fica atrás do código só pelos segundos entre
 # o último arquivo e essa chamada.
 AUTO_MIGRATE=0
-if [[ -n "${CRON_SECRET:-}" && -n "${SITE_BASE_URL:-}" ]]; then
+if [[ -n "${CRON_SECRET:-}" && -n "${SITE_BASE_URL:-}" && "${SKIP_MIGRATE:-}" != "1" ]]; then
   AUTO_MIGRATE=1
   echo "Migrations pendentes serão aplicadas por api/migrate.php após o envio (schema ${REQUIRED_SCHEMA_VERSION})."
 fi
