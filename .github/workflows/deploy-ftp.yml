@@ -1,0 +1,159 @@
+name: deploy-ftp
+
+# Publica o site no servidor por FTP. Dispara quando uma tag v* chega ao
+# repositório (feche a versão e dê push da tag) ou manualmente: aba Actions,
+# workflow "deploy-ftp", botão "Run workflow".
+#
+# Para funcionar, uma vez só:
+#   Settings > Secrets and variables > Actions > New repository secret
+#   Nome: DOTENV. Conteúdo: o arquivo .env inteiro (FTP_*, CRON_SECRET, SITE_BASE_URL...).
+#   Ex.: gh secret set DOTENV --body-file .env
+#
+# O workflow só publica arquivos. Migrations não rodam daqui: se a versão mudou
+# o schema (public/api/schema.php), ele para e pede que a migration seja aplicada
+# antes, pelo caminho aprovado, e que o disparo manual marque "migrations_applied".
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      migrations_applied:
+        description: 'Migrations novas já aplicadas no banco de produção (obrigatório quando o schema mudou)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Duas publicações nunca se atropelam: a segunda espera a primeira terminar.
+concurrency:
+  group: deploy-producao
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Testes e publicação
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # As tags são necessárias para comparar o schema com a última versão publicada.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_sqlite, sqlite3, pdo_mysql, json, mbstring
+          coverage: none
+          tools: none
+
+      - name: Instalar dependências
+        run: npm ci
+
+      # Mesma régua do ci.yml: nada vai ao ar sem os testes e o build verdes.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Testes de front
+        run: npm test
+
+      - name: Testes de backend
+        run: bash scripts/phpunit.sh
+
+      - name: Testes do runner de migrations
+        run: php db/tests/migrate_test.php
+
+      - name: Schema do banco em relação à versão anterior
+        env:
+          MIGRATION_CONFIRMADA: ${{ inputs.migrations_applied }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          # Pega a versão do schema em stdin: 'ECOLETA_SCHEMA_VERSION = N;'.
+          versao_schema() {
+            grep -oE 'ECOLETA_SCHEMA_VERSION[[:space:]]*=[[:space:]]*[0-9]+' | grep -oE '[0-9]+$' | tail -n 1 || true
+          }
+
+          ATUAL="$(versao_schema < public/api/schema.php)"
+          if [ -z "$ATUAL" ]; then
+            echo "::error::ECOLETA_SCHEMA_VERSION não encontrado em public/api/schema.php."
+            exit 1
+          fi
+
+          # Última tag que aponta para um commit diferente deste: a versão já publicada.
+          HEAD_SHA="$(git rev-parse HEAD)"
+          ANTERIOR_REF=""
+          for tag in $(git tag --merged HEAD --sort=-v:refname --list 'v[0-9]*'); do
+            if [ "$(git rev-list -n 1 "$tag")" != "$HEAD_SHA" ]; then
+              ANTERIOR_REF="$tag"
+              break
+            fi
+          done
+
+          ANTERIOR=""
+          if [ -n "$ANTERIOR_REF" ]; then
+            # Sem schema.php naquela tag, ANTERIOR fica vazio e a diferença exige confirmação.
+            ANTERIOR="$(git show "$ANTERIOR_REF:public/api/schema.php" 2>/dev/null | versao_schema || true)"
+          fi
+
+          echo "Schema atual: $ATUAL. Versão anterior publicada: ${ANTERIOR_REF:-nenhuma} (schema ${ANTERIOR:-?})."
+
+          if [ "$ATUAL" = "$ANTERIOR" ]; then
+            echo "Schema sem mudança: nenhuma migration pendente."
+            exit 0
+          fi
+
+          if [ "$MIGRATION_CONFIRMADA" = "true" ]; then
+            echo "::notice::Schema mudou de ${ANTERIOR:-?} para $ATUAL. Migration confirmada no disparo manual."
+            exit 0
+          fi
+
+          echo "::error::O schema mudou de ${ANTERIOR:-?} para $ATUAL. Aplique a migration no banco antes, pelo caminho aprovado, e dispare o deploy manualmente com 'migrations_applied' marcado."
+          exit 1
+
+      # O .env vem do secret DOTENV e não sai do runner: cada valor é mascarado no log.
+      - name: Preparar .env do deploy
+        env:
+          DOTENV: ${{ secrets.DOTENV }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DOTENV" ]; then
+            echo "::error::Secret DOTENV não configurado (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+          umask 077
+          ARQUIVO="$RUNNER_TEMP/deploy.env"
+          printf '%s\n' "$DOTENV" > "$ARQUIVO"
+          while IFS= read -r linha; do
+            case "$linha" in
+              ''|\#*) continue ;;
+            esac
+            valor="${linha#*=}"
+            valor="${valor#\'}"; valor="${valor%\'}"
+            valor="${valor#\"}"; valor="${valor%\"}"
+            if [ "${#valor}" -ge 6 ]; then
+              echo "::add-mask::$valor"
+            fi
+          done < "$ARQUIVO"
+          echo "ENV_FILE=$ARQUIVO" >> "$GITHUB_ENV"
+
+      # SKIP_MIGRATE: a publicação nunca dispara api/migrate.php. A checagem acima
+      # já garantiu que não há migration pendente, ou que ela foi confirmada à mão.
+      - name: Publicar por FTP
+        env:
+          SKIP_MIGRATE: '1'
+          MIGRATIONS_APPLIED: '1'
+        run: bash scripts/deploy-ftp.sh
