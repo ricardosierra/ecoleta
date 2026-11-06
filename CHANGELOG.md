@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [v1.4.0 (2026-11-06)](https://github.com/ricardosierra/ecoleta/compare/v1.2.0...v1.4.0)
+
 ### ✨ Novidades
 
 - [x] **Fatura pelo Meu WhatsApp, sem custo** — botão direito sobre uma fatura em aberto (mensal ou avulsa) abre o seu WhatsApp com o texto da cobrança, o Pix Copia e Cola e o link da fatura prontos para você só apertar enviar. A mensagem sai do seu aplicativo, não pela API da Meta, então não é cobrada; o painel não marca a fatura como enviada.
