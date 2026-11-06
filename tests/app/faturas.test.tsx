@@ -139,8 +139,13 @@ describe("Faturas", () => {
   it("mostra falha de entrega mesmo quando a cobrança foi criada", async () => {
     mockApi({ email: "sent", whatsapp: "failed", errors: { whatsapp: "Template pendente." } });
     const user = userEvent.setup(); render(<FaturasPage />);
-    await user.click(await screen.findByRole("button", { name: "Tentar envios pendentes" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("Fatura registrada. Há falha no envio: Template pendente.");
+    await screen.findByText("10 de setembro de 2026");
+    await user.click(screen.getByRole("button", { name: "Nova fatura avulsa" }));
+    await user.selectOptions(screen.getByLabelText("Cliente"), "1");
+    await user.type(screen.getByLabelText("Vencimento"), "2026-10-05");
+    await user.click(screen.getByRole("button", { name: "Gerar e enviar fatura" }));
+    // "Falha" no texto faz a tela anunciar como alerta, não como status.
+    expect(await screen.findByRole("alert")).toHaveTextContent("Fatura registrada. Há falha no envio: Template pendente.");
   });
   it("cancela a fatura pendente com confirmação e envia action cancel", async () => {
     const posts = mockApi();
@@ -187,7 +192,11 @@ describe("Faturas", () => {
       const user = userEvent.setup();
       render(<FaturasPage />);
 
-      await user.click(await screen.findByRole("button", { name: "Tentar envios pendentes" }));
+      await screen.findByRole("region", { name: "Faturamento automático" });
+      await user.click(screen.getByRole("button", { name: "Nova fatura avulsa" }));
+      await user.selectOptions(screen.getByLabelText("Cliente"), "1");
+      await user.type(screen.getByLabelText("Vencimento"), "2026-10-05");
+      await user.click(screen.getByRole("button", { name: "Gerar e enviar fatura" }));
       expect(await screen.findByRole("status")).toHaveTextContent("Fatura registrada e enviada.");
     });
   });
@@ -223,9 +232,11 @@ describe("Faturas: tabela e cores de status", () => {
     mockComFaturas(["RECEIVED", "CONFIRMED", "OVERDUE", "PENDING", "DELETED", "REFUNDED", "CHARGEBACK_REQUESTED"].map((s, i) => fatura(i + 1, s)));
     render(<FaturasPage />);
 
+    // Os mesmos rótulos aparecem nas opções do filtro de status: a busca fica dentro da tabela.
+    const tabela = await screen.findByRole("table");
     const selos: Record<string, string> = {};
     for (const rotulo of ["PAGO", "CONFIRMADO", "VENCIDA", "PENDENTE", "CANCELADA", "ESTORNADA", "CONTESTADA"]) {
-      selos[rotulo] = (await screen.findByText(rotulo)).className;
+      selos[rotulo] = (await within(tabela).findByText(rotulo)).className;
     }
 
     expect(selos.PENDENTE).toContain("yellow");
