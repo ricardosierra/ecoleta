@@ -71,6 +71,10 @@ export function collectQuickActions(doc: Document, target: EventTarget | null): 
 
   if (pageRoot) {
     pushControls(actions, seen, pageRoot, "tela", "tela", (node) => {
+      // Botões de cada registro são do grupo "Este item", nunca da tela.
+      if (node.closest("tbody tr, [data-quick-row]")) {
+        return true;
+      }
       if (cluster?.contains(node)) {
         return true;
       }
