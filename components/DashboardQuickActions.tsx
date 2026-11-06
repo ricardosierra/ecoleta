@@ -76,6 +76,8 @@ export function DashboardQuickActions() {
     [menu, query],
   );
   const groups = useMemo(() => groupQuickActions(visible), [visible]);
+  // Ordem em que o menu desenha as ações: setas e Enter seguem a mesma sequência.
+  const ordered = useMemo(() => groups.flatMap((group) => group.actions), [groups]);
 
   useEffect(() => {
     if (!menu) {
@@ -84,10 +86,6 @@ export function DashboardQuickActions() {
     const node = menu.mode === "palette" ? searchRef.current : panelRef.current?.querySelector<HTMLButtonElement>("button[data-quick-item]");
     node?.focus();
   }, [menu]);
-
-  useEffect(() => {
-    setActive(0);
-  }, [query, menu]);
 
   if (!menu) {
     return null;
@@ -104,18 +102,18 @@ export function DashboardQuickActions() {
       setMenu(null);
       return;
     }
-    if (visible.length === 0) {
+    if (ordered.length === 0) {
       return;
     }
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setActive((index) => (index + 1) % visible.length);
+      setActive((index) => (index + 1) % ordered.length);
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
-      setActive((index) => (index - 1 + visible.length) % visible.length);
+      setActive((index) => (index - 1 + ordered.length) % ordered.length);
     } else if (event.key === "Enter") {
       event.preventDefault();
-      const action = visible[active];
+      const action = ordered[active];
       if (action) {
         run(action);
       }
@@ -124,7 +122,6 @@ export function DashboardQuickActions() {
 
   const left = Math.max(8, Math.min(menu.x, window.innerWidth - 280));
   const top = Math.max(8, Math.min(menu.y, window.innerHeight - 320));
-  let cursor = 0;
 
   return (
     <div className="fixed inset-0 z-[60] print:hidden" data-quick-actions>
@@ -149,7 +146,10 @@ export function DashboardQuickActions() {
           <input
             ref={searchRef}
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setActive(0);
+            }}
             placeholder="Buscar ação ou tela"
             aria-label="Buscar ação ou tela"
             className="w-full border-b border-[var(--color-border-dark)] bg-transparent px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/40"
@@ -165,8 +165,7 @@ export function DashboardQuickActions() {
                 {group.label}
               </p>
               {group.actions.map((action) => {
-                const index = cursor;
-                cursor += 1;
+                const index = ordered.indexOf(action);
                 const current = index === active;
 
                 return (
