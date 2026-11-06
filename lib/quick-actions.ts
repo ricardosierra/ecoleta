@@ -185,6 +185,11 @@ function pushControls(
     if (!(node instanceof HTMLElement) || !isUsable(node)) {
       return;
     }
+    // Controle só do menu (`data-quick-only`, oculto na tela): vale apenas para a linha sob o cursor,
+    // senão a busca do Ctrl/⌘K dispararia o de uma linha qualquer.
+    if (node.hasAttribute("data-quick-only") && !root.matches("tbody tr, [data-quick-row]")) {
+      return;
+    }
     if (skip(node)) {
       return;
     }
@@ -218,6 +223,10 @@ function push(actions: QuickAction[], seen: Set<string>, action: QuickAction): v
 }
 
 function isUsable(element: HTMLElement): boolean {
+  // Oculto de propósito: `element.click()` dispara o onClick mesmo com `hidden`.
+  if (element.hasAttribute("data-quick-only")) {
+    return !element.hasAttribute("disabled");
+  }
   if (element.hidden || element.closest("[hidden]")) {
     return false;
   }

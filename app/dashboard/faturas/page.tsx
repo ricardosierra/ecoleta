@@ -7,6 +7,7 @@ import { DashboardModal, ModalActions } from "@/components/DashboardModal";
 import { BotIcon, ClockIcon, EyeIcon, MailIcon, PlusIcon, TrashIcon, WhatsAppIcon } from "@/components/icons";
 import { apiPostJson } from "@/lib/dashboard-api";
 import { describeBillingRun, type BillingCronRun, type BillingCronStatus } from "@/lib/billing-status";
+import { invoiceWhatsAppLink } from "@/lib/invoice-share";
 import { canViewWhatsAppPanel, isAdmin } from "@/lib/authz";
 
 type DeliveryChannel = "email" | "whatsapp";
@@ -28,6 +29,8 @@ type Invoice = {
   /** Conversa já aberta no painel, quando o cliente tem uma. */
   whatsapp_conversation_id?: number | null;
   client_whatsapp?: string | null;
+  /** Texto da cobrança para o "Meu WhatsApp" (só fatura em aberto). */
+  whatsapp_text?: string | null;
 };
 
 const ORIGIN_LABEL: Record<"monthly" | "manual", string> = {
@@ -392,6 +395,14 @@ function FaturasMain() {
     await submit({ action: "cancel", id });
   }
 
+  /**
+   * Abre o WhatsApp do próprio operador com a cobrança escrita. Não passa pelo servidor
+   * nem pela API da Meta, então não tem custo e não registra envio: quem aperta enviar é o operador.
+   */
+  function enviarPeloMeuWhatsApp(invoice: Invoice) {
+    window.open(invoiceWhatsAppLink(invoice.client_whatsapp, invoice.whatsapp_text ?? ""), "_blank", "noopener,noreferrer");
+  }
+
   useEffect(() => {
     if (!isUserAdmin) return;
     
@@ -659,6 +670,10 @@ function FaturasMain() {
                         <a href={inv.invoice_url} target="_blank" rel="noreferrer" title="Ver fatura" aria-label="Ver fatura" className={iconActionClass}>
                           <EyeIcon width={15} height={15} />
                         </a>
+                      )}
+                      {inv.whatsapp_text && (
+                        // Sem botão visível: o menu de botão direito da linha (DashboardQuickActions) dispara este controle.
+                        <button type="button" hidden data-quick-only aria-label="Enviar pelo Meu WhatsApp" onClick={() => enviarPeloMeuWhatsApp(inv)} />
                       )}
                       {avisos.length > 0 && (
                         <p role={comErro ? "alert" : "status"} className={`basis-full text-right text-xs ${comErro ? "text-red-300" : "text-amber-200"}`}>

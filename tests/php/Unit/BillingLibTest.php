@@ -270,4 +270,40 @@ final class BillingLibTest extends TestCase
 
         self::assertStringNotContainsString('<script>', $email['html']);
     }
+
+    // ── Texto do "Meu WhatsApp" ─────────────────────────────────────────────
+
+    public function testTextoDoMeuWhatsAppTrazValorVencimentoPixELinkDaFatura(): void
+    {
+        $texto = billingShareText('Cliente', '150.5', '2026-10-10', '00020126pix', 'https://www.asaas.com/i/abc', false);
+
+        self::assertStringContainsString('A ECOLEVA gerou uma cobrança para você.', $texto);
+        self::assertStringContainsString('Valor: R$ 150,50. Vencimento: 10/10/2026.', $texto);
+        self::assertStringContainsString('Pix Copia e Cola: 00020126pix', $texto);
+        self::assertStringContainsString('Boleto: https://www.asaas.com/i/abc', $texto);
+    }
+
+    public function testTextoDoMeuWhatsAppEmAtrasoUsaOAvisoDeAtraso(): void
+    {
+        $texto = billingShareText('Cliente', 80, '2026-10-10', '', 'https://www.asaas.com/i/abc', true);
+
+        self::assertStringContainsString('Sua fatura está em atraso.', $texto);
+        self::assertStringNotContainsString('gerou uma cobrança', $texto);
+    }
+
+    public function testTextoDoMeuWhatsAppEhOMesmoTextoDoRobo(): void
+    {
+        // Operador e robô mandam a mesma mensagem: os dois saem da mesma função de e-mail.
+        $email = billingNewInvoiceEmail('Cliente', 80, '2026-10-10', '00020126pix', 'https://www.asaas.com/i/abc');
+
+        self::assertSame($email['text'], billingShareText('Cliente', 80, '2026-10-10', '00020126pix', 'https://www.asaas.com/i/abc', false));
+    }
+
+    public function testTextoSemPixNemLinkNaoDeixaLinhaVazia(): void
+    {
+        $texto = billingShareText('Cliente', 80, '2026-10-10', '', '', false);
+
+        self::assertStringNotContainsString('Pix Copia e Cola:', $texto);
+        self::assertStringNotContainsString('Boleto:', $texto);
+    }
 }

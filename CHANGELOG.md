@@ -8,6 +8,7 @@
 
 ### ✨ Novidades
 
+- [x] **Fatura pelo Meu WhatsApp, sem custo** — botão direito sobre uma fatura em aberto (mensal ou avulsa) abre o seu WhatsApp com o texto da cobrança, o Pix Copia e Cola e o link da fatura prontos para você só apertar enviar. A mensagem sai do seu aplicativo, não pela API da Meta, então não é cobrada; o painel não marca a fatura como enviada.
 - [x] **Cron no GitHub Actions**: `.github/workflows/billing-cron.yml` chama `api/cron/billing.php` todo dia às 08:00 de Brasília e aceita disparo manual (o "primeiro envio", que alcança os clientes antigos sem fatura no mês). Precisa do secret `CRON_SECRET` e do arquivo na branch padrão. O job fica vermelho quando o servidor responde 502, 503 ou 403, e o corpo da resposta não vai para o log, porque o repositório é público.
 - [x] **Histórico de OS mostra o que a Meta informou de cada envio**: Aceita pela Meta, Enviada ao WhatsApp, Entregue, Lida ou Falhou, em vez de sempre "Enviada". Quando a OS é enviada fora da janela de 24 horas com template configurado, o envio cobrado pede confirmação e a tela oferece o Meu WhatsApp.
 - [x] **Templates do painel de WhatsApp com o status real da Meta**: template em análise, rejeitado ou pausado aparece assim e não pode ser enviado, e o erro da Meta fica visível dentro do modal. Sem a Meta, a lista traz só os nomes configurados no servidor, sem texto inventado.

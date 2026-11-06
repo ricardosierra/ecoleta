@@ -1,20 +1,25 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import FaturasPage from "@/app/dashboard/faturas/page";
 import { sessionOf } from "../support/api-mock";
 
+/** Texto que a API devolve em `whatsapp_text` (o mesmo que o robô manda como texto). */
+const TEXTO_COBRANCA = "Olá, Cliente QA.\n\nA ECOLEVA gerou uma cobrança para você. Valor: R$ 7,50. Vencimento: 10/09/2026.\n\nBoleto: https://example.com/invoice";
+
+const FATURA_ABERTA = { id: 1, client_id: 1, client_name: "Cliente QA", client_whatsapp: "5521999193898", value: "7.50", due_date: "2026-09-10", created_at: "2026-09-01 14:30:00", status: "PENDING", invoice_url: "https://example.com/invoice", origin: "manual", delivery: { email: "sent", whatsapp: "sent" }, whatsapp_text: TEXTO_COBRANCA };
+
 function mockApi(
   delivery: object = { email: "sent", whatsapp: "accepted", errors: {} },
   billingCron: object | null = null,
-  listing: { billing_missing?: object[]; today?: string } = {},
+  listing: { billing_missing?: object[]; today?: string; invoices?: object[] } = {},
 ) {
   const posts: object[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     if (url.includes("/auth/me.php")) return Response.json(sessionOf("root"));
     if (url.includes("/clients/")) return Response.json({ ok: true, clients: [{ id: 1, name: "Cliente QA", monthly_value: 7.5, status: "active" }] });
     if (init?.method === "POST") { posts.push(JSON.parse(String(init.body))); return Response.json({ ok: true, invoice: { id: 1 }, delivery }); }
-    return Response.json({ ok: true, billing_cron: billingCron, ...listing, invoices: [{ id: 1, client_id: 1, client_name: "Cliente QA", client_whatsapp: "5521999193898", value: "7.50", due_date: "2026-09-10", created_at: "2026-09-01 14:30:00", status: "PENDING", invoice_url: "https://example.com/invoice", origin: "manual", delivery: { email: "sent", whatsapp: "sent" } }] });
+    return Response.json({ ok: true, billing_cron: billingCron, ...listing, invoices: listing.invoices ?? [FATURA_ABERTA] });
   }));
   return posts;
 }
@@ -288,5 +293,47 @@ describe("Faturas: tabela e cores de status", () => {
 
     const vazio = await screen.findByText("Nenhuma fatura encontrada.");
     expect(vazio).toHaveClass("data-table-empty");
+  });
+});
+
+describe("Meu WhatsApp pelo botão direito da linha", () => {
+  it("abre o WhatsApp do operador com a cobrança escrita, sem chamar o servidor", async () => {
+    const posts = mockApi(); const user = userEvent.setup(); render(<FaturasPage />);
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    await screen.findByText("10 de setembro de 2026");
+
+    fireEvent.contextMenu(screen.getByText("Cliente QA").closest("tr")!);
+    await user.click(within(screen.getByRole("menu", { name: "Ações" })).getByRole("menuitem", { name: "Enviar pelo Meu WhatsApp" }));
+
+    expect(open).toHaveBeenCalledWith(`https://wa.me/5521999193898?text=${encodeURIComponent(TEXTO_COBRANCA)}`, "_blank", "noopener,noreferrer");
+    expect(posts).toEqual([]);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    open.mockRestore();
+  });
+
+  it("Esc fecha o menu sem abrir o WhatsApp", async () => {
+    mockApi(); const user = userEvent.setup(); render(<FaturasPage />);
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    await screen.findByText("10 de setembro de 2026");
+
+    fireEvent.contextMenu(screen.getByText("Cliente QA").closest("tr")!);
+    expect(screen.getByRole("menu", { name: "Ações" })).toBeVisible();
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(open).not.toHaveBeenCalled();
+    open.mockRestore();
+  });
+
+  it("fatura já paga não oferece o Meu WhatsApp, só o que a linha mostra", async () => {
+    mockApi(undefined, null, { invoices: [{ ...FATURA_ABERTA, id: 2, client_name: "Cliente PAGO", status: "RECEIVED", whatsapp_text: null }] });
+    render(<FaturasPage />);
+    await screen.findByText("Cliente PAGO");
+
+    fireEvent.contextMenu(screen.getByText("Cliente PAGO").closest("tr")!);
+
+    const menu = screen.getByRole("menu", { name: "Ações" });
+    expect(within(menu).getByRole("menuitem", { name: "Ver fatura" })).toBeInTheDocument();
+    expect(within(menu).queryByRole("menuitem", { name: "Enviar pelo Meu WhatsApp" })).not.toBeInTheDocument();
   });
 });

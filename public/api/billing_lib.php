@@ -419,3 +419,18 @@ function billingOverdueEmail(
         $faturaUrl
     );
 }
+
+/**
+ * Texto da cobrança para o WhatsApp do próprio operador (o "Meu WhatsApp" da tela de Faturas).
+ *
+ * É o mesmo texto que o robô manda como mensagem de texto: quem escreve muda, o conteúdo não.
+ * Fatura em atraso sai com o aviso de atraso; as demais, com a cobrança nova.
+ */
+function billingShareText(string $clientName, $value, string $dueDateIso, string $pixPayload, string $faturaUrl, bool $overdue): string
+{
+    $email = $overdue
+        ? billingOverdueEmail($clientName, $value, $dueDateIso, $pixPayload, $faturaUrl)
+        : billingNewInvoiceEmail($clientName, $value, $dueDateIso, $pixPayload, $faturaUrl);
+
+    return $email['text'];
+}

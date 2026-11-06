@@ -115,6 +115,33 @@ final class BillingEndpointsTest extends TestCase
         self::assertSame(403, $res->status, $res->body);
     }
 
+    public function testListagemMontaTextoDoMeuWhatsAppSoParaFaturaEmAberto(): void
+    {
+        $clienteId = $this->db->seedClient('Cliente Texto', 80.0, 10, 'active', '5521999193898');
+        $abertaId = $this->db->seedInvoice($clienteId, 'pay_aberta', 80.0, '2026-10-10', 'PENDING', 'https://www.asaas.com/i/aberta');
+        $pagaId = $this->db->seedInvoice($clienteId, 'pay_paga', 80.0, '2026-09-10', 'RECEIVED', 'https://www.asaas.com/i/paga');
+        $this->db->pdo()->prepare('UPDATE invoices SET pix_qrcode_text = ? WHERE id = ?')->execute(['00020126pixdeteste', $abertaId]);
+
+        $res = Endpoint::call('invoices/index.php', [
+            'method' => 'GET',
+            'dsn' => $this->db->dsn(),
+            'session' => $this->sessaoAdmin(),
+        ]);
+
+        self::assertNull($res->fatal, (string) $res->fatal);
+        self::assertSame(200, $res->status, $res->body);
+        $porId = [];
+        foreach ($res->json()['invoices'] as $invoice) {
+            $porId[(int) $invoice['id']] = $invoice;
+        }
+
+        $texto = (string) $porId[$abertaId]['whatsapp_text'];
+        self::assertStringContainsString('Valor: R$ 80,00. Vencimento: 10/10/2026.', $texto);
+        self::assertStringContainsString('Pix Copia e Cola: 00020126pixdeteste', $texto);
+        self::assertStringContainsString('Boleto: https://www.asaas.com/i/aberta', $texto);
+        self::assertNull($porId[$pagaId]['whatsapp_text']);
+    }
+
     public function testCadastroDeClienteRecusaContaComum(): void
     {
         $res = Endpoint::call('clients/index.php', [

@@ -67,6 +67,24 @@ describe("collectQuickActions", () => {
     expect(tela).toEqual(["Gerar e enviar fatura"]);
   });
 
+  it("controle oculto do menu (data-quick-only) entra só pela linha, nunca pela busca da tela", () => {
+    const doc = shell(`
+      <table>
+        <tbody>
+          <tr>
+            <td>
+              <button type="button" hidden data-quick-only aria-label="Enviar pelo Meu WhatsApp"></button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    `);
+    const celula = doc.querySelector("tbody td") as HTMLElement;
+
+    expect(collectQuickActions(doc, celula).filter((action) => action.group === "item").map((action) => action.label)).toEqual(["Enviar pelo Meu WhatsApp"]);
+    expect(collectQuickActions(doc, null).map((action) => action.label)).not.toContain("Enviar pelo Meu WhatsApp");
+  });
+
   it("filtra a busca sem acento", () => {
     const doc = shell(`<button type="button">Ordem de serviço</button>`);
     const actions = collectQuickActions(doc, doc.querySelector("main"));

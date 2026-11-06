@@ -139,6 +139,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             : (int) $conversationId;
         $whatsapp = trim((string) ($invoice['client_whatsapp'] ?? ''));
         $invoice['client_whatsapp'] = $whatsapp === '' ? null : $whatsapp;
+        // Texto do "Meu WhatsApp" (botão direito na tela): só fatura em aberto, como os envios.
+        // Vem pronto do servidor para o link abrir no clique, sem chamada antes do popup.
+        $invoice['whatsapp_text'] = in_array($invoice['status'], ['PENDING', 'OVERDUE'], true)
+            ? billingShareText(
+                (string) $invoice['client_name'],
+                $invoice['value'],
+                (string) $invoice['due_date'],
+                (string) ($invoice['pix_qrcode_text'] ?? ''),
+                (string) ($invoice['invoice_url'] ?? ''),
+                $invoice['status'] === 'OVERDUE'
+            )
+            : null;
         $invoice['delivery'] = $deliveryStates[(int) $invoice['id']] ?? [
             'email' => 'never_sent',
             'whatsapp' => 'never_sent',
