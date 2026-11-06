@@ -6,6 +6,18 @@
 
 ## [Unreleased]
 
+## [v1.4.1 (2026-11-06)](https://github.com/ricardosierra/ecoleta/compare/v1.4.0...v1.4.1)
+
+### 🐛 Correções
+
+- [x] **Testes de Faturas voltam a rodar verdes** — três testes procuravam o botão "Tentar envios pendentes", que saiu da tela, e o da cor dos selos confundia os rótulos com as opções do filtro de status. Agora seguem o fluxo atual.
+- [x] **Botão direito não repete os botões de cada linha** — fora de uma tabela, o menu "Nesta tela" listava também os botões de cada registro. Esses ficam só em "Este item".
+- [x] **Atalhos do painel sem avisos do React** — o menu de Ctrl/⌘K deixa de atualizar estado dentro de efeito e de reatribuir contador no render; a ordem das setas segue a ordem que aparece na tela.
+
+### 🔧 Técnico
+
+**Deploy automático:** `.github/workflows/deploy-ftp.yml` publica por FTP quando uma tag `v*` chega ao GitHub, ou pelo botão "Run workflow". Antes, roda typecheck, lint e os testes de front e de backend. O `.env` vem do secret `DOTENV` e os valores são mascarados no log. O workflow nunca aplica migration: se o schema mudou em relação à última tag, para e pede que a migration seja aplicada antes. Detalhes em `docs/deploy.md`.
+
 ## [v1.4.0 (2026-11-06)](https://github.com/ricardosierra/ecoleta/compare/v1.2.0...v1.4.0)
 
 ### ✨ Novidades
