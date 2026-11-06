@@ -24,6 +24,20 @@ migration, e o erro aparece como falha de SQL solta no log.
 `scripts/deploy-ftp.sh` pergunta antes de publicar. Em execução não interativa
 (CI), confirme com `MIGRATIONS_APPLIED=1 npm run deploy:ftp`.
 
+## Publicação automática (GitHub Actions)
+
+`.github/workflows/deploy-ftp.yml` publica por FTP quando uma tag `v*` chega ao
+GitHub, ou pelo botão "Run workflow" da aba Actions.
+
+- Antes de publicar, roda typecheck, lint, testes de front, PHPUnit e o runner
+  de migrations. Qualquer teste vermelho cancela a publicação.
+- O `.env` vem do secret `DOTENV`, com o conteúdo inteiro do arquivo:
+  `gh secret set DOTENV --body-file .env`. Cada valor é mascarado no log.
+- O workflow nunca aplica migration. Ele compara `ECOLETA_SCHEMA_VERSION` com a
+  última tag publicada: se mudou, para e pede a migration aplicada antes, pelo
+  caminho acima. Depois disso, dispare pelo botão com `migrations_applied`
+  marcado.
+
 ## Por que o schema saiu do request
 
 Até a v1.2.0, `getDbConnection()` chamava `ensureTablesExist()`: **toda**
