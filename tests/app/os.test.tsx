@@ -51,6 +51,23 @@ describe("/dashboard/os — encaminhamento", () => {
     vi.unstubAllGlobals();
   });
 
+  /**
+   * Regressão: o documento sai em branco na impressão quando algum ancestral
+   * tem `print:hidden` (display:none). Nenhum ancestral pode ter essa classe.
+   */
+  it("não esconde o documento na impressão: nenhum ancestral de #os-print-area tem print:hidden", async () => {
+    montar();
+    render(<OSPage />);
+    await abrirOS(userEvent.setup());
+
+    let atual = document.querySelector("#os-print-area")?.parentElement ?? null;
+    expect(atual).not.toBeNull();
+    while (atual) {
+      expect(atual.className).not.toContain("print:hidden");
+      atual = atual.parentElement;
+    }
+  });
+
   it("mostra os campos de endereço, horário aproximado e material coletado no documento", async () => {
     montar();
     render(<OSPage />);

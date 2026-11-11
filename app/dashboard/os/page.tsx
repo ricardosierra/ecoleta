@@ -396,7 +396,10 @@ function OSMain() {
         </div>
       )}
 
-      <div className={`grid grid-cols-1 gap-6 print:hidden ${activeOS ? "" : ""}`}>
+      {/* Sem print:hidden aqui: o documento (#os-print-area) mora dentro deste grid
+          e, com display:none, a impressão saía em branco. O que não é documento
+          é escondido pela regra @media print no fim da página. */}
+      <div className={`grid grid-cols-1 gap-6 ${activeOS ? "" : ""}`}>
         {/* Formulário fica só na lista. Com a OS aberta, a tela é o documento. */}
         {!activeOS && (
         <div className={`${cardClass} p-5 sm:p-6`}>
