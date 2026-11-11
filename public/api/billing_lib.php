@@ -35,6 +35,117 @@ const BILLING_REMINDER_MIN_AGE = 20 * 3600;
 /** Menor valor que o Asaas aceita cobrar, em reais. */
 const BILLING_MIN_VALUE = 5.0;
 
+/** Multa de atraso, em percentual do valor original, cobrada a cada semana já iniciada. */
+const BILLING_WEEKLY_FINE_PERCENT = 10.0;
+
+/**
+ * Semanas de atraso já iniciadas.
+ *
+ * Zero até o vencimento, inclusive. No dia seguinte já conta a primeira semana:
+ * 1 dia de atraso é 10%, 8 dias são 20%.
+ */
+function billingOverdueWeeks(string $dueDate, DateTimeInterface $today): int
+{
+    $due = DateTimeImmutable::createFromFormat('!Y-m-d', $dueDate);
+    $day = DateTimeImmutable::createFromFormat('!Y-m-d', $today->format('Y-m-d'));
+    if ($due === false || $day === false || $day <= $due) {
+        return 0;
+    }
+
+    return (int) ceil(((int) $due->diff($day)->days) / 7);
+}
+
+/**
+ * Multa única do Asaas. Sozinha ela não repete por semana; a semana corrente
+ * entra aqui e as seguintes ajustam o valor da cobrança em
+ * `billingAsaasFaceValue()`.
+ *
+ * @return array{value:float,type:string}
+ */
+function billingFinePayload(): array
+{
+    return ['value' => BILLING_WEEKLY_FINE_PERCENT, 'type' => 'PERCENTAGE'];
+}
+
+/**
+ * Valor enviado ao Asaas para que, somada a multa de 10%, o total seja
+ * `original × (1 + 10% × semanas)`.
+ *
+ * Na primeira semana o valor permanece o original: a multa do Asaas cobre os 10%.
+ * Da segunda em diante o valor sobe para a multa de 10% incidir sobre a base
+ * que completa o percentual da semana, sem cobrar os 10% duas vezes.
+ */
+function billingAsaasFaceValue(float $original, int $weeks): float
+{
+    $original = round($original, 2);
+    if ($weeks < 1) {
+        return $original;
+    }
+
+    $total = round($original * (1 + (BILLING_WEEKLY_FINE_PERCENT / 100) * $weeks), 2);
+
+    return round($total / (1 + BILLING_WEEKLY_FINE_PERCENT / 100), 2);
+}
+
+/**
+ * O valor que chegou do Asaas é o da multa semanal, não um preço novo.
+ * Serve para o webhook não gravar essa base por cima do valor original.
+ */
+/**
+ * Valor que o cliente paga depois da multa.
+ *
+ * Com a multa de 10% gravada no boleto, o Asaas soma esses 10% na hora do
+ * pagamento e o valor enviado é só a base das semanas anteriores. Sem essa
+ * multa (boleto que já venceu antes de ela existir — o Asaas recusa alterar
+ * multa fora de `PENDING`), o valor enviado já é o total.
+ */
+function billingAmountDue(float $base, int $weeks, bool $fineOnSlip): float
+{
+    $base = round($base, 2);
+    if ($weeks < 1) {
+        return $base;
+    }
+    if ($fineOnSlip) {
+        return billingAsaasFaceValue($base, $weeks);
+    }
+
+    return round($base * (1 + (BILLING_WEEKLY_FINE_PERCENT / 100) * $weeks), 2);
+}
+
+/** Descrição da cobrança com a base original, para a multa não incidir em cima de si mesma. */
+function billingDescriptionWithBase(string $description, float $base): string
+{
+    $texto = trim((string) preg_replace('/\s*base:\d+\.\d{2}\b/', '', $description));
+    if ($texto === '') {
+        $texto = 'Fatura Mensal - Ecoleva';
+    }
+    if (!str_contains($texto, '10% por semana')) {
+        $texto .= '. Após o vencimento, multa de 10% por semana.';
+    }
+
+    return $texto . ' base:' . number_format(round($base, 2), 2, '.', '');
+}
+
+/** Base original marcada na descrição, ou o valor de fallback quando a marca ainda não existe. */
+function billingBaseFromDescription(string $description, float $fallback): float
+{
+    if (preg_match('/base:(\d+\.\d{2})\b/', $description, $marca) === 1) {
+        return (float) $marca[1];
+    }
+
+    return round($fallback, 2);
+}
+
+function billingValueIsWeeklyFine(float $original, float $incoming, string $dueDate, DateTimeInterface $today): bool
+{
+    $weeks = billingOverdueWeeks($dueDate, $today);
+    $incoming = round($incoming, 2);
+    $face = billingAsaasFaceValue($original, $weeks);
+    $gross = billingAmountDue($original, $weeks, false);
+
+    return abs($face - $incoming) < 0.02 || abs($gross - $incoming) < 0.02;
+}
+
 /**
  * A emissão das cobranças do mês seguinte já abriu?
  *
@@ -237,7 +348,7 @@ HTML;
       <p style="font-size:15px;color:#333333;line-height:1.6;margin-bottom:24px;"><strong>Avise se recebeu esse aviso.</strong></p>
 
       <p style="font-size:13px;color:#B91C1C;background:#FEF2F2;border-left:4px solid #EF4444;padding:12px;border-radius:0 4px 4px 0;margin-bottom:32px;line-height:1.5;">
-        <strong>⚠️ Atenção:</strong> O pagamento após o dia {$vencimento} acarretará na cobrança de juros e multa.
+        <strong>⚠️ Atenção:</strong> O pagamento após o dia {$vencimento} acarretará multa de 10% por semana de atraso.
       </p>
 
 {$pixBloco}
@@ -272,6 +383,8 @@ function billingInvoiceEmailText(
         sprintf('%s Valor: R$ %s. Vencimento: %s.', $abertura, $valorFormatado, $vencimentoFormatado),
         '',
         'Avise se recebeu esse aviso.',
+        '',
+        sprintf('O pagamento após o dia %s acarretará multa de 10%% por semana de atraso.', $vencimentoFormatado),
     ];
 
     if ($pixPayload !== '') {

@@ -20,6 +20,7 @@ declare(strict_types=1);
  */
 
 require_once __DIR__ . '/../db.php';
+require_once __DIR__ . '/../billing_lib.php';
 
 /** Resposta curta e encerramento. */
 function asaasWebhookRespond(int $status, string $body): void
@@ -154,8 +155,19 @@ try {
     // deixaria dois eventos simultâneos passarem um por cima do outro.
     if ($atualizacao !== null) {
         $emAberto = implode(',', array_fill(0, count(ASAAS_WEBHOOK_STATUS_EM_ABERTO), '?'));
-        $stmt = $db->prepare("UPDATE invoices SET due_date = ?, value = ? WHERE asaas_payment_id = ? AND status IN ($emAberto)");
-        $stmt->execute([$atualizacao[0], $atualizacao[1], $paymentId, ...ASAAS_WEBHOOK_STATUS_EM_ABERTO]);
+        $atual = $db->prepare('SELECT value FROM invoices WHERE asaas_payment_id = ? LIMIT 1');
+        $atual->execute([$paymentId]);
+        $valorLocal = $atual->fetchColumn();
+        $hoje = new DateTimeImmutable('now', new DateTimeZone('America/Sao_Paulo'));
+        $multaSemanal = is_numeric($valorLocal)
+            && billingValueIsWeeklyFine((float) $valorLocal, (float) $atualizacao[1], $atualizacao[0], $hoje);
+        if ($multaSemanal) {
+            $stmt = $db->prepare("UPDATE invoices SET due_date = ? WHERE asaas_payment_id = ? AND status IN ($emAberto)");
+            $stmt->execute([$atualizacao[0], $paymentId, ...ASAAS_WEBHOOK_STATUS_EM_ABERTO]);
+        } else {
+            $stmt = $db->prepare("UPDATE invoices SET due_date = ?, value = ? WHERE asaas_payment_id = ? AND status IN ($emAberto)");
+            $stmt->execute([$atualizacao[0], $atualizacao[1], $paymentId, ...ASAAS_WEBHOOK_STATUS_EM_ABERTO]);
+        }
     } elseif ($origens === null) {
         $stmt = $db->prepare('UPDATE invoices SET status = ? WHERE asaas_payment_id = ?');
         $stmt->execute([$novoStatus, $paymentId]);

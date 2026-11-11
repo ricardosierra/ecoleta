@@ -189,6 +189,8 @@ final class BillingLibTest extends TestCase
         self::assertStringContainsString('00020126580014br.gov.bcb.pix', $email['html']);
         self::assertStringContainsString('Sua Fatura Mensal', $email['html']);
         self::assertStringContainsString('Avise se recebeu esse aviso.', $email['html']);
+        self::assertStringContainsString('multa de 10% por semana de atraso', $email['html']);
+        self::assertStringContainsString('multa de 10% por semana de atraso', $email['text']);
         self::assertStringContainsString('Avise se recebeu esse aviso.', $email['text']);
         self::assertSame('Sua Fatura Mensal - Ecoleva', $email['subject']);
     }
@@ -305,5 +307,28 @@ final class BillingLibTest extends TestCase
 
         self::assertStringNotContainsString('Pix Copia e Cola:', $texto);
         self::assertStringNotContainsString('Boleto:', $texto);
+    }
+
+    public function testMultaSemanalComecaNoDiaSeguinteAoVencimento(): void
+    {
+        $hoje = new DateTimeImmutable('2026-10-10');
+
+        self::assertSame(0, billingOverdueWeeks('2026-10-10', $hoje));
+        self::assertSame(1, billingOverdueWeeks('2026-10-09', $hoje));
+        self::assertSame(1, billingOverdueWeeks('2026-10-03', $hoje));
+        self::assertSame(2, billingOverdueWeeks('2026-10-02', $hoje));
+        self::assertSame(100.0, billingAsaasFaceValue(100, 0));
+        self::assertSame(100.0, billingAsaasFaceValue(100, 1));
+        self::assertSame(109.09, billingAsaasFaceValue(100, 2));
+        self::assertSame(118.18, billingAsaasFaceValue(100, 3));
+        self::assertSame(10.0, billingFinePayload()['value']);
+        self::assertSame('PERCENTAGE', billingFinePayload()['type']);
+        self::assertSame(120.0, billingAmountDue(100, 2, false));
+        self::assertSame(109.09, billingAmountDue(100, 2, true));
+        self::assertSame(950.0, billingBaseFromDescription('Cobrança avulsa - Ecoleva base:950.00', 1));
+        self::assertStringContainsString('base:950.00', billingDescriptionWithBase('Cobrança avulsa - Ecoleva', 950));
+        self::assertTrue(billingValueIsWeeklyFine(100, 109.09, '2026-10-02', $hoje));
+        self::assertTrue(billingValueIsWeeklyFine(100, 120.0, '2026-10-02', $hoje));
+        self::assertFalse(billingValueIsWeeklyFine(100, 150, '2026-10-02', $hoje));
     }
 }

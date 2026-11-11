@@ -143,7 +143,12 @@ function billingIssueInvoice(PDO $db, array $client, float $value, string $dueDa
             $payment = $request('/payments', 'POST', [
                 'customer' => $client['asaas_customer_id'], 'billingType' => 'BOLETO',
                 'value' => round($value, 2), 'dueDate' => $dueDate,
-                'description' => $origin === 'manual' ? 'Cobrança avulsa - Ecoleva' : 'Fatura Mensal - Ecoleva', 'externalReference' => $reference,
+                'description' => billingDescriptionWithBase(
+                    $origin === 'manual' ? 'Cobrança avulsa - Ecoleva' : 'Fatura Mensal - Ecoleva',
+                    round($value, 2)
+                ),
+                'externalReference' => $reference,
+                'fine' => billingFinePayload(),
             ]);
         }
         if (empty($payment['id']) || empty($payment['invoiceUrl'])) throw new RuntimeException('O Asaas não retornou os dados completos da cobrança.');
@@ -393,7 +398,57 @@ function billingRunCycle(PDO $db, DateTimeImmutable $today, ?callable $request =
         if ($delivery['errors']) $errors[] = ['invoice_id' => $invoice['id'], 'delivery' => $delivery];
     }
 
+    foreach (billingSyncLateFees($db, $today, $request)['errors'] as $error) {
+        $errors[] = $error;
+    }
+
     return ['clients' => count($clients), 'generated' => $generated, 'reminders' => $reminders, 'errors' => $errors];
+}
+
+/**
+ * Grava a multa de 10% nos boletos que ainda não venceram.
+ *
+ * O Asaas só aceita alterar multa em cobrança pendente e recusa qualquer
+ * alteração quando o vencimento já passou. Por isso o boleto vencido fica de
+ * fora: a multa tem de ir na emissão, ou neste ajuste, enquanto a data ainda
+ * é hoje ou futura. O valor não muda — a multa de 10% incide no pagamento
+ * atrasado. Da segunda semana em diante o valor sobe no cron apenas se a
+ * cobrança ainda aceitar atualização (`billingAmountDue`).
+ *
+ * @return array{updated:int, errors:list<array<string,mixed>>}
+ */
+function billingSyncLateFees(PDO $db, DateTimeImmutable $today, ?callable $request = null): array
+{
+    $request ??= 'asaasRequest';
+    $updated = 0;
+    $errors = [];
+    $hoje = $today->format('Y-m-d');
+    $stmt = $db->query("SELECT id, asaas_payment_id, value, due_date FROM invoices WHERE status = 'PENDING' AND due_date >= " . $db->quote($hoje) . " AND asaas_payment_id IS NOT NULL AND asaas_payment_id <> ''");
+    foreach ($stmt->fetchAll() as $invoice) {
+        $paymentId = (string) $invoice['asaas_payment_id'];
+        try {
+            $remote = $request('/payments/' . rawurlencode($paymentId), 'GET', []);
+            if (!is_array($remote) || empty($remote['id'])) {
+                $remote = [];
+            }
+            $dueDate = (string) ($remote['dueDate'] ?? $invoice['due_date']);
+            if ($dueDate < $hoje) {
+                continue;
+            }
+            $base = billingBaseFromDescription((string) ($remote['description'] ?? ''), (float) $invoice['value']);
+            $request('/payments/' . rawurlencode($paymentId), 'POST', [
+                'value' => $base,
+                'dueDate' => $dueDate,
+                'description' => billingDescriptionWithBase((string) ($remote['description'] ?? ''), $base),
+                'fine' => billingFinePayload(),
+            ]);
+            $updated++;
+        } catch (Throwable $e) {
+            $errors[] = ['invoice_id' => (int) $invoice['id'], 'error' => $e->getMessage()];
+        }
+    }
+
+    return ['updated' => $updated, 'errors' => $errors];
 }
 
 /**

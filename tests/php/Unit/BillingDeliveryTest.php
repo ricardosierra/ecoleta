@@ -17,7 +17,11 @@ final class BillingDeliveryTest extends TestCase
         $request=function($path,$method,$body) use (&$calls) {
             $calls[]=$path;
             if (str_contains($path,'pixQrCode')) throw new RuntimeException('Pix indisponível');
-            if ($path==='/payments') return ['id'=>'pay_test','invoiceUrl'=>'https://example.com/invoice'];
+            if ($path==='/payments') {
+                self::assertSame(10.0, $body['fine']['value']);
+                self::assertSame('PERCENTAGE', $body['fine']['type']);
+                return ['id'=>'pay_test','invoiceUrl'=>'https://example.com/invoice'];
+            }
             return ['data'=>[]];
         };
         $first=billingIssueInvoice($this->db->pdo(),$client,25,'2026-10-10',$request);
@@ -126,8 +130,10 @@ final class BillingDeliveryTest extends TestCase
         self::assertSame('2026-10-05', $invoices[0]['due_date']);
         self::assertSame('pix-copia-e-cola', $invoices[0]['pix_qrcode_text']);
         self::assertSame(['Sua Fatura Mensal - Ecoleva'], $sent, 'a segunda execução do dia não pode reenviar');
+        $ajustes = array_values(array_filter($calls, fn (string $c) => str_contains($c, 'POST /payments/')));
+        self::assertNotSame([], $ajustes);
         self::assertSame(0, $second['generated']);
-        self::assertCount(1, array_keys(array_filter($calls, fn (string $c) => str_starts_with($c, 'POST'))));
+        self::assertCount(1, array_keys(array_filter($calls, fn (string $c) => $c === 'POST /payments')));
     }
 
     public function testNoDia30EmiteFaturaEEnviaLembreteEAvisoDeAtraso(): void
@@ -257,7 +263,7 @@ final class BillingDeliveryTest extends TestCase
 
         self::assertSame(0, $result['generated']);
         self::assertSame(1, $this->db->count('invoices'));
-        self::assertSame([], array_filter($calls, fn (string $c) => str_starts_with($c, 'POST')));
+        self::assertSame([], array_filter($calls, fn (string $c) => $c === 'POST /payments'));
     }
 
     public function testTrocaDeDiaDeVencimentoNoMeioDoMesNaoCobraDuasVezes(): void
