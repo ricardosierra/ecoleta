@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+## [v1.4.2 (2026-11-11)](https://github.com/ricardosierra/ecoleta/compare/v1.4.1...v1.4.2)
+
+### 🐛 Correções
+
+- [x] **Boleto passa a sair com multa de 10%** — a cobrança era criada sem multa. Emissão, e-mail e o cron gravam multa de 10% nos boletos que ainda não venceram. O Asaas não altera multa de boleto já vencido.
+
 ## [v1.4.1 (2026-11-06)](https://github.com/ricardosierra/ecoleta/compare/v1.4.0...v1.4.1)
 
 ### 🐛 Correções
