@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+## [v1.4.3 (2026-11-11)](https://github.com/ricardosierra/ecoleta/compare/v1.4.2...v1.4.3)
+
+### 🐛 Correções
+
+- [x] **OS salva em PDF sai com o documento** — ao imprimir ou salvar em PDF, a Ordem de Serviço saía só com cabeçalho e rodapé do navegador. O grid que contém o documento estava marcado para ocultar na impressão. Agora o documento sai inteiro, com teste de regressão.
+
 ## [v1.4.2 (2026-11-11)](https://github.com/ricardosierra/ecoleta/compare/v1.4.1...v1.4.2)
 
 ### 🐛 Correções
